@@ -4,7 +4,7 @@ import { fetchSnapshots, getPreferences, listenDesktopEvents, setAlwaysOnTop, se
 import { needsFastRefresh } from "./lib/format";
 import { copy, nextLanguage, normalizeLanguage } from "./lib/i18n";
 import { mergeSnapshots } from "./lib/snapshots";
-import type { ProviderSnapshot, WidgetPreferences } from "./types";
+import type { ProviderId, ProviderSnapshot, WidgetPreferences } from "./types";
 
 const DEFAULT_PREFS: WidgetPreferences = { locked: false, alwaysOnTop: true, pinnedProvider: null, autoRotateSeconds: 12, language: "zh-CN" };
 
@@ -17,7 +17,7 @@ export default function App() {
   const [consumingProviders, setConsumingProviders] = useState<Set<string>>(() => new Set());
   const [operationError, setOperationError] = useState<string | null>(null);
   const failures = useRef(0);
-  const previousPrimary = useRef(new Map<string, number>());
+  const previousMetric = useRef(new Map<string, number>());
   const consumptionTimers = useRef(new Map<string, number>());
   const language = normalizeLanguage(preferences.language);
   const t = copy[language];
@@ -29,9 +29,9 @@ export default function App() {
       if (hasFailure) failures.current += 1;
       else failures.current = 0;
       for (const item of values) {
-        const nextPrimary = item.shortWindow?.remainingPercent;
-        const previous = previousPrimary.current.get(item.provider);
-        if (nextPrimary !== undefined && previous !== undefined && nextPrimary < previous) {
+        const nextMetric = item.weeklyWindow?.remainingPercent ?? item.balanceRemaining ?? undefined;
+        const previous = previousMetric.current.get(item.provider);
+        if (nextMetric !== undefined && previous !== undefined && nextMetric < previous) {
           setConsumingProviders((current) => new Set(current).add(item.provider));
           const oldTimer = consumptionTimers.current.get(item.provider);
           if (oldTimer !== undefined) window.clearTimeout(oldTimer);
@@ -41,7 +41,7 @@ export default function App() {
           }, 5 * 60_000);
           consumptionTimers.current.set(item.provider, timer);
         }
-        if (nextPrimary !== undefined) previousPrimary.current.set(item.provider, nextPrimary);
+        if (nextMetric !== undefined) previousMetric.current.set(item.provider, nextMetric);
       }
       setSnapshots((current) => mergeSnapshots(current, values));
     } catch {
@@ -128,17 +128,21 @@ export default function App() {
   return (
     <QuotaCard
       snapshot={current}
+      snapshots={snapshots}
       preferences={preferences}
-      providerCount={snapshots.length}
-      onPrevious={() => setActiveIndex((value) => (value - 1 + snapshots.length) % snapshots.length)}
-      onNext={() => setActiveIndex((value) => (value + 1) % snapshots.length)}
-      onTogglePin={() => savePreferences({ ...preferences, pinnedProvider: preferences.pinnedProvider ? null : current.provider })}
+      onSelectProvider={(provider: ProviderId) => {
+        const index = snapshots.findIndex((item) => item.provider === provider);
+        if (index < 0) return;
+        setActiveIndex(index);
+        if (preferences.pinnedProvider) savePreferences({ ...preferences, pinnedProvider: provider });
+      }}
       onLanguage={() => savePreferences({ ...preferences, language: nextLanguage(language) })}
       onLock={() => { setOperationError(null); void setAlwaysOnTop(!preferences.alwaysOnTop).then((value) => setPreferences({ ...DEFAULT_PREFS, ...value, language: normalizeLanguage(value.language) })).catch(() => setOperationError("Always-on-top toggle failed.")); }}
       onDrag={() => startDragging()}
       onHover={handleHover}
       onRefresh={() => refresh(true)}
       isConsuming={consumingProviders.has(current.provider)}
+      consumingProviders={consumingProviders}
       notice={operationError}
     />
   );

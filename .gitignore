@@ -1,10 +1,12 @@
 /node_modules
 /dist
 /release
+/output
 /src-tauri/target
 /.agents
 /.chrome-qa
 /.chrome-qa2
+/.playwright-cli
 /.codex
 /.idea
 /.vscode

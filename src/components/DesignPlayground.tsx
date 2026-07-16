@@ -1,13 +1,13 @@
 import { useMemo, useState, type CSSProperties } from "react";
-import type { ProviderSnapshot, WidgetPreferences } from "../types";
+import type { ProviderId, ProviderSnapshot, WidgetPreferences } from "../types";
 import { QuotaCard, QuotaOrb } from "./QuotaCard";
 
 const preview: ProviderSnapshot = {
   provider: "codex",
   displayName: "CODEX",
   plan: "PRO",
-  shortWindow: { remainingPercent: 74, resetsAt: new Date(Date.now() + 78 * 60_000).toISOString(), windowSeconds: 18_000 },
-  weeklyWindow: { remainingPercent: 42, resetsAt: new Date(Date.now() + 3.2 * 86_400_000).toISOString(), windowSeconds: 604_800 },
+  shortWindow: null,
+  weeklyWindow: { remainingPercent: 74, resetsAt: new Date(Date.now() + 3.2 * 86_400_000).toISOString(), windowSeconds: 604_800 },
   resetCredits: 1,
   resetCreditExpiresAt: [new Date(Date.now() + 9 * 86_400_000).toISOString()],
   updatedAt: new Date().toISOString(),
@@ -15,6 +15,28 @@ const preview: ProviderSnapshot = {
   message: null,
 };
 const preferences: WidgetPreferences = { locked: false, alwaysOnTop: true, pinnedProvider: "codex", autoRotateSeconds: 12, language: "en" };
+const peerPreviews: ProviderSnapshot[] = [{
+  provider: "qoder", displayName: "QODER", plan: "PRO", shortWindow: null, weeklyWindow: null,
+  resetCredits: null, balanceRemaining: 1280, balanceUnit: "credits", updatedAt: new Date().toISOString(), status: "ok", message: null,
+}, {
+  provider: "trae", displayName: "TRAE", plan: "Free", shortWindow: null, weeklyWindow: null,
+  resetCredits: null, balanceRemaining: 0, balanceUnit: "unlimited", updatedAt: new Date().toISOString(), status: "ok", message: null,
+}, {
+  provider: "workbuddy", displayName: "WORKBUDDY", plan: null, shortWindow: null, weeklyWindow: null,
+  resetCredits: null, balanceRemaining: 420, balanceUnit: "credits", updatedAt: new Date().toISOString(), status: "ok", message: null,
+}, {
+  provider: "volcengine", displayName: "VOLCENGINE", plan: "CODING", shortWindow: null,
+  weeklyWindow: { remainingPercent: 86, resetsAt: new Date(Date.now() + 5.4 * 86_400_000).toISOString(), windowSeconds: 604_800 },
+  resetCredits: null, updatedAt: new Date().toISOString(), status: "ok", message: null,
+}];
+const noConsumingProviders = new Set<string>();
+const codexConsuming = new Set<string>(["codex"]);
+const noop = () => undefined;
+const noSelect = (_provider: ProviderId) => undefined;
+
+function previewSnapshots(active: ProviderSnapshot): ProviderSnapshot[] {
+  return [active, ...peerPreviews];
+}
 
 interface Values {
   radius: number;
@@ -39,7 +61,7 @@ const previewModes: Array<{ value: PreviewMode; label: string }> = [
   { value: "orb", label: "Orb" },
 ];
 
-const defaults: Values = { radius: 38, numberSize: 64, progressHeight: 6, brightness: 100, motion: 18, cool: "#7188bd", glow: "#fff4c3", warm: "#ff7653" };
+const defaults: Values = { radius: 28, numberSize: 50, progressHeight: 4, brightness: 100, motion: 18, cool: "#7188bd", glow: "#fff4c3", warm: "#ff7653" };
 
 function initialPreviewMode(): PreviewMode {
   const mode = new URLSearchParams(window.location.search).get("mode");
@@ -71,7 +93,7 @@ export function DesignPlayground() {
   const makePreview = (mode: PreviewMode): ProviderSnapshot => {
     if (mode === "orb") return preview;
     if (typeof mode === "number") {
-      return { ...preview, shortWindow: preview.shortWindow ? { ...preview.shortWindow, remainingPercent: mode } : null };
+      return { ...preview, weeklyWindow: preview.weeklyWindow ? { ...preview.weeklyWindow, remainingPercent: mode } : null };
     }
     if (mode === "stale") {
       return { ...preview, status: "stale", updatedAt: new Date(Date.now() - 2 * 60 * 60_000).toISOString(), message: "Refresh failed. Please try again later." };
@@ -87,6 +109,7 @@ export function DesignPlayground() {
   };
 
   const activePreview = useMemo<ProviderSnapshot>(() => makePreview(previewMode), [previewMode]);
+  const activeSnapshots = useMemo(() => previewSnapshots(activePreview), [activePreview]);
 
   const update = <K extends keyof Values>(key: K, value: Values[K]) => setValues((current) => ({ ...current, [key]: value }));
 
@@ -96,7 +119,7 @@ export function DesignPlayground() {
         <div className="screenshot-stage screenshot-stage--states" style={style}>
           {[74, 35, 8].map((mode) => (
             <div className="design-card-frame" key={mode}>
-              <QuotaCard snapshot={makePreview(mode as PreviewMode)} preferences={preferences} providerCount={1} onPrevious={() => {}} onNext={() => {}} onTogglePin={() => {}} onLock={() => {}} onLanguage={() => {}} onDrag={() => {}} onHover={() => {}} isConsuming={mode === 35} />
+              <QuotaCard snapshot={makePreview(mode as PreviewMode)} snapshots={previewSnapshots(makePreview(mode as PreviewMode))} preferences={preferences} onSelectProvider={noSelect} onLock={noop} onLanguage={noop} onDrag={noop} onHover={noop} isConsuming={mode === 35} consumingProviders={mode === 35 ? codexConsuming : noConsumingProviders} />
             </div>
           ))}
         </div>
@@ -108,7 +131,7 @@ export function DesignPlayground() {
         <div className={previewMode === "orb" ? "design-orb-frame" : "design-card-frame"}>
           {previewMode === "orb"
             ? <QuotaOrb snapshot={activePreview} language="en" onDrag={() => {}} onHover={() => {}} />
-            : <QuotaCard snapshot={activePreview} preferences={preferences} providerCount={1} onPrevious={() => {}} onNext={() => {}} onTogglePin={() => {}} onLock={() => {}} onLanguage={() => {}} onDrag={() => {}} onHover={() => {}} initialShowCreditTip={showCreditTip} />}
+            : <QuotaCard snapshot={activePreview} snapshots={activeSnapshots} preferences={preferences} onSelectProvider={noSelect} onLock={noop} onLanguage={noop} onDrag={noop} onHover={noop} consumingProviders={noConsumingProviders} initialShowCreditTip={showCreditTip} />}
         </div>
       </div>
     );
@@ -125,7 +148,7 @@ export function DesignPlayground() {
         <div className={previewMode === "orb" ? "design-orb-frame" : "design-card-frame"}>
           {previewMode === "orb"
             ? <QuotaOrb snapshot={activePreview} onDrag={() => {}} onHover={() => {}} />
-            : <QuotaCard snapshot={activePreview} preferences={preferences} providerCount={1} onPrevious={() => {}} onNext={() => {}} onTogglePin={() => {}} onLock={() => {}} onLanguage={() => {}} onDrag={() => {}} onHover={() => {}} />}
+            : <QuotaCard snapshot={activePreview} snapshots={activeSnapshots} preferences={preferences} onSelectProvider={noSelect} onLock={noop} onLanguage={noop} onDrag={noop} onHover={noop} consumingProviders={noConsumingProviders} />}
         </div>
       </section>
       <aside className="design-controls">
@@ -135,8 +158,8 @@ export function DesignPlayground() {
           <p className="design-description">Preview changes live, then apply the chosen values to the desktop widget.</p>
         </div>
         <Range label="Radius" value={values.radius} min={24} max={64} unit="px" onChange={(v) => update("radius", v)} />
-        <Range label="Main number" value={values.numberSize} min={56} max={110} unit="px" onChange={(v) => update("numberSize", v)} />
-        <Range label="Progress" value={values.progressHeight} min={4} max={12} unit="px" onChange={(v) => update("progressHeight", v)} />
+        <Range label="Main number" value={values.numberSize} min={42} max={72} unit="px" onChange={(v) => update("numberSize", v)} />
+        <Range label="Progress" value={values.progressHeight} min={3} max={8} unit="px" onChange={(v) => update("progressHeight", v)} />
         <Range label="Brightness" value={values.brightness} min={70} max={125} unit="%" onChange={(v) => update("brightness", v)} />
         <Range label="Motion" value={values.motion} min={6} max={40} unit="s" onChange={(v) => update("motion", v)} />
         <div className="color-row">

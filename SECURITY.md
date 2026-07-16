@@ -2,7 +2,7 @@
 
 ## Supported Use
 
-Quota Float is a local desktop utility that reads Codex quota using the user's existing Codex Desktop login state.
+Quota Float is a local desktop utility that reads coding-assistant quota using the user's existing local login states and Ark CLI profile.
 
 ## Reporting Issues
 
@@ -10,9 +10,9 @@ Please do not open public issues containing tokens, account IDs, raw backend res
 
 ## Security Boundaries
 
-- The app does not persist Codex credentials.
+- The app does not persist provider credentials.
 - The app does not log request headers or raw quota responses.
-- The app caps auth file reads at 256 KB and quota responses at 1 MB.
+- The app caps local auth/cache reads and quota responses; HTTP and Ark CLI quota payloads are rejected above 1 MB.
 - The app does not follow redirects for quota HTTP requests.
 - The app does not redeem reset credits or change account settings.
 

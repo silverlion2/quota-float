@@ -1,12 +1,14 @@
 # Quota Float
 
-Lightweight floating desktop widget for checking Codex quota from the local Codex Desktop login state.
+Lightweight floating desktop widget for checking coding-assistant quotas from existing local login states.
 
 ![Quota Float quota states](docs/images/quota-states.png)
 
 ## Highlights
 
-- Shows your Codex plan, 5-hour quota, weekly quota, and next reset time in a compact always-on-top widget.
+- Collects Codex, Qoder, TRAE, WorkBuddy, and Volcengine Ark Coding Plan quota where their local apps or CLI are available.
+- Shows weekly windows, exact remaining balances, or unlimited plans in a compact always-on-top widget.
+- Expands into a compact platform ledger with detailed values for every detected provider.
 - Uses clear quota states for healthy, caution, and critical remaining usage.
 - Collapses into a small floating orb when idle, then expands on hover.
 - Indicates whether quota is currently being consumed.
@@ -36,7 +38,7 @@ codex, quota, tauri, react, rust, desktop-app, windows, macos, productivity
 
 ## How It Works
 
-Quota Float reads the existing Codex Desktop login state on your machine and queries Codex/ChatGPT quota endpoints with that session. It does not estimate usage from local token counts and does not redeem reset credits or modify account settings.
+Quota Float reuses existing local login states in read-only mode. Codex, TRAE, and WorkBuddy are queried through their own quota services; Qoder uses its local account cache; Volcengine uses the authenticated `arkcli usage plan` command. It does not estimate usage from local token counts or modify account settings.
 
 Browser preview uses mock data. Real quota reading requires the Tauri desktop app and an existing Codex Desktop login on the same machine.
 
@@ -60,10 +62,10 @@ https://github.com/change-42-yhmm/quota-float/issues
 
 Quota Float is local-first and intentionally narrow:
 
-- Reads the local Codex Desktop login state only to query Codex quota.
-- Sends the existing Codex access token only to ChatGPT quota endpoints.
+- Reads only the local authentication or account cache needed for each detected provider.
+- Sends each provider's existing token only to that provider's official quota endpoint; Volcengine access remains inside Ark CLI.
 - Stores only widget preferences in its own app config directory.
-- Does not store Codex tokens, account IDs, prompts, chat history, raw quota responses, or local auth paths.
+- Does not store provider tokens, account IDs, prompts, chat history, raw quota responses, or local auth paths.
 - Does not include telemetry, analytics, crash reporting, or third-party tracking.
 - Does not redeem reset credits or modify account settings.
 
@@ -71,7 +73,7 @@ See [PRIVACY.md](PRIVACY.md) and [SECURITY.md](SECURITY.md) for the full boundar
 
 ## Accuracy Boundary
 
-Codex quota is read from Codex/ChatGPT quota service responses. If the response format changes, the app shows an unavailable or stale state instead of inventing quota values.
+Quota is read from provider responses, local account caches, or Ark CLI output. If a response format changes, the app shows an unavailable or stale state instead of inventing quota values.
 
 ## Development
 

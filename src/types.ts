@@ -1,4 +1,4 @@
-export type ProviderId = "codex" | "claude";
+export type ProviderId = "codex" | "qoder" | "trae" | "workbuddy" | "volcengine";
 export type SnapshotStatus = "ok" | "stale" | "loading" | "unavailable" | "signed_out";
 export type Language = "zh-CN" | "en";
 
@@ -16,6 +16,8 @@ export interface ProviderSnapshot {
   weeklyWindow: UsageWindow | null;
   resetCredits: number | null;
   resetCreditExpiresAt?: string[];
+  balanceRemaining?: number | null;
+  balanceUnit?: string | null;
   updatedAt: string;
   status: SnapshotStatus;
   message: string | null;

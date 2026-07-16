@@ -6,7 +6,7 @@ const success: ProviderSnapshot = {
   provider: "codex",
   displayName: "CODEX",
   plan: "PRO",
-  shortWindow: { remainingPercent: 74, resetsAt: "2026-07-07T02:00:00Z", windowSeconds: 18_000 },
+  shortWindow: null,
   weeklyWindow: { remainingPercent: 42, resetsAt: "2026-07-10T00:00:00Z", windowSeconds: 604_800 },
   resetCredits: 1,
   updatedAt: "2026-07-07T00:00:00Z",
@@ -31,6 +31,6 @@ describe("snapshot failure handling", () => {
   });
 
   it("replaces stale data after recovery", () => {
-    expect(mergeSnapshots([{ ...success, status: "stale" }], [{ ...success, shortWindow: { ...success.shortWindow!, remainingPercent: 88 } }])[0].shortWindow?.remainingPercent).toBe(88);
+    expect(mergeSnapshots([{ ...success, status: "stale" }], [{ ...success, weeklyWindow: { ...success.weeklyWindow!, remainingPercent: 88 } }])[0].weeklyWindow?.remainingPercent).toBe(88);
   });
 });

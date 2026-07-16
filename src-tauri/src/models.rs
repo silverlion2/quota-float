@@ -18,6 +18,8 @@ pub struct ProviderSnapshot {
     pub weekly_window: Option<UsageWindow>,
     pub reset_credits: Option<u64>,
     pub reset_credit_expires_at: Vec<String>,
+    pub balance_remaining: Option<f64>,
+    pub balance_unit: Option<String>,
     pub updated_at: String,
     pub status: String,
     pub message: Option<String>,
@@ -25,14 +27,20 @@ pub struct ProviderSnapshot {
 
 impl ProviderSnapshot {
     pub fn failure(status: &str, message: &str) -> Self {
+        Self::provider_failure("codex", "CODEX", status, message)
+    }
+
+    pub fn provider_failure(provider: &str, display_name: &str, status: &str, message: &str) -> Self {
         Self {
-            provider: "codex".into(),
-            display_name: "CODEX".into(),
+            provider: provider.into(),
+            display_name: display_name.into(),
             plan: None,
             short_window: None,
             weekly_window: None,
             reset_credits: None,
             reset_credit_expires_at: Vec::new(),
+            balance_remaining: None,
+            balance_unit: None,
             updated_at: chrono::Utc::now().to_rfc3339(),
             status: status.into(),
             message: Some(message.into()),
@@ -64,7 +72,7 @@ impl Default for WidgetPreferences {
 impl WidgetPreferences {
     pub fn normalized(mut self) -> Self {
         self.auto_rotate_seconds = self.auto_rotate_seconds.clamp(5, 300);
-        if self.pinned_provider.as_deref() != Some("codex") {
+        if !matches!(self.pinned_provider.as_deref(), Some("codex" | "qoder" | "trae" | "workbuddy" | "volcengine")) {
             self.pinned_provider = None;
         }
         if self.language != "en" && self.language != "zh-CN" {

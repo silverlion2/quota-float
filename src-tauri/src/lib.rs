@@ -1,5 +1,9 @@
 mod codex;
 mod models;
+mod qoder;
+mod trae;
+mod volcengine;
+mod workbuddy;
 
 use std::{
     fs,
@@ -26,9 +30,25 @@ struct AppState {
     snapshot_cache: Mutex<Option<(Instant, Vec<ProviderSnapshot>)>>,
 }
 
+async fn collect_snapshots(client: &reqwest::Client) -> Vec<ProviderSnapshot> {
+    let qoder_snapshot = qoder::fetch_snapshot();
+    let (codex_snapshot, trae_snapshot, workbuddy_snapshot, volcengine_snapshot) = tokio::join!(
+        codex::fetch_snapshot(client),
+        trae::fetch_snapshot(client),
+        workbuddy::fetch_snapshot(client),
+        volcengine::fetch_snapshot(),
+    );
+    let mut values = vec![codex_snapshot];
+    values.extend(qoder_snapshot);
+    values.extend(trae_snapshot);
+    values.extend(workbuddy_snapshot);
+    values.extend(volcengine_snapshot);
+    values
+}
+
 async fn fetch_snapshots_uncached(state: &State<'_, AppState>) -> Vec<ProviderSnapshot> {
     let _guard = state.fetch_lock.lock().await;
-    let values = vec![codex::fetch_snapshot(&state.client).await];
+    let values = collect_snapshots(&state.client).await;
     if let Ok(mut cache) = state.snapshot_cache.lock() {
         *cache = Some((Instant::now(), values.clone()));
     }
@@ -107,7 +127,7 @@ async fn get_snapshots(state: State<'_, AppState>) -> Result<Vec<ProviderSnapsho
             }
         }
     }
-    let values = vec![codex::fetch_snapshot(&state.client).await];
+    let values = collect_snapshots(&state.client).await;
     if let Ok(mut cache) = state.snapshot_cache.lock() {
         *cache = Some((Instant::now(), values.clone()));
     }

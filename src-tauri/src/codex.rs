@@ -242,6 +242,27 @@ fn find_window<'a>(
         }
     }
 
+    if expected_seconds > 0 {
+        if let Some(values) = rate_limit.as_object() {
+            for value in values.values() {
+                let Some(window) = parse_window(Some(value)) else {
+                    continue;
+                };
+                if window.window_seconds.abs_diff(expected_seconds) <= 60 {
+                    return Some(value);
+                }
+            }
+
+            let mut parseable = values
+                .values()
+                .filter(|value| parse_window(Some(value)).is_some());
+            let only = parseable.next();
+            if only.is_some() && parseable.next().is_none() {
+                return only;
+            }
+        }
+    }
+
     for key in ["windows", "limit_windows", "limitWindows", "limits", "buckets"] {
         let Some(items) = rate_limit.get(key).and_then(Value::as_array) else {
             continue;
@@ -342,20 +363,6 @@ pub async fn fetch_snapshot(client: &reqwest::Client) -> ProviderSnapshot {
         .get("rate_limit")
         .or_else(|| usage.get("rateLimit"))
         .unwrap_or(&usage);
-    let short_window = parse_window(find_window(
-        rate_limit,
-        &[
-            "primary_window",
-            "primaryWindow",
-            "short_window",
-            "shortWindow",
-            "five_hour_window",
-            "fiveHourWindow",
-            "5h",
-            "primary",
-        ],
-        18_000,
-    ));
     let weekly_window = parse_window(find_window(
         rate_limit,
         &[
@@ -370,8 +377,8 @@ pub async fn fetch_snapshot(client: &reqwest::Client) -> ProviderSnapshot {
         ],
         604_800,
     ));
-    if short_window.is_none() {
-        return ProviderSnapshot::failure("unavailable", "Quota response is missing the 5h window.");
+    if weekly_window.is_none() {
+        return ProviderSnapshot::failure("unavailable", "Quota response is missing the weekly window.");
     }
 
     let usage_credits = usage
@@ -425,10 +432,12 @@ pub async fn fetch_snapshot(client: &reqwest::Client) -> ProviderSnapshot {
         provider: "codex".into(),
         display_name: "CODEX".into(),
         plan: pick_string(&usage, &["plan_type", "planType"]).map(|value| value.to_uppercase()),
-        short_window,
+        short_window: None,
         weekly_window,
         reset_credits,
         reset_credit_expires_at,
+        balance_remaining: None,
+        balance_unit: None,
         updated_at: chrono::Utc::now().to_rfc3339(),
         status: "ok".into(),
         message: None,
@@ -440,15 +449,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_both_window_shapes() {
+    fn parses_snake_and_camel_case_window_shapes() {
         let snake = serde_json::json!({
             "used_percent": 26,
             "reset_at": 1738300000,
-            "limit_window_seconds": 18000
+            "limit_window_seconds": 604800
         });
         let window = parse_window(Some(&snake)).unwrap();
         assert_eq!(window.remaining_percent, 74.0);
-        assert_eq!(window.window_seconds, 18000);
+        assert_eq!(window.window_seconds, 604800);
         let camel = serde_json::json!({
             "utilization": 0.4,
             "resetsAt": "2026-07-07T00:00:00Z",
@@ -463,16 +472,16 @@ mod tests {
             "remainingPercent": 73.4,
             "usedPercent": 99,
             "resetTime": "2026-07-07T00:00:00Z",
-            "durationSeconds": 18000
+            "durationSeconds": 604800
         });
         let window = parse_window(Some(&value)).unwrap();
         assert_eq!(window.remaining_percent, 73.4);
-        assert_eq!(window.window_seconds, 18000);
+        assert_eq!(window.window_seconds, 604800);
     }
 
     #[test]
     fn treats_fractional_percent_fields_as_ratios() {
-        let explicit_remaining = serde_json::json!({"remaining": 0.25, "periodSeconds": 18000});
+        let explicit_remaining = serde_json::json!({"remaining": 0.25, "periodSeconds": 604800});
         assert_eq!(
             parse_window(Some(&explicit_remaining))
                 .unwrap()
@@ -480,7 +489,7 @@ mod tests {
             25.0
         );
 
-        let used_ratio = serde_json::json!({"used": 0.25, "periodSeconds": 18000});
+        let used_ratio = serde_json::json!({"used": 0.25, "periodSeconds": 604800});
         assert_eq!(
             parse_window(Some(&used_ratio)).unwrap().remaining_percent,
             75.0
@@ -490,7 +499,7 @@ mod tests {
     #[test]
     fn does_not_scale_explicit_percent_fields() {
         let explicit_remaining =
-            serde_json::json!({"remaining_percent": 0.4, "windowSeconds": 18000});
+            serde_json::json!({"remaining_percent": 0.4, "windowSeconds": 604800});
         assert_eq!(
             parse_window(Some(&explicit_remaining))
                 .unwrap()
@@ -498,7 +507,7 @@ mod tests {
             0.4
         );
 
-        let explicit_used = serde_json::json!({"used_percent": 0.4, "windowSeconds": 18000});
+        let explicit_used = serde_json::json!({"used_percent": 0.4, "windowSeconds": 604800});
         assert_eq!(
             parse_window(Some(&explicit_used)).unwrap().remaining_percent,
             99.6
@@ -506,20 +515,38 @@ mod tests {
     }
 
     #[test]
-    fn finds_window_by_duration_or_name_in_arrays() {
+    fn finds_weekly_window_by_duration_or_name_in_arrays() {
         let rate_limit = serde_json::json!({
             "windows": [
-                {"name": "weekly", "remainingPercent": 88, "windowSeconds": 604800},
-                {"name": "primary", "remainingPercent": 51, "windowSeconds": 18000}
+                {"name": "daily", "remainingPercent": 51, "windowSeconds": 86400},
+                {"name": "weekly", "remainingPercent": 88, "windowSeconds": 604800}
             ]
         });
-        let short =
-            parse_window(find_window(&rate_limit, &["primary_window", "primary"], 18_000))
-                .unwrap();
         let weekly =
             parse_window(find_window(&rate_limit, &["secondary_window", "weekly"], 604_800))
                 .unwrap();
-        assert_eq!(short.remaining_percent, 51.0);
         assert_eq!(weekly.remaining_percent, 88.0);
+    }
+
+    #[test]
+    fn finds_weekly_window_when_service_exposes_it_as_primary() {
+        let rate_limit = serde_json::json!({
+            "primary_window": {"remainingPercent": 63, "windowSeconds": 604800}
+        });
+        let weekly =
+            parse_window(find_window(&rate_limit, &["secondary_window", "weekly"], 604_800))
+                .unwrap();
+        assert_eq!(weekly.remaining_percent, 63.0);
+    }
+
+    #[test]
+    fn accepts_a_single_weekly_window_without_duration_metadata() {
+        let rate_limit = serde_json::json!({
+            "primary_window": {"remainingPercent": 63}
+        });
+        let weekly =
+            parse_window(find_window(&rate_limit, &["secondary_window", "weekly"], 604_800))
+                .unwrap();
+        assert_eq!(weekly.remaining_percent, 63.0);
     }
 }
