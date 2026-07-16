@@ -1,6 +1,6 @@
 import type { ProviderSnapshot, WidgetPreferences } from "../types";
 
-const defaultPreferences: WidgetPreferences = { locked: false, alwaysOnTop: true, pinnedProvider: null, autoRotateSeconds: 12, language: "zh-CN" };
+const defaultPreferences: WidgetPreferences = { locked: false, alwaysOnTop: true, stayExpanded: false, pinnedProvider: null, autoRotateSeconds: 12, language: "zh-CN" };
 
 const mockSnapshots: ProviderSnapshot[] = [{
   provider: "codex",
@@ -61,6 +61,14 @@ const mockSnapshots: ProviderSnapshot[] = [{
   message: null,
 }];
 
+let widgetTransition: Promise<void> = Promise.resolve();
+
+function enqueueWidgetTransition(operation: () => Promise<void>): Promise<void> {
+  const next = widgetTransition.then(operation, operation);
+  widgetTransition = next.catch(() => undefined);
+  return next;
+}
+
 export const isTauri = () => "__TAURI_INTERNALS__" in window;
 
 export async function fetchSnapshots(force = false): Promise<ProviderSnapshot[]> {
@@ -96,23 +104,59 @@ export async function setAlwaysOnTop(alwaysOnTop: boolean): Promise<WidgetPrefer
 export async function startDragging(): Promise<void> {
   if (!isTauri()) return;
   const { getCurrentWindow } = await import("@tauri-apps/api/window");
-  await getCurrentWindow().startDragging();
+  const { invoke } = await import("@tauri-apps/api/core");
+  const currentWindow = getCurrentWindow();
+  await invoke("begin_widget_drag");
+  await currentWindow.startDragging();
+  let previous = await currentWindow.outerPosition();
+  let stableTicks = 0;
+  let attempts = 0;
+  const finishWhenStable = window.setInterval(() => {
+    void currentWindow.outerPosition()
+      .then((next) => {
+        attempts += 1;
+        const stable = Math.abs(next.x - previous.x) <= 1 && Math.abs(next.y - previous.y) <= 1;
+        stableTicks = stable ? stableTicks + 1 : 0;
+        previous = next;
+        if (stableTicks >= 3 || attempts >= 25) {
+          window.clearInterval(finishWhenStable);
+          void invoke("finish_widget_drag").catch(() => undefined);
+        }
+      })
+      .catch(() => {
+        window.clearInterval(finishWhenStable);
+        void invoke("finish_widget_drag").catch(() => undefined);
+      });
+  }, 80);
 }
 
-export async function setWidgetExpanded(expanded: boolean): Promise<void> {
-  if (!isTauri()) return;
-  const { getCurrentWindow, LogicalSize } = await import("@tauri-apps/api/window");
-  const size = expanded ? new LogicalSize(560, 220) : new LogicalSize(100, 100);
-  await getCurrentWindow().setSize(size);
+export function setWidgetExpanded(expanded: boolean): Promise<void> {
+  if (!isTauri()) return Promise.resolve();
+  return enqueueWidgetTransition(async () => {
+    const { invoke } = await import("@tauri-apps/api/core");
+    if (!expanded) {
+      await invoke("collapse_widget");
+      return;
+    }
+    const { currentMonitor } = await import("@tauri-apps/api/window");
+    const monitor = await currentMonitor().catch(() => null);
+    const workArea = monitor ? {
+      position: { x: monitor.workArea.position.x, y: monitor.workArea.position.y },
+      size: { width: monitor.workArea.size.width, height: monitor.workArea.size.height },
+    } : null;
+    await invoke("expand_widget", { workArea });
+  });
 }
 
 export async function listenDesktopEvents(handlers: {
   onPreferences: (value: WidgetPreferences) => void;
   onRefresh: () => void;
+  onUpdate: () => void;
 }): Promise<() => void> {
   if (!isTauri()) return () => undefined;
   const { listen } = await import("@tauri-apps/api/event");
   const unlistenPreferences = await listen<WidgetPreferences>("preferences-changed", (event) => handlers.onPreferences(event.payload));
   const unlistenRefresh = await listen("refresh-requested", handlers.onRefresh);
-  return () => { unlistenPreferences(); unlistenRefresh(); };
+  const unlistenUpdate = await listen("update-check-requested", handlers.onUpdate);
+  return () => { unlistenPreferences(); unlistenRefresh(); unlistenUpdate(); };
 }

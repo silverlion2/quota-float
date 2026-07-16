@@ -5,36 +5,44 @@
   color: rgba(255, 255, 255, 0.96);
   background: transparent;
   font-synthesis: none;
+  --edge-safe-inset: 4px;
 }
 
 * { box-sizing: border-box; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
-.operation-notice { position: absolute; z-index: 3; left: 24px; right: 24px; bottom: 12px; margin: 0; padding: 7px 10px; border-radius: 9px; color: #5b2630; background: rgba(255,239,241,.9); font-size: 10px; text-align: center; }
+.operation-notice { position: absolute; z-index: 3; left: 24px; right: 24px; bottom: 12px; display: flex; align-items: center; justify-content: center; gap: 7px; margin: 0; padding: 7px 10px; border-radius: 9px; color: #5b2630; background: rgba(255,239,241,.9); font-size: 10px; text-align: center; }
+.operation-notice button { min-height: auto; padding: 0; border: 0; color: #23518a; background: transparent; font: inherit; font-weight: 700; white-space: nowrap; cursor: pointer; }
+.operation-notice button:hover { color: #173b69; text-decoration: underline; text-underline-offset: 2px; }
 html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; }
 button { font: inherit; }
 
 .quota-card, .loading-card {
   position: relative;
-  width: 100%;
-  height: 100%;
+  width: calc(100% - (var(--edge-safe-inset) * 2));
+  height: calc(100% - (var(--edge-safe-inset) * 2));
+  margin: var(--edge-safe-inset);
   overflow: hidden;
   border: 1px solid rgba(255,255,255,.34);
   border-radius: var(--card-radius, 28px);
   background: #edf3f8;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.42), 0 1px 8px rgba(90,108,132,.05);
+  background-clip: padding-box;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.42), inset 0 0 0 1px rgba(255,255,255,.18), 0 1px 8px rgba(90,108,132,.05);
   isolation: isolate;
   user-select: none;
 }
 .quota-card {
-  min-width: 560px;
-  min-height: 220px;
+  min-width: 0;
+  min-height: 0;
   display: grid;
   grid-template-columns: 208px minmax(0, 1fr);
   gap: 20px;
   padding: 18px 20px;
   color: #17191f;
+  animation: panel-in .16s ease-out both;
+  transform-origin: center;
 }
 .loading-card { min-width: 80px; min-height: 80px; padding: 18px; }
+@keyframes panel-in { from { opacity: .88; transform: scale(.985); } to { opacity: 1; transform: scale(1); } }
 .quota-card--healthy { --cool: #b9d5ee; --glow: #dff4e5; --warm: #c7ddf2; --aurora-opacity: .42; --progress-start: #397ae0; --progress-end: #91baf0; }
 .quota-card--caution { --cool: #b7d0ec; --glow: #fff0ba; --glow-fade: 58%; --warm: #f4c979; --warm-position: 12% 96%; --warm-fade: 66%; --linear-warm: #e4e7ed; --linear-end: #f1f5f8; --gradient-angle: 213deg; --aurora-opacity: .5; --progress-start: #4d88d8; --progress-end: #9fc2ee; }
 .quota-card--critical { --cool: #c4cee0; --glow: #ffd8a8; --glow-fade: 60%; --warm: #f07260; --warm-position: 11% 98%; --warm-fade: 68%; --linear-warm: #e3e4e9; --linear-end: #f3f5f8; --gradient-angle: 213deg; --aurora-opacity: .56; --progress-start: #ff7848; --progress-end: #ffd064; }
@@ -66,6 +74,10 @@ button { font: inherit; }
 .card-actions { display: flex; gap: 4px; }
 .card-actions button { width: 23px; height: 23px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.28); border-radius: 50%; color: white; background: rgba(255,255,255,.14); cursor: pointer; backdrop-filter: blur(8px); }
 .card-actions .language-button { width: auto; min-width: 29px; padding: 0 6px; border-radius: 999px; font-size: 9px; font-weight: 750; letter-spacing: 0; }
+.card-actions .pin-button--active,
+.card-actions .expand-button--active { border-color: rgba(88,145,219,.9); color: #fff; background: #5891DB; box-shadow: 0 0 0 1px rgba(255,255,255,.18), 0 4px 12px rgba(88,145,219,.3); }
+.card-actions .pin-button--active:hover,
+.card-actions .expand-button--active:hover { background: #4e86ce; }
 .card-actions button:hover { background: rgba(255,255,255,.22); }
 .card-actions button:active { transform: scale(.94); }
 .card-actions svg { width: 13px; height: 13px; }
@@ -138,7 +150,7 @@ button { font: inherit; }
 @keyframes pulse { 50% { opacity: .28; transform: translateY(-4px); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .aurora, .loading-card span, .usage-indicator--active i { animation: none; }
+  .aurora, .loading-card span, .usage-indicator--active i, .quota-card { animation: none; }
   .progress span { transition: none; }
 }
 
@@ -149,17 +161,18 @@ button { font: inherit; }
 
 .quota-orb {
   position: relative;
-  width: 80px;
-  height: 80px;
-  margin: 10px;
+  width: calc(100% - (var(--edge-safe-inset) * 2));
+  height: calc(100% - (var(--edge-safe-inset) * 2));
+  margin: var(--edge-safe-inset);
   display: grid;
   place-items: center;
   overflow: hidden;
-  border: 1px solid rgba(255,255,255,.42);
+  border: 1px solid rgba(79,103,134,.14);
   border-radius: 28px;
   color: #17191f;
   background: rgba(237,243,248,.82);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.48), 0 4px 14px rgba(72,88,112,.08);
+  background-clip: padding-box;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.32), inset 0 0 0 1px rgba(255,255,255,.18), 0 4px 14px rgba(72,88,112,.08);
   isolation: isolate;
   cursor: move;
   user-select: none;
@@ -176,6 +189,9 @@ button { font: inherit; }
   transition-duration: .5s;
 }
 .quota-orb .aurora { inset: -55%; opacity: var(--aurora-opacity, .55); }
+.orb-weekly-badge { position: absolute; z-index: 2; top: 0; left: 50%; width: 52px; height: 20px; transform: translateX(-50%); color: #fff; }
+.orb-weekly-badge svg { position: absolute; inset: 0; width: 100%; height: 100%; filter: drop-shadow(0 1px 2px rgba(57,103,157,.12)); }
+.orb-weekly-badge b { position: relative; z-index: 1; display: grid; height: 14px; place-items: center; font-size: 12px; font-weight: 750; line-height: 1; letter-spacing: .01em; transform: translateY(2px); }
 .orb-metric { display: flex; align-items: flex-end; justify-content: center; line-height: .86; letter-spacing: -.06em; }
 .orb-metric span { font-size: 27px; font-weight: 560; font-variant-numeric: tabular-nums; }
 .orb-metric small { margin: 0 0 3px 1px; font-size: 10px; font-weight: 750; letter-spacing: 0; }

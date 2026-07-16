@@ -12,7 +12,9 @@ Lightweight floating desktop widget for checking coding-assistant quotas from ex
 - Uses clear quota states for healthy, caution, and critical remaining usage.
 - Collapses into a small floating orb when idle, then expands on hover.
 - Indicates whether quota is currently being consumed.
-- Includes quick controls for language switching and always-on-top behavior.
+- Includes persistent expansion, always-on-top controls, and localized tray actions.
+- Falls back to a clearly marked weekly-quota view when the 5-hour window is unavailable.
+- Checks for app updates automatically and supports signed in-app updates on Windows.
 - Shows reset credit count and available reset-credit expiration times when the quota service provides them.
 - Handles stale data, signed-out sessions, unavailable quota responses, and loading states without fabricating values.
 
@@ -21,6 +23,12 @@ Lightweight floating desktop widget for checking coding-assistant quotas from ex
 | Quota states | Floating orb | Reset credit expiration |
 | --- | --- | --- |
 | ![Healthy, caution, and critical quota states](docs/images/quota-states.png) | ![Collapsed quota orb](docs/images/quota-orb.png) | ![Reset credit expiration popover](docs/images/quota-reset-expiration.png) |
+
+### Weekly quota fallback
+
+| Expanded weekly view | Weekly quota orb |
+| --- | --- |
+| ![Expanded weekly quota fallback](docs/images/quota-v0.1.4-weekly-fallback.png) | ![Weekly quota orb with W badge](docs/images/quota-v0.1.4-weekly-orb.png) |
 
 ## Repository Metadata
 
@@ -44,13 +52,13 @@ Browser preview uses mock data. Real quota reading requires the Tauri desktop ap
 
 ## Download
 
-For normal users, download the latest unsigned build from GitHub Releases:
+For normal users, download the latest installer from GitHub Releases:
 
 - Latest release: https://github.com/change-42-yhmm/quota-float/releases/latest
-- Windows: `quota-float-windows-unsigned.zip`
-- macOS Universal: `quota-float-macos-universal-unsigned.zip`
+- Windows: use the `.exe` or `.msi` installer.
+- macOS Universal: use the `.dmg` bundle.
 
-Unzip it and run the app. Unsigned builds may trigger Windows SmartScreen or macOS Gatekeeper warnings. Public distribution to non-technical users should use signed Windows builds and notarized macOS builds.
+Updater artifacts are signed with the project's Tauri update key. Windows Authenticode signing and macOS notarization are separate platform-signing steps; builds without those certificates may still trigger SmartScreen or Gatekeeper warnings.
 
 ## Feedback
 
@@ -91,6 +99,14 @@ npm run build
 npm run tauri dev
 ```
 
+After Codex Desktop updates, run the compatibility check:
+
+```bash
+npm run check:codex
+```
+
+See [docs/CODEX-UPDATE-CHECK.md](docs/CODEX-UPDATE-CHECK.md) for the automated update-check workflow and optional Task Scheduler setup.
+
 ## Build
 
 ```bash
@@ -108,7 +124,7 @@ src-tauri/target/release/quota-float.exe
 GitHub Actions are configured for:
 
 - CI on push/PR: frontend tests, Rust tests, web build, Tauri build.
-- `v*` tags: unsigned Windows and macOS Universal bundle artifacts and a public GitHub Release.
+- `v*` tags: Windows and macOS Universal installers, updater signatures, `latest.json`, and a public GitHub Release.
 
 See [docs/GITHUB-RELEASE-CHECKLIST.md](docs/GITHUB-RELEASE-CHECKLIST.md) before publishing a version for others.
 

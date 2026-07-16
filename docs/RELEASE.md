@@ -54,6 +54,14 @@ npm run tauri -- build --target universal-apple-darwin
 
 ## 签名与公证
 
+## 自动更新签名密钥：必须备份
+
+自动更新依赖 Tauri 更新签名密钥：私钥用于在发布时签名安装包与 `latest.json`，公钥内置在应用中用于验证更新未被篡改。
+
+- 私钥文件 `.tauri-updater.key` 必须存放在安全的加密备份或密码管理器中，且绝不能提交到 Git、上传到 Release 附件、发送到聊天或公开粘贴。
+- GitHub Actions 只通过仓库 Secret `TAURI_SIGNING_PRIVATE_KEY` 读取私钥；无需将私钥写入任何源码或配置文件。
+- 丢失私钥不会泄露用户的 Codex 数据，但会使已经发布的应用无法信任由新密钥签名的自动更新；届时需要让用户手动安装一次新版。
+
 Unsigned 包可以用于内部测试或小范围分发，但公开分发建议补齐签名与公证：
 
 - Windows：代码签名证书，避免 SmartScreen 或未知发布者提示。

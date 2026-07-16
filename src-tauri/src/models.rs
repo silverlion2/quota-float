@@ -30,7 +30,12 @@ impl ProviderSnapshot {
         Self::provider_failure("codex", "CODEX", status, message)
     }
 
-    pub fn provider_failure(provider: &str, display_name: &str, status: &str, message: &str) -> Self {
+    pub fn provider_failure(
+        provider: &str,
+        display_name: &str,
+        status: &str,
+        message: &str,
+    ) -> Self {
         Self {
             provider: provider.into(),
             display_name: display_name.into(),
@@ -54,25 +59,41 @@ pub struct WidgetPreferences {
     pub locked: bool,
     #[serde(default = "default_always_on_top")]
     pub always_on_top: bool,
+    #[serde(default)]
+    pub stay_expanded: bool,
     pub pinned_provider: Option<String>,
     pub auto_rotate_seconds: u64,
     #[serde(default = "default_language")]
     pub language: String,
 }
 
-fn default_always_on_top() -> bool { true }
-fn default_language() -> String { "zh-CN".into() }
+fn default_always_on_top() -> bool {
+    true
+}
+fn default_language() -> String {
+    "zh-CN".into()
+}
 
 impl Default for WidgetPreferences {
     fn default() -> Self {
-        Self { locked: false, always_on_top: true, pinned_provider: None, auto_rotate_seconds: 12, language: default_language() }
+        Self {
+            locked: false,
+            always_on_top: true,
+            stay_expanded: false,
+            pinned_provider: None,
+            auto_rotate_seconds: 12,
+            language: default_language(),
+        }
     }
 }
 
 impl WidgetPreferences {
     pub fn normalized(mut self) -> Self {
         self.auto_rotate_seconds = self.auto_rotate_seconds.clamp(5, 300);
-        if !matches!(self.pinned_provider.as_deref(), Some("codex" | "qoder" | "trae" | "workbuddy" | "volcengine")) {
+        if !matches!(
+            self.pinned_provider.as_deref(),
+            Some("codex" | "qoder" | "trae" | "workbuddy" | "volcengine")
+        ) {
             self.pinned_provider = None;
         }
         if self.language != "en" && self.language != "zh-CN" {

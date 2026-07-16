@@ -1,5 +1,5 @@
-import { ArrowClockwise, ClockCounterClockwise, CloudSlash, PushPin, PushPinSlash, SignIn, WarningCircle } from "@phosphor-icons/react";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowClockwise, ArrowsInSimple, ArrowsOutSimple, ClockCounterClockwise, CloudSlash, PushPin, PushPinSlash, SignIn, WarningCircle } from "@phosphor-icons/react";
+import { memo, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { clampPercent, formatDateTime, formatResetDate, formatResetTime, quotaTier } from "../lib/format";
 import { copy, normalizeLanguage } from "../lib/i18n";
 import { PROVIDER_CATALOG, type ProviderDefinition } from "../lib/providers";
@@ -12,13 +12,14 @@ interface Props {
   preferences: WidgetPreferences;
   onSelectProvider: (provider: ProviderId) => void;
   onLock: () => void;
+  onToggleStayExpanded?: () => void;
   onLanguage: () => void;
   onDrag: () => void;
   onHover: (hovered: boolean) => void;
   onRefresh?: () => void;
   isConsuming?: boolean;
   consumingProviders: ReadonlySet<string>;
-  notice?: string | null;
+  notice?: ReactNode;
   initialShowCreditTip?: boolean;
 }
 
@@ -113,6 +114,7 @@ export const QuotaCard = memo(function QuotaCard({
   preferences,
   onSelectProvider,
   onLock,
+  onToggleStayExpanded = () => undefined,
   onLanguage,
   onDrag,
   onHover,
@@ -171,7 +173,7 @@ export const QuotaCard = memo(function QuotaCard({
     >
       <div className="aurora" aria-hidden="true" />
       <span className="sr-only" aria-live="polite">{available ? metricLabel : message}</span>
-      {notice ? <p className="operation-notice" role="status">{notice}</p> : null}
+      {notice ? <div className="operation-notice" role="status">{notice}</div> : null}
       <section className="primary-pane">
         <header className="card-header">
           <div>
@@ -229,6 +231,9 @@ export const QuotaCard = memo(function QuotaCard({
             <nav className="card-actions" aria-label={t.controls} onMouseDown={(event) => event.stopPropagation()}>
               <span className={`usage-indicator usage-indicator--${indicatorState}`} role="status" aria-label={indicatorLabel} title={indicatorLabel}><i /></span>
               <button className="language-button" onClick={onLanguage} aria-label={t.switchLanguage} title={t.switchLanguage}>{language === "en" ? "中" : "EN"}</button>
+              <button className={preferences.stayExpanded ? "expand-button expand-button--active" : "expand-button"} onClick={onToggleStayExpanded} aria-pressed={preferences.stayExpanded} aria-label={preferences.stayExpanded ? t.keepExpandedOff : t.keepExpandedOn} title={preferences.stayExpanded ? t.keepExpandedOff : t.keepExpandedOn}>
+                {preferences.stayExpanded ? <ArrowsInSimple weight="bold" /> : <ArrowsOutSimple />}
+              </button>
               <button onClick={onLock} aria-label={preferences.alwaysOnTop ? t.pinOff : t.pinOn} title={preferences.alwaysOnTop ? t.pinOff : t.pinOn}>
                 {preferences.alwaysOnTop ? <PushPin /> : <PushPinSlash />}
               </button>

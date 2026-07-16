@@ -48,7 +48,8 @@ const trae: ProviderSnapshot = {
 
 const preferences: WidgetPreferences = {
   locked: false,
-  alwaysOnTop: true,
+      alwaysOnTop: true,
+      stayExpanded: false,
   pinnedProvider: null,
   autoRotateSeconds: 12,
   language: "en",

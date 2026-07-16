@@ -14,7 +14,7 @@ const preview: ProviderSnapshot = {
   status: "ok",
   message: null,
 };
-const preferences: WidgetPreferences = { locked: false, alwaysOnTop: true, pinnedProvider: "codex", autoRotateSeconds: 12, language: "en" };
+const preferences: WidgetPreferences = { locked: false, alwaysOnTop: true, stayExpanded: false, pinnedProvider: "codex", autoRotateSeconds: 12, language: "en" };
 const peerPreviews: ProviderSnapshot[] = [{
   provider: "qoder", displayName: "QODER", plan: "PRO", shortWindow: null, weeklyWindow: null,
   resetCredits: null, balanceRemaining: 1280, balanceUnit: "credits", updatedAt: new Date().toISOString(), status: "ok", message: null,
@@ -119,7 +119,7 @@ export function DesignPlayground() {
         <div className="screenshot-stage screenshot-stage--states" style={style}>
           {[74, 35, 8].map((mode) => (
             <div className="design-card-frame" key={mode}>
-              <QuotaCard snapshot={makePreview(mode as PreviewMode)} snapshots={previewSnapshots(makePreview(mode as PreviewMode))} preferences={preferences} onSelectProvider={noSelect} onLock={noop} onLanguage={noop} onDrag={noop} onHover={noop} isConsuming={mode === 35} consumingProviders={mode === 35 ? codexConsuming : noConsumingProviders} />
+              <QuotaCard snapshot={makePreview(mode as PreviewMode)} snapshots={previewSnapshots(makePreview(mode as PreviewMode))} preferences={preferences} onSelectProvider={noSelect} onLock={noop} onToggleStayExpanded={noop} onLanguage={noop} onDrag={noop} onHover={noop} isConsuming={mode === 35} consumingProviders={mode === 35 ? codexConsuming : noConsumingProviders} />
             </div>
           ))}
         </div>
@@ -131,7 +131,7 @@ export function DesignPlayground() {
         <div className={previewMode === "orb" ? "design-orb-frame" : "design-card-frame"}>
           {previewMode === "orb"
             ? <QuotaOrb snapshot={activePreview} language="en" onDrag={() => {}} onHover={() => {}} />
-            : <QuotaCard snapshot={activePreview} snapshots={activeSnapshots} preferences={preferences} onSelectProvider={noSelect} onLock={noop} onLanguage={noop} onDrag={noop} onHover={noop} consumingProviders={noConsumingProviders} initialShowCreditTip={showCreditTip} />}
+            : <QuotaCard snapshot={activePreview} snapshots={activeSnapshots} preferences={preferences} onSelectProvider={noSelect} onLock={noop} onToggleStayExpanded={noop} onLanguage={noop} onDrag={noop} onHover={noop} consumingProviders={noConsumingProviders} initialShowCreditTip={showCreditTip} />}
         </div>
       </div>
     );
@@ -148,7 +148,7 @@ export function DesignPlayground() {
         <div className={previewMode === "orb" ? "design-orb-frame" : "design-card-frame"}>
           {previewMode === "orb"
             ? <QuotaOrb snapshot={activePreview} onDrag={() => {}} onHover={() => {}} />
-            : <QuotaCard snapshot={activePreview} snapshots={activeSnapshots} preferences={preferences} onSelectProvider={noSelect} onLock={noop} onLanguage={noop} onDrag={noop} onHover={noop} consumingProviders={noConsumingProviders} />}
+            : <QuotaCard snapshot={activePreview} snapshots={activeSnapshots} preferences={preferences} onSelectProvider={noSelect} onLock={noop} onToggleStayExpanded={noop} onLanguage={noop} onDrag={noop} onHover={noop} consumingProviders={noConsumingProviders} />}
         </div>
       </section>
       <aside className="design-controls">

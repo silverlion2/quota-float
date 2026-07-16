@@ -10,6 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "label": "widget",
@@ -23,6 +24,7 @@
         "resizable": true,
         "decorations": false,
         "transparent": true,
+        "backgroundColor": "#00000000",
         "alwaysOnTop": true,
         "skipTaskbar": true,
         "shadow": false,
@@ -33,11 +35,19 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": "all",
     "category": "Utility",
     "shortDescription": "Codex quota at a glance",
     "longDescription": "A lightweight floating desktop card for Codex usage limits.",
     "copyright": "Copyright Quota Float contributors",
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDgwQjI3N0FFOEQyRUMzQjcKUldTM3d5Nk5ybmV5Z0gzVUhuWmE4Vk54bnU3WWV3Z1RTQU5TWTlQZ0pxVExhS2dZWkRNU2s5UDEK",
+      "endpoints": ["https://github.com/change-42-yhmm/quota-float/releases/latest/download/latest.json"],
+      "windows": { "installMode": "passive" }
+    }
   }
 }
