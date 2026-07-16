@@ -1,7 +1,7 @@
 import { isTauri } from "./bridge";
 import type { Language } from "../types";
 
-export const RELEASE_URL = "https://github.com/change-42-yhmm/quota-float/releases/latest";
+export const RELEASE_URL = "https://github.com/silverlion2/quota-float/releases/latest";
 
 export interface UpdateMessages {
   checking: string;

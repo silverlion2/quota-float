@@ -45,8 +45,8 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDgwQjI3N0FFOEQyRUMzQjcKUldTM3d5Nk5ybmV5Z0gzVUhuWmE4Vk54bnU3WWV3Z1RTQU5TWTlQZ0pxVExhS2dZWkRNU2s5UDEK",
-      "endpoints": ["https://github.com/change-42-yhmm/quota-float/releases/latest/download/latest.json"],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVFQkQzMDg3OERGMDA4QTIKUldTaUNQQ05oekM5N2pEQVBjNkRJeEZVczlZWk1TTzVlWHlQYTR3T3Z0R00rODNwM0ErLzU0N1cK",
+      "endpoints": ["https://github.com/silverlion2/quota-float/releases/latest/download/latest.json"],
       "windows": { "installMode": "passive" }
     }
   }
