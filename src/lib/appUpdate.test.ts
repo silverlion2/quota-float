@@ -9,12 +9,14 @@ const mocks = vi.hoisted(() => ({
   download: vi.fn(),
   install: vi.fn(),
   close: vi.fn(),
+  getVersion: vi.fn(async () => "0.1.9"),
 }));
 
 vi.mock("./bridge", () => ({ isTauri: () => true }));
 vi.mock("@tauri-apps/plugin-updater", () => ({ check: mocks.check }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: mocks.openUrl }));
 vi.mock("@tauri-apps/plugin-process", () => ({ relaunch: mocks.relaunch }));
+vi.mock("@tauri-apps/api/app", () => ({ getVersion: mocks.getVersion }));
 
 const fakeUpdate = {
   version: "0.2.0",
@@ -40,6 +42,9 @@ describe("app updater", () => {
       body: "A calmer update flow.",
       date: "2026-07-18T00:00:00Z",
       platform: "windows",
+      channel: "stable",
+      releaseUrl: "https://github.com/silverlion2/quota-float/releases/latest",
+      automaticInstall: true,
     });
     expect(mocks.check).toHaveBeenCalledWith({ timeout: 15_000 });
   });
@@ -72,5 +77,16 @@ describe("app updater", () => {
     await discardAppUpdate();
     expect(mocks.close).toHaveBeenCalledOnce();
     expect(getPendingAppUpdate()).toBeNull();
+  });
+
+  it("discovers beta releases without feeding them to the automatic installer", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: true,
+      json: async () => [{ prerelease: true, draft: false, tag_name: "v0.2.0-beta.1", body: "Preview", published_at: "2026-07-19T00:00:00Z", html_url: "https://github.com/silverlion2/quota-float/releases/tag/v0.2.0-beta.1" }],
+    })));
+    const { checkForAppUpdate } = await import("./appUpdate");
+    await expect(checkForAppUpdate("beta")).resolves.toMatchObject({ version: "0.2.0-beta.1", channel: "beta", automaticInstall: false });
+    expect(mocks.check).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 });

@@ -2,6 +2,7 @@ import { useMemo, useState, type CSSProperties } from "react";
 import type { ProviderId, ProviderSnapshot, WidgetPreferences } from "../types";
 import { QuotaCard, QuotaOrb } from "./QuotaCard";
 import type { UpdateViewState } from "./UpdatePanel";
+import { DEFAULT_WIDGET_PREFERENCES } from "../lib/preferences";
 
 const preview: ProviderSnapshot = {
   provider: "codex",
@@ -15,7 +16,7 @@ const preview: ProviderSnapshot = {
   status: "ok",
   message: null,
 };
-const preferences: WidgetPreferences = { locked: false, alwaysOnTop: true, stayExpanded: false, pinnedProvider: "codex", autoRotateSeconds: 12, language: "en" };
+const preferences: WidgetPreferences = { ...DEFAULT_WIDGET_PREFERENCES, pinnedProvider: "codex", language: "en" };
 const sortedPreferences: WidgetPreferences = { ...preferences, providerOrder: ["qoder", "codex", "trae", "workbuddy", "volcengine"] };
 const peerPreviews: ProviderSnapshot[] = [{
   provider: "qoder", displayName: "QODER", plan: "PRO", shortWindow: null, weeklyWindow: null,
@@ -43,6 +44,9 @@ const readyUpdate: UpdateViewState = {
     body: "Background downloads, a clearer update status, and one-command releases.",
     date: new Date().toISOString(),
     platform: "windows",
+    channel: "stable",
+    releaseUrl: "https://github.com/silverlion2/quota-float/releases/latest",
+    automaticInstall: true,
   },
   progress: { downloadedBytes: 100, totalBytes: 100, percent: 100 },
   error: null,

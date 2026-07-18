@@ -8,7 +8,7 @@ mod workbuddy;
 use std::{
     fs,
     io::Write,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Mutex,
     time::{Duration, Instant},
 };
@@ -16,7 +16,7 @@ use std::{
 #[cfg(debug_assertions)]
 use models::UsageWindow;
 use models::{ProviderSnapshot, WidgetPreferences};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tauri::{
     menu::{CheckMenuItem, Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -100,12 +100,23 @@ struct AppState {
     client: reqwest::Client,
     preferences: Mutex<WidgetPreferences>,
     preferences_path: PathBuf,
+    runtime_state_path: PathBuf,
     fetch_lock: tokio::sync::Mutex<()>,
     snapshot_cache: Mutex<Option<(Instant, Vec<ProviderSnapshot>)>>,
     #[cfg(debug_assertions)]
     simulate_short_window_for_testing: Mutex<bool>,
     geometry: Mutex<Option<WidgetGeometryState>>,
     drag_mode: Mutex<Option<WidgetMode>>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AppDiagnostics {
+    app_version: &'static str,
+    platform: &'static str,
+    config_directory: String,
+    preferences_backup_available: bool,
+    runtime_backup_available: bool,
 }
 
 fn apply_short_window_test_override(
@@ -132,7 +143,7 @@ fn apply_short_window_test_override(
     snapshots
 }
 
-async fn collect_snapshots(client: &reqwest::Client) -> Vec<ProviderSnapshot> {
+async fn collect_snapshots_once(client: &reqwest::Client) -> Vec<ProviderSnapshot> {
     let qoder_snapshot = qoder::fetch_snapshot();
     let (codex_snapshot, trae_snapshot, workbuddy_snapshot, volcengine_snapshot) = tokio::join!(
         codex::fetch_snapshot(client),
@@ -148,6 +159,35 @@ async fn collect_snapshots(client: &reqwest::Client) -> Vec<ProviderSnapshot> {
     values
 }
 
+async fn collect_snapshots(client: &reqwest::Client) -> Vec<ProviderSnapshot> {
+    let mut values = collect_snapshots_once(client).await;
+    for delay in [400_u64, 1_200_u64] {
+        let retryable = values.iter().any(|snapshot| {
+            matches!(
+                snapshot.status.as_str(),
+                "unavailable" | "stale" | "loading"
+            )
+        });
+        if !retryable {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(delay)).await;
+        let retried = collect_snapshots_once(client).await;
+        for current in &mut values {
+            if !matches!(current.status.as_str(), "unavailable" | "stale" | "loading") {
+                continue;
+            }
+            if let Some(candidate) = retried
+                .iter()
+                .find(|candidate| candidate.provider == current.provider)
+            {
+                *current = candidate.clone();
+            }
+        }
+    }
+    values
+}
+
 async fn fetch_snapshots_uncached(state: &State<'_, AppState>) -> Vec<ProviderSnapshot> {
     let _guard = state.fetch_lock.lock().await;
     let values = collect_snapshots(&state.client).await;
@@ -157,8 +197,8 @@ async fn fetch_snapshots_uncached(state: &State<'_, AppState>) -> Vec<ProviderSn
     apply_short_window_test_override(state.inner(), values)
 }
 
-fn load_preferences(path: &PathBuf) -> WidgetPreferences {
-    let parse = |candidate: &PathBuf| {
+fn load_preferences(path: &Path) -> WidgetPreferences {
+    let parse = |candidate: &Path| {
         fs::read_to_string(candidate)
             .ok()
             .and_then(|raw| serde_json::from_str::<WidgetPreferences>(&raw).ok())
@@ -174,7 +214,7 @@ fn load_preferences(path: &PathBuf) -> WidgetPreferences {
     WidgetPreferences::default()
 }
 
-fn persist_preferences(path: &PathBuf, value: &WidgetPreferences) -> Result<(), String> {
+fn persist_preferences(path: &Path, value: &WidgetPreferences) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
             .map_err(|_| "failed to create settings directory".to_string())?;
@@ -197,6 +237,145 @@ fn persist_preferences(path: &PathBuf, value: &WidgetPreferences) -> Result<(), 
         return Err(format!("failed to commit settings: {error}"));
     }
     Ok(())
+}
+
+fn persist_json_value(path: &Path, value: &serde_json::Value) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|_| "failed to create data directory".to_string())?;
+    }
+    let serialized = serde_json::to_vec_pretty(value)
+        .map_err(|_| "failed to serialize application data".to_string())?;
+    let temporary = path.with_extension("json.tmp");
+    let backup = path.with_extension("json.bak");
+    let mut file = fs::File::create(&temporary)
+        .map_err(|_| "failed to create temporary data file".to_string())?;
+    file.write_all(&serialized)
+        .and_then(|_| file.sync_all())
+        .map_err(|_| "failed to write application data".to_string())?;
+    if path.exists() {
+        let _ = fs::remove_file(&backup);
+        fs::rename(path, &backup).map_err(|_| "failed to back up application data".to_string())?;
+    }
+    if let Err(error) = fs::rename(&temporary, path) {
+        let _ = fs::rename(&backup, path);
+        return Err(format!("failed to commit application data: {error}"));
+    }
+    Ok(())
+}
+
+fn read_json_with_backup(path: &Path) -> serde_json::Value {
+    [path.to_path_buf(), path.with_extension("json.bak")]
+        .into_iter()
+        .find_map(|candidate| {
+            fs::read_to_string(candidate)
+                .ok()
+                .and_then(|raw| serde_json::from_str(&raw).ok())
+        })
+        .unwrap_or_else(|| {
+            serde_json::json!({
+                "schemaVersion": 1,
+                "history": [],
+                "events": [],
+                "savedLayouts": [],
+                "lastNotifications": {}
+            })
+        })
+}
+
+#[tauri::command]
+fn get_runtime_state(state: State<'_, AppState>) -> serde_json::Value {
+    read_json_with_backup(&state.runtime_state_path)
+}
+
+#[tauri::command]
+fn set_runtime_state(
+    runtime_state: serde_json::Value,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    persist_json_value(&state.runtime_state_path, &runtime_state)
+}
+
+#[tauri::command]
+fn export_app_data(path: String, bundle: serde_json::Value) -> Result<(), String> {
+    let target = PathBuf::from(path);
+    if target.extension().and_then(|value| value.to_str()) != Some("json") {
+        return Err("backup file must use the .json extension".into());
+    }
+    persist_json_value(&target, &bundle)
+}
+
+#[tauri::command]
+fn import_app_data(path: String) -> Result<serde_json::Value, String> {
+    let target = PathBuf::from(path);
+    let raw = fs::read_to_string(target).map_err(|_| "failed to read backup file".to_string())?;
+    serde_json::from_str(&raw).map_err(|_| "backup file is not valid JSON".to_string())
+}
+
+#[tauri::command]
+fn create_automatic_backup(
+    bundle: serde_json::Value,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let config_dir = state
+        .preferences_path
+        .parent()
+        .ok_or_else(|| "settings directory unavailable".to_string())?;
+    let backup_dir = config_dir.join("backups");
+    fs::create_dir_all(&backup_dir).map_err(|_| "failed to create backup directory".to_string())?;
+    let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
+    let target = backup_dir.join(format!("quota-float-{stamp}.json"));
+    persist_json_value(&target, &bundle)?;
+
+    let mut backups = fs::read_dir(&backup_dir)
+        .map_err(|_| "failed to list backups".to_string())?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().and_then(|value| value.to_str()) == Some("json"))
+        .collect::<Vec<_>>();
+    backups.sort();
+    let remove_count = backups.len().saturating_sub(10);
+    for old in backups.into_iter().take(remove_count) {
+        let _ = fs::remove_file(old);
+    }
+    Ok(target.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+fn restore_latest_backup(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let config_dir = state
+        .preferences_path
+        .parent()
+        .ok_or_else(|| "settings directory unavailable".to_string())?;
+    let backup_dir = config_dir.join("backups");
+    let mut backups = fs::read_dir(backup_dir)
+        .map_err(|_| "no automatic backup is available".to_string())?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().and_then(|value| value.to_str()) == Some("json"))
+        .collect::<Vec<_>>();
+    backups.sort();
+    let latest = backups
+        .pop()
+        .ok_or_else(|| "no automatic backup is available".to_string())?;
+    let raw =
+        fs::read_to_string(latest).map_err(|_| "failed to read automatic backup".to_string())?;
+    serde_json::from_str(&raw).map_err(|_| "automatic backup is invalid".to_string())
+}
+
+#[tauri::command]
+fn get_app_diagnostics(state: State<'_, AppState>) -> AppDiagnostics {
+    let config_directory = state
+        .preferences_path
+        .parent()
+        .map(|value| value.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    AppDiagnostics {
+        app_version: env!("CARGO_PKG_VERSION"),
+        platform: std::env::consts::OS,
+        config_directory,
+        preferences_backup_available: state.preferences_path.with_extension("json.bak").exists(),
+        runtime_backup_available: state.runtime_state_path.with_extension("json.bak").exists(),
+    }
 }
 
 #[tauri::command]
@@ -875,6 +1054,27 @@ fn set_preferences(
     Ok(())
 }
 
+#[tauri::command]
+fn get_autostart_enabled(app: AppHandle) -> Result<bool, String> {
+    app.autolaunch()
+        .is_enabled()
+        .map_err(|error| format!("failed to read autostart state: {error}"))
+}
+
+#[tauri::command]
+fn set_autostart_enabled(enabled: bool, app: AppHandle) -> Result<bool, String> {
+    let manager = app.autolaunch();
+    let result = if enabled {
+        manager.enable()
+    } else {
+        manager.disable()
+    };
+    result.map_err(|error| format!("failed to update autostart state: {error}"))?;
+    manager
+        .is_enabled()
+        .map_err(|error| format!("failed to confirm autostart state: {error}"))
+}
+
 fn apply_lock(app: &AppHandle, locked: bool) -> Result<(), String> {
     let window = app
         .get_webview_window("widget")
@@ -1157,6 +1357,8 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
@@ -1173,6 +1375,7 @@ pub fn run() {
         .setup(|app| {
             let data_dir = app.path().app_config_dir()?;
             let preferences_path = data_dir.join("preferences.json");
+            let runtime_state_path = data_dir.join("runtime-state.json");
             let preferences = load_preferences(&preferences_path);
             let client = reqwest::Client::builder()
                 .timeout(Duration::from_secs(12))
@@ -1184,6 +1387,7 @@ pub fn run() {
                 client,
                 preferences: Mutex::new(preferences.clone()),
                 preferences_path,
+                runtime_state_path,
                 fetch_lock: tokio::sync::Mutex::new(()),
                 snapshot_cache: Mutex::new(None),
                 #[cfg(debug_assertions)]
@@ -1216,8 +1420,17 @@ pub fn run() {
             finish_widget_drag,
             get_preferences,
             set_preferences,
+            get_autostart_enabled,
+            set_autostart_enabled,
             set_widget_locked,
-            set_widget_always_on_top
+            set_widget_always_on_top,
+            get_runtime_state,
+            set_runtime_state,
+            export_app_data,
+            import_app_data,
+            create_automatic_backup,
+            restore_latest_backup,
+            get_app_diagnostics
         ])
         .on_tray_icon_event(|app, event| {
             if let TrayIconEvent::Click {

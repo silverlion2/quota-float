@@ -1,19 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { QuotaCard, QuotaOrb } from "./components/QuotaCard";
+import { ControlCenter } from "./components/ControlCenter";
 import { EMPTY_UPDATE_STATE } from "./components/UpdatePanel";
 import type { UpdateViewState } from "./components/UpdatePanel";
-import { fetchSnapshots, getPreferences, getVolcengineDiagnostics, listenDesktopEvents, reconnectVolcengine, setAlwaysOnTop, setWidgetExpanded, startDragging, updatePreferences } from "./lib/bridge";
+import { createAutomaticBackup, exportAppData, fetchSnapshots, getAppDiagnostics, getAutostartEnabled, getPreferences, getRuntimeState, getVolcengineDiagnostics, importAppData, listenDesktopEvents, reconnectVolcengine, restoreLatestBackup, sendDesktopNotification, setAlwaysOnTop, setAutostartEnabled, setWidgetExpanded, startDragging, updatePreferences, updateRuntimeState } from "./lib/bridge";
 import { needsFastRefresh } from "./lib/format";
 import { checkForAppUpdate, discardAppUpdate, downloadAppUpdate, installAppUpdate, openReleasePage } from "./lib/appUpdate";
 import type { AppUpdateInfo } from "./lib/appUpdate";
 import { copy, nextLanguage, normalizeLanguage } from "./lib/i18n";
-import { DEFAULT_PROVIDER_ORDER, normalizeProviderOrder } from "./lib/providers";
+import { normalizeProviderOrder } from "./lib/providers";
 import { detectRecentCodexReset, isRecentCodexReset } from "./lib/resetDetection";
 import type { RecentCodexReset } from "./lib/resetDetection";
 import { mergeSnapshots } from "./lib/snapshots";
-import type { ProviderId, ProviderSnapshot, VolcengineDiagnostics, WidgetPreferences } from "./types";
+import { canSendNotification, EMPTY_RUNTIME_STATE, isQuietHour, normalizeRuntimeState, recordSnapshotActivity } from "./lib/activity";
+import { DEFAULT_WIDGET_PREFERENCES, normalizeWidgetPreferences } from "./lib/preferences";
+import { loadStartupState } from "./lib/startup";
+import type { AppDiagnostics, ProviderId, ProviderSnapshot, RuntimeState, VolcengineDiagnostics, WidgetPreferences } from "./types";
 
-const DEFAULT_PREFS: WidgetPreferences = { locked: false, alwaysOnTop: true, stayExpanded: false, pinnedProvider: null, providerOrder: DEFAULT_PROVIDER_ORDER, autoRotateSeconds: 12, language: "zh-CN", skippedUpdateVersion: null };
+const DEFAULT_PREFS = DEFAULT_WIDGET_PREFERENCES;
 
 function errorMessage(error: unknown, fallback: string): string {
   if (typeof error === "string" && error.trim()) return error;
@@ -36,6 +40,10 @@ export default function App() {
   const [diagnostics, setDiagnostics] = useState<VolcengineDiagnostics | null>(null);
   const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
+  const [controlOpen, setControlOpen] = useState(false);
+  const [runtimeState, setRuntimeState] = useState<RuntimeState>(EMPTY_RUNTIME_STATE);
+  const [appDiagnostics, setAppDiagnostics] = useState<AppDiagnostics | null>(null);
+  const [autostartEnabled, setAutostartState] = useState(false);
   const failures = useRef(0);
   const snapshotsRef = useRef<ProviderSnapshot[]>([]);
   const previousMetric = useRef(new Map<string, number>());
@@ -43,8 +51,16 @@ export default function App() {
   const collapseTimer = useRef<number | null>(null);
   const hoverSequence = useRef(0);
   const updateSequence = useRef(0);
+  const runtimeStateRef = useRef<RuntimeState>(EMPTY_RUNTIME_STATE);
+  const preferencesRef = useRef<WidgetPreferences>(DEFAULT_PREFS);
   const language = normalizeLanguage(preferences.language);
   const t = copy[language];
+
+  const commitRuntimeState = useCallback((next: RuntimeState) => {
+    runtimeStateRef.current = next;
+    setRuntimeState(next);
+    void updateRuntimeState(next).catch(() => setOperationError("Activity history could not be saved."));
+  }, []);
 
   const startUpdateDownload = useCallback(async (info: AppUpdateInfo, reveal = false) => {
     const sequence = ++updateSequence.current;
@@ -82,7 +98,7 @@ export default function App() {
       setUpdateState({ phase: "checking", info: null, progress: null, error: null });
     }
     setOperationError(null);
-    void checkForAppUpdate().then(async (info) => {
+    void checkForAppUpdate(preferences.updateChannel).then(async (info) => {
       if (updateSequence.current !== sequence) return;
       if (!info) {
         setUpdateState({ phase: manual ? "current" : "idle", info: null, progress: null, error: null });
@@ -93,8 +109,9 @@ export default function App() {
         if (updateSequence.current === sequence) setUpdateState(EMPTY_UPDATE_STATE);
         return;
       }
-      if (info.platform === "macos") {
+      if (!info.automaticInstall || manual || !preferences.automaticUpdates) {
         setUpdateState({ phase: "available", info, progress: null, error: null });
+        if (!manual) setUpdateOpen(true);
         return;
       }
       await startUpdateDownload(info, manual);
@@ -104,7 +121,7 @@ export default function App() {
       setOperationError(t.updateFailed);
       if (manual) setUpdateOpen(true);
     });
-  }, [preferences.skippedUpdateVersion, startUpdateDownload, t.updateFailed, updateState.phase]);
+  }, [preferences.automaticUpdates, preferences.skippedUpdateVersion, preferences.updateChannel, startUpdateDownload, t.updateFailed, updateState.phase]);
 
   const refresh = useCallback(async (force = false) => {
     try {
@@ -128,11 +145,27 @@ export default function App() {
         if (nextMetric !== undefined) previousMetric.current.set(item.provider, nextMetric);
       }
       const now = new Date();
+      let detectedReset: RecentCodexReset | null = null;
       const nextCodex = values.find((item) => item.provider === "codex");
       if (nextCodex) {
         const detected = detectRecentCodexReset(nextCodex, snapshotsRef.current.find((item) => item.provider === "codex") ?? null, now);
+        detectedReset = detected;
         setRecentCodexReset((current) => detected ?? (isRecentCodexReset(current, now) ? current : null));
       }
+      const activity = recordSnapshotActivity(runtimeStateRef.current, snapshotsRef.current, values, detectedReset, preferencesRef.current.alertThreshold, now);
+      let nextRuntimeState = activity.state;
+      const notificationPreferences = preferencesRef.current;
+      if (notificationPreferences.notificationsEnabled && !isQuietHour(now.getHours(), notificationPreferences.quietHoursStart, notificationPreferences.quietHoursEnd)) {
+        for (const item of activity.createdEvents) {
+          const enabled = item.kind === "reset" ? notificationPreferences.notifyOnReset : item.kind === "recovered" ? notificationPreferences.notifyOnRecovery : item.kind === "quota" || item.kind === "warning";
+          const key = `${item.kind}:${item.provider ?? "app"}`;
+          if (!enabled || !canSendNotification(nextRuntimeState, key, notificationPreferences.notificationCooldownMinutes, now)) continue;
+          if (await sendDesktopNotification(item.title, item.detail).catch(() => false)) {
+            nextRuntimeState = { ...nextRuntimeState, lastNotifications: { ...nextRuntimeState.lastNotifications, [key]: now.toISOString() } };
+          }
+        }
+      }
+      commitRuntimeState(nextRuntimeState);
       setSnapshots((current) => {
         const merged = mergeSnapshots(current, values);
         snapshotsRef.current = merged;
@@ -148,7 +181,7 @@ export default function App() {
         return next;
       });
     }
-  }, []);
+  }, [commitRuntimeState]);
 
   const loadVolcengineDiagnostics = useCallback(async () => {
     setDiagnosticsLoading(true);
@@ -163,6 +196,7 @@ export default function App() {
 
   const openVolcengineDiagnostics = useCallback(() => {
     setUpdateOpen(false);
+    setControlOpen(false);
     setDiagnosticsOpen(true);
     void loadVolcengineDiagnostics();
   }, [loadVolcengineDiagnostics]);
@@ -191,8 +225,21 @@ export default function App() {
   }, [diagnostics, refresh, t.reconnectFailed, t.reconnectStarted, t.reconnectSuccess]);
 
   useEffect(() => {
-    void refresh(true);
-    void getPreferences().then((value) => setPreferences({ ...DEFAULT_PREFS, ...value, language: normalizeLanguage(value.language) })).catch(() => setOperationError("Unable to read settings. Defaults are in use."));
+    void loadStartupState({ getPreferences, getRuntimeState, getDiagnostics: getAppDiagnostics, getAutostartEnabled }).then((startup) => {
+      if (startup.preferences) {
+        const normalized = normalizeWidgetPreferences(startup.preferences);
+        preferencesRef.current = normalized;
+        setPreferences(normalized);
+      }
+      if (startup.runtimeState) {
+        runtimeStateRef.current = startup.runtimeState;
+        setRuntimeState(startup.runtimeState);
+      }
+      if (startup.diagnostics) setAppDiagnostics(startup.diagnostics);
+      if (startup.autostartEnabled !== null) setAutostartState(startup.autostartEnabled);
+      if (startup.failures.length > 0) setOperationError(`Some startup checks failed: ${startup.failures.join(", ")}. Available saved state was preserved.`);
+      void refresh(true);
+    });
     return () => {
       for (const timer of consumptionTimers.current.values()) window.clearTimeout(timer);
       consumptionTimers.current.clear();
@@ -203,7 +250,7 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     let cleanup: () => void = () => {};
-    void listenDesktopEvents({ onPreferences: (value) => setPreferences({ ...DEFAULT_PREFS, ...value, language: normalizeLanguage(value.language) }), onRefresh: () => void refresh(true), onUpdate: () => checkUpdate(true) }).then((value) => {
+    void listenDesktopEvents({ onPreferences: (value) => { const normalized = normalizeWidgetPreferences(value); preferencesRef.current = normalized; setPreferences(normalized); }, onRefresh: () => void refresh(true), onUpdate: () => checkUpdate(true) }).then((value) => {
       if (cancelled) value(); else cleanup = value;
     }).catch(() => setOperationError("Desktop event listener failed to start."));
     return () => { cancelled = true; cleanup(); };
@@ -243,8 +290,8 @@ export default function App() {
 
   const orderedSnapshots = useMemo(() => {
     const order = normalizeProviderOrder(preferences.providerOrder);
-    return [...snapshots].sort((left, right) => order.indexOf(left.provider) - order.indexOf(right.provider));
-  }, [preferences.providerOrder, snapshots]);
+    return [...snapshots].filter((item) => !preferences.hiddenProviders.includes(item.provider)).sort((left, right) => order.indexOf(left.provider) - order.indexOf(right.provider));
+  }, [preferences.hiddenProviders, preferences.providerOrder, snapshots]);
 
   const current = preferences.pinnedProvider
     ? orderedSnapshots.find((item) => item.provider === preferences.pinnedProvider) ?? orderedSnapshots[0]
@@ -252,13 +299,16 @@ export default function App() {
 
   const savePreferences = useCallback((next: WidgetPreferences) => {
     const previous = preferences;
-    setPreferences(next);
+    const normalized = normalizeWidgetPreferences(next);
+    preferencesRef.current = normalized;
+    setPreferences(normalized);
     setOperationError(null);
-    void updatePreferences(next).catch(() => { setPreferences(previous); setOperationError("Settings could not be saved. Previous state restored."); });
+    void updatePreferences(normalized).catch(() => { preferencesRef.current = previous; setPreferences(previous); setOperationError("Settings could not be saved. Previous state restored."); });
   }, [preferences]);
 
   const handleUpdateOpen = useCallback(() => {
     setDiagnosticsOpen(false);
+    setControlOpen(false);
     if (["idle", "current", "error"].includes(updateState.phase)) {
       checkUpdate(true);
       return;
@@ -276,11 +326,13 @@ export default function App() {
     ++updateSequence.current;
     setUpdateOpen(true);
     setUpdateState({ phase: "installing", info, progress: updateState.progress, error: null });
-    void installAppUpdate().catch((error) => {
+    void createAutomaticBackup({ schemaVersion: 1, createdAt: new Date().toISOString(), preferences, runtimeState: runtimeStateRef.current })
+      .then(() => installAppUpdate())
+      .catch((error) => {
       setUpdateState({ phase: "error", info, progress: null, error: errorMessage(error, t.updateFailed) });
       setOperationError(t.updateFailed);
     });
-  }, [t.updateFailed, updateState.info, updateState.progress]);
+  }, [preferences, t.updateFailed, updateState.info, updateState.progress]);
 
   const handleUpdateSkip = useCallback(() => {
     const version = updateState.info?.version;
@@ -294,8 +346,57 @@ export default function App() {
   }, [preferences, savePreferences, t, updateState.info?.version]);
 
   const handleUpdateRelease = useCallback(() => {
-    void openReleasePage().catch(() => setOperationError(t.updateFailed));
-  }, [t.updateFailed]);
+    void openReleasePage(updateState.info?.releaseUrl).catch(() => setOperationError(t.updateFailed));
+  }, [t.updateFailed, updateState.info?.releaseUrl]);
+
+  const backupBundle = useCallback(() => ({
+    schemaVersion: 1,
+    exportedAt: new Date().toISOString(),
+    appVersion: appDiagnostics?.appVersion ?? "unknown",
+    preferences,
+    runtimeState,
+  }), [appDiagnostics?.appVersion, preferences, runtimeState]);
+
+  const applyBackupBundle = useCallback(async (value: unknown) => {
+    if (!value || typeof value !== "object") throw new Error("Backup file is invalid.");
+    const bundle = value as { preferences?: Partial<WidgetPreferences>; runtimeState?: unknown };
+    if (!bundle.preferences || !bundle.runtimeState) throw new Error("Backup file is missing settings or history.");
+    const nextPreferences = normalizeWidgetPreferences(bundle.preferences);
+    const nextRuntime = normalizeRuntimeState(bundle.runtimeState);
+    await Promise.all([updatePreferences(nextPreferences), updateRuntimeState(nextRuntime)]);
+    preferencesRef.current = nextPreferences;
+    runtimeStateRef.current = nextRuntime;
+    setPreferences(nextPreferences);
+    setRuntimeState(nextRuntime);
+    setOperationError(language === "en" ? "Backup restored." : "备份已恢复。");
+  }, [language]);
+
+  const handleExport = useCallback(() => {
+    void exportAppData(backupBundle()).then((path) => {
+      if (path) setOperationError(language === "en" ? `Backup exported: ${path}` : `备份已导出：${path}`);
+    }).catch((error) => setOperationError(errorMessage(error, "Backup export failed.")));
+  }, [backupBundle, language]);
+
+  const handleImport = useCallback(() => {
+    void importAppData().then((value) => value ? applyBackupBundle(value) : undefined).catch((error) => setOperationError(errorMessage(error, "Backup import failed.")));
+  }, [applyBackupBundle]);
+
+  const handleRestore = useCallback(() => {
+    void restoreLatestBackup().then((value) => value ? applyBackupBundle(value) : undefined).catch((error) => setOperationError(errorMessage(error, "No automatic backup is available.")));
+  }, [applyBackupBundle]);
+
+  const handleCopyDiagnostics = useCallback(() => {
+    const report = {
+      generatedAt: new Date().toISOString(),
+      app: appDiagnostics,
+      providers: snapshots.map(({ provider, status, updatedAt }) => ({ provider, status, updatedAt })),
+      historySamples: runtimeState.history.length,
+      recentEvents: runtimeState.events.slice(0, 10),
+    };
+    void navigator.clipboard.writeText(JSON.stringify(report, null, 2))
+      .then(() => setOperationError(language === "en" ? "Diagnostic report copied." : "诊断报告已复制。"))
+      .catch(() => setOperationError(language === "en" ? "Could not copy the diagnostic report." : "无法复制诊断报告。"));
+  }, [appDiagnostics, language, runtimeState.events, runtimeState.history.length, snapshots]);
 
   const handleHover = useCallback((value: boolean) => {
     if (collapseTimer.current !== null) {
@@ -355,7 +456,7 @@ export default function App() {
         if (nextIndex >= 0) setActiveIndex(nextIndex);
         savePreferences({ ...preferences, providerOrder });
       }}
-      onLock={() => { setOperationError(null); void setAlwaysOnTop(!preferences.alwaysOnTop).then((value) => setPreferences({ ...DEFAULT_PREFS, ...value, language: normalizeLanguage(value.language) })).catch(() => setOperationError("Always-on-top toggle failed.")); }}
+      onLock={() => { setOperationError(null); void setAlwaysOnTop(!preferences.alwaysOnTop).then((value) => { const normalized = normalizeWidgetPreferences(value); preferencesRef.current = normalized; setPreferences(normalized); }).catch(() => setOperationError("Always-on-top toggle failed.")); }}
       onDrag={() => startDragging()}
       onHover={handleHover}
       onRefresh={() => refresh(true)}
@@ -377,6 +478,34 @@ export default function App() {
       onUpdateLater={() => setUpdateOpen(false)}
       onUpdateSkip={handleUpdateSkip}
       onUpdateRelease={handleUpdateRelease}
+      controlOpen={controlOpen}
+      onControlOpen={() => {
+        setDiagnosticsOpen(false);
+        setUpdateOpen(false);
+        setControlOpen(true);
+        void getAppDiagnostics().then(setAppDiagnostics).catch(() => undefined);
+      }}
+      controlCenter={(
+        <ControlCenter
+          preferences={preferences}
+          runtimeState={runtimeState}
+          diagnostics={appDiagnostics}
+          language={language}
+          onClose={() => setControlOpen(false)}
+          onPreferences={savePreferences}
+          onRuntimeState={commitRuntimeState}
+          onExport={handleExport}
+          onImport={handleImport}
+          onRestore={handleRestore}
+          onCopyDiagnostics={handleCopyDiagnostics}
+          autostartEnabled={autostartEnabled}
+          onAutostart={(enabled) => {
+            const previous = autostartEnabled;
+            setAutostartState(enabled);
+            void setAutostartEnabled(enabled).then(setAutostartState).catch(() => { setAutostartState(previous); setOperationError(language === "en" ? "Autostart could not be changed." : "无法修改开机启动设置。"); });
+          }}
+        />
+      )}
       isConsuming={consumingProviders.has(current.provider)}
       consumingProviders={consumingProviders}
       notice={operationError}

@@ -15,6 +15,7 @@ Please do not open public issues containing tokens, account IDs, raw backend res
 - The app caps local auth/cache reads and quota responses; HTTP and Ark CLI quota payloads are rejected above 1 MB.
 - The app does not follow redirects for quota HTTP requests.
 - The app does not redeem reset credits or change account settings.
+- Diagnostic reports and migration backups exclude credentials, raw provider responses, account IDs, and provider authentication paths.
 
 ## Release Notes For Maintainers
 

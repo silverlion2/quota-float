@@ -1,6 +1,8 @@
-import type { ProviderSnapshot, VolcengineDiagnostics, WidgetPreferences } from "../types";
+import type { AppDiagnostics, ProviderSnapshot, RuntimeState, VolcengineDiagnostics, WidgetPreferences } from "../types";
+import { EMPTY_RUNTIME_STATE, normalizeRuntimeState } from "./activity";
+import { DEFAULT_WIDGET_PREFERENCES } from "./preferences";
 
-const defaultPreferences: WidgetPreferences = { locked: false, alwaysOnTop: true, stayExpanded: false, pinnedProvider: null, providerOrder: ["codex", "qoder", "trae", "workbuddy", "volcengine"], autoRotateSeconds: 12, language: "zh-CN", skippedUpdateVersion: null };
+const defaultPreferences = DEFAULT_WIDGET_PREFERENCES;
 
 const mockSnapshots: ProviderSnapshot[] = [{
   provider: "codex",
@@ -77,10 +79,17 @@ const mockVolcengineDiagnostics: VolcengineDiagnostics = {
 };
 
 let widgetTransition: Promise<void> = Promise.resolve();
+let preferenceWrite: Promise<void> = Promise.resolve();
 
 function enqueueWidgetTransition(operation: () => Promise<void>): Promise<void> {
   const next = widgetTransition.then(operation, operation);
   widgetTransition = next.catch(() => undefined);
+  return next;
+}
+
+function enqueuePreferenceWrite(operation: () => Promise<void>): Promise<void> {
+  const next = preferenceWrite.then(operation, operation);
+  preferenceWrite = next.catch(() => undefined);
   return next;
 }
 
@@ -112,8 +121,81 @@ export async function getPreferences(): Promise<WidgetPreferences> {
 
 export async function updatePreferences(value: WidgetPreferences): Promise<void> {
   if (!isTauri()) return;
+  return enqueuePreferenceWrite(async () => {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("set_preferences", { preferences: value });
+  });
+}
+
+export async function getAutostartEnabled(): Promise<boolean> {
+  if (!isTauri()) return false;
   const { invoke } = await import("@tauri-apps/api/core");
-  await invoke("set_preferences", { preferences: value });
+  return invoke<boolean>("get_autostart_enabled");
+}
+
+export async function setAutostartEnabled(enabled: boolean): Promise<boolean> {
+  if (!isTauri()) return enabled;
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<boolean>("set_autostart_enabled", { enabled });
+}
+
+export async function getRuntimeState(): Promise<RuntimeState> {
+  if (!isTauri()) return structuredClone(EMPTY_RUNTIME_STATE);
+  const { invoke } = await import("@tauri-apps/api/core");
+  return normalizeRuntimeState(await invoke("get_runtime_state"));
+}
+
+export async function updateRuntimeState(runtimeState: RuntimeState): Promise<void> {
+  if (!isTauri()) return;
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("set_runtime_state", { runtimeState });
+}
+
+export async function exportAppData(bundle: unknown): Promise<string | null> {
+  if (!isTauri()) return null;
+  const { save } = await import("@tauri-apps/plugin-dialog");
+  const path = await save({ defaultPath: `quota-float-backup-${new Date().toISOString().slice(0, 10)}.json`, filters: [{ name: "Quota Float backup", extensions: ["json"] }] });
+  if (!path) return null;
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("export_app_data", { path, bundle });
+  return path;
+}
+
+export async function importAppData(): Promise<unknown | null> {
+  if (!isTauri()) return null;
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const path = await open({ multiple: false, directory: false, filters: [{ name: "Quota Float backup", extensions: ["json"] }] });
+  if (!path || Array.isArray(path)) return null;
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke("import_app_data", { path });
+}
+
+export async function createAutomaticBackup(bundle: unknown): Promise<string | null> {
+  if (!isTauri()) return null;
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<string>("create_automatic_backup", { bundle });
+}
+
+export async function restoreLatestBackup(): Promise<unknown | null> {
+  if (!isTauri()) return null;
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke("restore_latest_backup");
+}
+
+export async function getAppDiagnostics(): Promise<AppDiagnostics> {
+  if (!isTauri()) return { appVersion: "dev", platform: navigator.platform, configDirectory: "Browser preview", preferencesBackupAvailable: false, runtimeBackupAvailable: false };
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<AppDiagnostics>("get_app_diagnostics");
+}
+
+export async function sendDesktopNotification(title: string, body: string): Promise<boolean> {
+  if (!isTauri()) return false;
+  const { isPermissionGranted, requestPermission, sendNotification } = await import("@tauri-apps/plugin-notification");
+  let allowed = await isPermissionGranted();
+  if (!allowed) allowed = (await requestPermission()) === "granted";
+  if (!allowed) return false;
+  sendNotification({ title, body });
+  return true;
 }
 
 export async function setClickThrough(locked: boolean): Promise<WidgetPreferences> {

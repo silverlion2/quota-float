@@ -48,4 +48,28 @@ describe("widget transitions", () => {
     expect(api.invoke).toHaveBeenCalledWith("get_volcengine_diagnostics");
     expect(api.invoke).toHaveBeenCalledWith("reconnect_volcengine");
   });
+
+  it("serializes rapid preference writes so the newest state cannot be overwritten", async () => {
+    let releaseFirst: () => void = () => undefined;
+    const firstWrite = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    api.invoke.mockImplementationOnce(async (command: string) => {
+      api.calls.push(`start:${command}`);
+      await firstWrite;
+      api.calls.push(`end:${command}`);
+    });
+    const { updatePreferences } = await import("./bridge");
+    const { DEFAULT_WIDGET_PREFERENCES } = await import("./preferences");
+    const first = updatePreferences({ ...DEFAULT_WIDGET_PREFERENCES, alertThreshold: 20 });
+    const second = updatePreferences({ ...DEFAULT_WIDGET_PREFERENCES, alertThreshold: 10 });
+    await vi.waitFor(() => expect(api.invoke).toHaveBeenCalled());
+    expect(api.invoke).toHaveBeenCalledTimes(1);
+    releaseFirst();
+    await Promise.all([first, second]);
+    expect(api.calls).toEqual([
+      "start:set_preferences",
+      "end:set_preferences",
+      "start:set_preferences",
+      "end:set_preferences",
+    ]);
+  });
 });

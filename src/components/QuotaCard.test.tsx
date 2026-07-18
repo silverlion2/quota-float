@@ -4,6 +4,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProviderSnapshot, VolcengineDiagnostics, WidgetPreferences } from "../types";
+import { DEFAULT_WIDGET_PREFERENCES } from "../lib/preferences";
 import { QuotaCard, QuotaOrb } from "./QuotaCard";
 
 const codex: ProviderSnapshot = {
@@ -73,6 +74,7 @@ const diagnostics: VolcengineDiagnostics = {
 };
 
 const preferences: WidgetPreferences = {
+  ...DEFAULT_WIDGET_PREFERENCES,
   locked: false,
       alwaysOnTop: true,
       stayExpanded: false,
@@ -196,7 +198,7 @@ describe("QuotaCard platform ledger", () => {
         updateOpen
         updateState={{
           phase: "ready",
-          info: { version: "0.2.0", body: "Background updates.", date: null, platform: "windows" },
+          info: { version: "0.2.0", body: "Background updates.", date: null, platform: "windows", channel: "stable", releaseUrl: "https://github.com/silverlion2/quota-float/releases/latest", automaticInstall: true },
           progress: { downloadedBytes: 100, totalBytes: 100, percent: 100 },
           error: null,
         }}

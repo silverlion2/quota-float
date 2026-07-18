@@ -33,7 +33,7 @@ mod windows {
     }
 
     fn decrypt_dpapi(input: &[u8]) -> Result<Vec<u8>, String> {
-        let mut source = CRYPT_INTEGER_BLOB {
+        let source = CRYPT_INTEGER_BLOB {
             cbData: input.len() as u32,
             pbData: input.as_ptr() as *mut u8,
         };
@@ -43,7 +43,7 @@ mod windows {
         };
         let ok = unsafe {
             CryptUnprotectData(
-                &mut source,
+                &source,
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
@@ -151,7 +151,7 @@ mod windows {
 pub fn fetch_snapshot() -> Option<ProviderSnapshot> {
     #[cfg(windows)]
     {
-        return windows::snapshot();
+        windows::snapshot()
     }
     #[cfg(not(windows))]
     {

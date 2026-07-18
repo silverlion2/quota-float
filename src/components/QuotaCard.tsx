@@ -1,5 +1,5 @@
-import { ArrowClockwise, ArrowsInSimple, ArrowsOutSimple, CheckCircle, ClockCounterClockwise, CloudArrowDown, CloudSlash, DotsSixVertical, Pulse, PushPin, PushPinSlash, SignIn, SpinnerGap, WarningCircle, X } from "@phosphor-icons/react";
-import { memo, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowClockwise, ArrowsInSimple, ArrowsOutSimple, CheckCircle, ClockCounterClockwise, CloudArrowDown, CloudSlash, DotsSixVertical, GearSix, Pulse, PushPin, PushPinSlash, SignIn, SpinnerGap, WarningCircle, X } from "@phosphor-icons/react";
+import { memo, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { clampPercent, formatDateTime, formatResetDate, formatResetTime, quotaTier } from "../lib/format";
 import { copy, normalizeLanguage } from "../lib/i18n";
 import { normalizeProviderOrder, PROVIDER_CATALOG, type ProviderDefinition } from "../lib/providers";
@@ -41,6 +41,9 @@ interface Props {
   isConsuming?: boolean;
   consumingProviders: ReadonlySet<string>;
   notice?: ReactNode;
+  controlCenter?: ReactNode;
+  controlOpen?: boolean;
+  onControlOpen?: () => void;
   initialShowCreditTip?: boolean;
 }
 
@@ -74,11 +77,13 @@ function ProviderLedgerRow({
   sortable,
   dragging,
   dragTarget,
+  dragAfter,
   onReorderPointerDown,
   onReorderPointerMove,
   onReorderPointerUp,
   onReorderPointerCancel,
   onMove,
+  condensed,
 }: {
   definition: ProviderDefinition;
   snapshot?: ProviderSnapshot;
@@ -89,11 +94,13 @@ function ProviderLedgerRow({
   sortable: boolean;
   dragging: boolean;
   dragTarget: boolean;
+  dragAfter: boolean;
   onReorderPointerDown: (event: ReactPointerEvent<HTMLButtonElement>, provider: ProviderId) => void;
   onReorderPointerMove: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onReorderPointerUp: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onReorderPointerCancel: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onMove: (provider: ProviderId, offset: -1 | 1) => void;
+  condensed: boolean;
 }) {
   const t = copy[language];
   const weekly = snapshot?.weeklyWindow ? clampPercent(snapshot.weeklyWindow.remainingPercent) : null;
@@ -125,7 +132,7 @@ function ProviderLedgerRow({
 
   return (
     <div
-      className={`provider-row-shell${dragging ? " is-dragging" : ""}${dragTarget ? " is-drag-target" : ""}`}
+      className={`provider-row-shell${dragging ? " is-dragging" : ""}${dragTarget ? ` is-drag-target ${dragAfter ? "is-drag-after" : "is-drag-before"}` : ""}${condensed ? " is-condensed" : ""}`}
       data-provider-id={definition.id}
       role="listitem"
       tabIndex={sortable ? 0 : -1}
@@ -285,11 +292,15 @@ export const QuotaCard = memo(function QuotaCard({
   isConsuming = false,
   consumingProviders,
   notice = null,
+  controlCenter = null,
+  controlOpen = false,
+  onControlOpen = () => undefined,
   initialShowCreditTip = false,
 }: Props) {
   const [showCreditTip, setShowCreditTip] = useState(initialShowCreditTip);
   const [draggedProvider, setDraggedProvider] = useState<ProviderId | null>(null);
   const [dragTargetProvider, setDragTargetProvider] = useState<ProviderId | null>(null);
+  const [dragTargetAfter, setDragTargetAfter] = useState(false);
   const [reorderAnnouncement, setReorderAnnouncement] = useState("");
   const providerPointerDrag = useRef<{ source: ProviderId; target: ProviderId; after: boolean; pointerId: number } | null>(null);
   const language = normalizeLanguage(preferences.language);
@@ -326,7 +337,7 @@ export const QuotaCard = memo(function QuotaCard({
           ? t.notSignedIn
           : t.unavailableStatus;
   const message = localizedBackendMessage(snapshot.message, language, snapshot.displayName);
-  const overlayOpen = diagnosticsOpen || updateOpen;
+  const overlayOpen = diagnosticsOpen || updateOpen || controlOpen;
   const updateAttention = !["idle", "current"].includes(updateState.phase);
   const creditExpirations = useMemo(() => (snapshot.resetCreditExpiresAt ?? []).map((value, index) => {
     return t.creditItem(index, formatDateTime(value, language));
@@ -334,8 +345,8 @@ export const QuotaCard = memo(function QuotaCard({
   const snapshotsByProvider = useMemo(() => new Map(snapshots.map((item) => [item.provider, item])), [snapshots]);
   const providerDefinitions = useMemo(() => {
     const byProvider = new Map(PROVIDER_CATALOG.map((definition) => [definition.id, definition]));
-    return normalizeProviderOrder(preferences.providerOrder).map((provider) => byProvider.get(provider)!);
-  }, [preferences.providerOrder]);
+    return normalizeProviderOrder(preferences.providerOrder).filter((provider) => !preferences.hiddenProviders.includes(provider)).map((provider) => byProvider.get(provider)!);
+  }, [preferences.hiddenProviders, preferences.providerOrder]);
   const resetMarker = snapshot.provider === "codex" && snapshot.status === "ok" ? recentCodexReset : null;
 
   const commitProviderOrder = (source: ProviderId, target: ProviderId, after = false) => {
@@ -379,6 +390,7 @@ export const QuotaCard = memo(function QuotaCard({
     if (!target) return;
     providerPointerDrag.current = { ...drag, target: target.provider, after: target.after };
     setDragTargetProvider(target.provider);
+    setDragTargetAfter(target.after);
   };
 
   const finishProviderPointerDrag = (event: ReactPointerEvent<HTMLButtonElement>, canceled: boolean) => {
@@ -392,12 +404,14 @@ export const QuotaCard = memo(function QuotaCard({
     providerPointerDrag.current = null;
     setDraggedProvider(null);
     setDragTargetProvider(null);
+    setDragTargetAfter(false);
     if (!canceled) commitProviderOrder(target.source, target.target, target.after);
   };
 
   return (
     <main
-      className={`quota-card quota-card--${snapshot.status} quota-card--${tier}`}
+      className={`quota-card quota-card--${snapshot.status} quota-card--${tier} quota-card--layout-${preferences.layoutMode}`}
+      style={{ "--accent-color": preferences.accentColor } as CSSProperties}
       onMouseEnter={() => onHover(true)}
       onMouseLeave={() => onHover(false)}
       onMouseDown={(event) => { if (event.button === 0) void onDrag(); }}
@@ -406,6 +420,7 @@ export const QuotaCard = memo(function QuotaCard({
       <span className="sr-only" aria-live="polite">{available ? metricLabel : message}</span>
       <span className="sr-only" aria-live="polite">{reorderAnnouncement}</span>
       {notice ? <div className="operation-notice" role="status">{notice}</div> : null}
+      {controlOpen ? controlCenter : null}
       {diagnosticsOpen ? (
         <VolcengineDiagnosticsPanel
           value={diagnostics}
@@ -498,11 +513,12 @@ export const QuotaCard = memo(function QuotaCard({
 
       <aside className="provider-ledger" aria-hidden={overlayOpen || undefined} inert={overlayOpen || undefined}>
         <header className="ledger-header">
-          <p>{t.allServices}<span>{snapshots.length}/{PROVIDER_CATALOG.length}</span></p>
+          <p>{t.allServices}<span>{providerDefinitions.length}/{PROVIDER_CATALOG.length}</span></p>
           {!preferences.locked ? (
             <nav className="card-actions" aria-label={t.controls} onMouseDown={(event) => event.stopPropagation()}>
               <span className={`usage-indicator usage-indicator--${indicatorState}`} role="status" aria-label={indicatorLabel} title={indicatorLabel}><i /></span>
               <button className={updateAttention ? "update-action update-action--active" : "update-action"} onClick={onUpdateOpen} aria-label={t.appUpdate} title={t.appUpdate}><CloudArrowDown /></button>
+              <button className={controlOpen ? "control-action control-action--active" : "control-action"} onClick={onControlOpen} aria-label={language === "en" ? "Control center" : "控制中心"} title={language === "en" ? "Control center" : "控制中心"}><GearSix /></button>
               <button onClick={onDiagnostics} aria-label={t.diagnostics} title={t.diagnostics}><Pulse /></button>
               <button className="language-button" onClick={onLanguage} aria-label={t.switchLanguage} title={t.switchLanguage}>{language === "en" ? "中" : "EN"}</button>
               <button className={preferences.stayExpanded ? "expand-button expand-button--active" : "expand-button"} onClick={onToggleStayExpanded} aria-pressed={preferences.stayExpanded} aria-label={preferences.stayExpanded ? t.keepExpandedOff : t.keepExpandedOn} title={preferences.stayExpanded ? t.keepExpandedOff : t.keepExpandedOn}>
@@ -527,6 +543,7 @@ export const QuotaCard = memo(function QuotaCard({
               sortable={!preferences.locked}
               dragging={draggedProvider === definition.id}
               dragTarget={dragTargetProvider === definition.id && draggedProvider !== definition.id}
+              dragAfter={dragTargetAfter}
               onReorderPointerDown={(event, provider) => {
                 if (event.button !== 0) return;
                 event.preventDefault();
@@ -535,12 +552,14 @@ export const QuotaCard = memo(function QuotaCard({
                 providerPointerDrag.current = { source: provider, target: provider, after: false, pointerId };
                 setDraggedProvider(provider);
                 setDragTargetProvider(provider);
+                setDragTargetAfter(false);
                 event.currentTarget.setPointerCapture?.(pointerId);
               }}
               onReorderPointerMove={updateProviderPointerDrag}
               onReorderPointerUp={(event) => finishProviderPointerDrag(event, false)}
               onReorderPointerCancel={(event) => finishProviderPointerDrag(event, true)}
               onMove={moveProvider}
+              condensed={preferences.collapsedProviders.includes(definition.id)}
             />
           ))}
         </div>

@@ -58,7 +58,7 @@ export function UpdatePanel({ state, language, onClose, onDownload, onInstall, o
     <section className="update-panel" role="dialog" aria-modal="true" aria-labelledby="app-update-title" onMouseDown={(event) => event.stopPropagation()}>
       <header className="update-header">
         <div>
-          <p className="update-kicker">UPDATE CENTER · STABLE</p>
+          <p className="update-kicker">UPDATE CENTER · {(state.info?.channel ?? "stable").toUpperCase()}</p>
           <h2 id="app-update-title">{t.updateCenterTitle}</h2>
           <p>{t.updateCenterSubtitle}</p>
         </div>
@@ -85,8 +85,8 @@ export function UpdatePanel({ state, language, onClose, onDownload, onInstall, o
       <footer className="update-footer">
         <span>{version ? `v${version}` : "Quota Float"}</span>
         <div>
-          {state.phase === "available" && state.info?.platform === "windows" ? <button type="button" className="update-secondary" onClick={onDownload}><CloudArrowDown /><span>{t.updateDownload}</span></button> : null}
-          {state.phase === "available" && state.info?.platform === "macos" ? <button type="button" className="update-primary" onClick={onOpenRelease}><CloudArrowDown /><span>{t.updateOpenReleases}</span></button> : null}
+          {state.phase === "available" && state.info?.automaticInstall ? <button type="button" className="update-secondary" onClick={onDownload}><CloudArrowDown /><span>{t.updateDownload}</span></button> : null}
+          {state.phase === "available" && !state.info?.automaticInstall ? <button type="button" className="update-primary" onClick={onOpenRelease}><CloudArrowDown /><span>{t.updateOpenReleases}</span></button> : null}
           {state.phase === "downloading" ? <button type="button" className="update-secondary" onClick={onLater}>{t.updateLater}</button> : null}
           {state.phase === "ready" ? <button type="button" className="update-quiet" onClick={onSkip}>{t.updateSkip}</button> : null}
           {state.phase === "ready" ? <button type="button" className="update-secondary" onClick={onLater}>{t.updateLater}</button> : null}

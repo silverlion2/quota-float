@@ -8,6 +8,9 @@ describe("release automation", () => {
     expect(nextVersion("1.2.3", "minor")).toBe("1.3.0");
     expect(nextVersion("1.2.3", "major")).toBe("2.0.0");
     expect(nextVersion("1.2.3", "3.4.5")).toBe("3.4.5");
+    expect(nextVersion("1.2.3", "beta")).toBe("1.2.4-beta.1");
+    expect(nextVersion("1.2.4-beta.1", "beta")).toBe("1.2.4-beta.2");
+    expect(nextVersion("1.2.4-beta.2", "stable")).toBe("1.2.4");
     expect(() => nextVersion("1.2.3", "1.2.3")).toThrow(/must be newer/);
     expect(() => nextVersion("1.2.3", "1.1.9")).toThrow(/must be newer/);
   });
@@ -35,5 +38,7 @@ describe("release automation", () => {
     const workflow = readFileSync(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
     expect(workflow).toMatch(/platform: windows-latest\s+args: "--bundles nsis"/);
     expect(workflow).toMatch(/platform: macos-latest\s+args: "--target universal-apple-darwin --bundles app,dmg"/);
+    expect(workflow).toMatch(/prerelease:.*contains\(github\.ref_name, '-'/);
+    expect(workflow).toContain("verify-windows-upgrade.ps1");
   });
 });

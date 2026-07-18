@@ -14,6 +14,12 @@ Lightweight floating desktop widget for checking coding-assistant quotas from ex
 - Indicates whether quota is currently being consumed.
 - Detects when the Codex weekly window has recently reset using window timing and observed quota recovery.
 - Lets you drag platform rows into a preferred order; the order persists and also controls automatic rotation.
+- Adds a local control center for compact/standard/detailed layouts, custom accent colors, hidden or condensed providers, and reusable layout profiles.
+- Keeps a bounded local quota timeline and records resets, low-quota crossings, provider failures, and recoveries.
+- Supports configurable desktop alerts, quiet hours, cooldowns, Stable/Beta discovery, and system-login autostart.
+- Automatically retries transient provider failures and keeps last-known-good values clearly marked as stale.
+- Creates rotating recovery points before updates and supports one-file export/import for settings, layouts, and history.
+- Produces a redacted, copyable diagnostic report without including tokens, account IDs, or raw provider responses.
 - Includes persistent expansion, always-on-top controls, and localized tray actions.
 - Falls back to a clearly marked weekly-quota view when the 5-hour window is unavailable.
 - Checks for app updates automatically, downloads signed Windows updates in the background, and lets you restart when convenient.
@@ -57,7 +63,7 @@ Browser preview uses mock data. Real quota reading requires the Tauri desktop ap
 For normal users, download the latest installer from GitHub Releases:
 
 - Latest release: https://github.com/silverlion2/quota-float/releases/latest
-- Windows: use the `.exe` or `.msi` installer.
+- Windows: use the per-user `x64-setup.exe` installer; it does not require administrator access.
 - macOS Universal: use the `.dmg` bundle.
 
 Updater artifacts are signed with the project's Tauri update key. Windows Authenticode signing and macOS notarization are separate platform-signing steps; builds without those certificates may still trigger SmartScreen or Gatekeeper warnings.
@@ -74,7 +80,7 @@ Quota Float is local-first and intentionally narrow:
 
 - Reads only the local authentication or account cache needed for each detected provider.
 - Sends each provider's existing token only to that provider's official quota endpoint; Volcengine access remains inside Ark CLI.
-- Stores only widget preferences in its own app config directory.
+- Stores widget preferences, bounded quota samples, event summaries, layout profiles, and rotating recovery points in its own app config directory.
 - Does not store provider tokens, account IDs, prompts, chat history, raw quota responses, or local auth paths.
 - Does not include telemetry, analytics, crash reporting, or third-party tracking.
 - Does not redeem reset credits or modify account settings.
@@ -134,7 +140,7 @@ For maintainers, a release is one command from a clean, up-to-date `main` branch
 npm run release -- patch
 ```
 
-Use `minor`, `major`, or an exact version in place of `patch`. The command checks the branch and version files, shows the commits being released, asks for confirmation, runs frontend and Rust verification, updates every version source and `CHANGELOG.md`, then commits, tags, and pushes. To inspect everything without changing files, run:
+Use `minor`, `major`, `beta`, `stable`, or an exact version in place of `patch`. `beta` creates or advances an `x.y.z-beta.n` prerelease; `stable` promotes the current beta. The command checks the branch and version files, shows the commits being released, asks for confirmation, runs frontend and Rust verification, updates every version source and `CHANGELOG.md`, then commits, tags, and pushes. Stable releases also run a clean Windows upgrade smoke test from the previous public version. To inspect everything without changing files, run:
 
 ```bash
 npm run release -- patch --dry-run

@@ -1,5 +1,6 @@
 import type { DownloadEvent, Update } from "@tauri-apps/plugin-updater";
 import { isTauri } from "./bridge";
+import type { UpdateChannel } from "../types";
 
 export const RELEASE_URL = "https://github.com/silverlion2/quota-float/releases/latest";
 
@@ -10,6 +11,9 @@ export interface AppUpdateInfo {
   body: string | null;
   date: string | null;
   platform: AppUpdatePlatform;
+  channel: UpdateChannel;
+  releaseUrl: string;
+  automaticInstall: boolean;
 }
 
 export interface AppUpdateProgress {
@@ -32,6 +36,9 @@ function updateInfo(update: Update): AppUpdateInfo {
     body: update.body?.trim() || null,
     date: update.date ?? null,
     platform: updatePlatform(),
+    channel: "stable",
+    releaseUrl: RELEASE_URL,
+    automaticInstall: updatePlatform() === "windows",
   };
 }
 
@@ -39,16 +46,48 @@ export function getPendingAppUpdate(): AppUpdateInfo | null {
   return pendingUpdate ? updateInfo(pendingUpdate) : null;
 }
 
-export async function openReleasePage(): Promise<void> {
+export async function openReleasePage(url = RELEASE_URL): Promise<void> {
   if (!isTauri()) {
-    window.open(RELEASE_URL, "_blank", "noopener,noreferrer");
+    window.open(url, "_blank", "noopener,noreferrer");
     return;
   }
   const { openUrl } = await import("@tauri-apps/plugin-opener");
-  await openUrl(RELEASE_URL);
+  await openUrl(url);
 }
 
-export async function checkForAppUpdate(): Promise<AppUpdateInfo | null> {
+function semverParts(value: string): { base: number[]; beta: number | null } {
+  const match = /^(\d+)\.(\d+)\.(\d+)(?:-beta\.(\d+))?$/.exec(value.replace(/^v/, ""));
+  return match
+    ? { base: match.slice(1, 4).map(Number), beta: match[4] ? Number(match[4]) : null }
+    : { base: [0, 0, 0], beta: null };
+}
+
+function isNewerVersion(candidate: string, current: string): boolean {
+  const left = semverParts(candidate);
+  const right = semverParts(current);
+  for (let index = 0; index < 3; index += 1) {
+    if (left.base[index] !== right.base[index]) return left.base[index] > right.base[index];
+  }
+  if (left.beta === null) return right.beta !== null;
+  if (right.beta === null) return false;
+  return left.beta > right.beta;
+}
+
+async function checkBetaUpdate(): Promise<AppUpdateInfo | null> {
+  const response = await fetch("https://api.github.com/repos/silverlion2/quota-float/releases?per_page=20", { headers: { Accept: "application/vnd.github+json" } });
+  if (!response.ok) throw new Error(`Beta update check failed (${response.status}).`);
+  const releases = await response.json() as Array<{ prerelease?: boolean; draft?: boolean; tag_name?: string; body?: string; published_at?: string; html_url?: string }>;
+  const release = releases.find((item) => item.prerelease && !item.draft && item.tag_name && item.html_url);
+  if (!release?.tag_name || !release.html_url) return null;
+  const { getVersion } = await import("@tauri-apps/api/app");
+  const current = await getVersion();
+  const version = release.tag_name.replace(/^v/, "");
+  if (!isNewerVersion(version, current)) return null;
+  return { version, body: release.body?.trim() || null, date: release.published_at ?? null, platform: updatePlatform(), channel: "beta", releaseUrl: release.html_url, automaticInstall: false };
+}
+
+export async function checkForAppUpdate(channel: UpdateChannel = "stable"): Promise<AppUpdateInfo | null> {
+  if (channel === "beta") return isTauri() ? checkBetaUpdate() : null;
   if (pendingUpdate) return updateInfo(pendingUpdate);
   if (!isTauri()) return null;
   if (checkPromise) return checkPromise;

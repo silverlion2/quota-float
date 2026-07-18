@@ -31,21 +31,35 @@ function run(name, args, { capture = false } = {}) {
 }
 
 export function nextVersion(current, spec) {
-  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(current);
-  if (!match) throw new Error(`Current version is not stable semver: ${current}`);
-  if (/^\d+\.\d+\.\d+$/.test(spec)) {
-    const currentParts = current.split(".").map(Number);
-    const targetParts = spec.split(".").map(Number);
-    const changedAt = targetParts.findIndex((part, index) => part !== currentParts[index]);
-    if (changedAt < 0 || targetParts[changedAt] < currentParts[changedAt]) {
-      throw new Error(`Target version ${spec} must be newer than ${current}.`);
-    }
-    return spec;
-  }
+  const match = /^(\d+)\.(\d+)\.(\d+)(?:-beta\.(\d+))?$/.exec(current);
+  if (!match) throw new Error(`Current version is not supported semver: ${current}`);
   const [, majorText, minorText, patchText] = match;
   let major = Number(majorText);
   let minor = Number(minorText);
   let patch = Number(patchText);
+  const betaNumber = match[4] ? Number(match[4]) : null;
+  const compare = (target) => {
+    const parsed = /^(\d+)\.(\d+)\.(\d+)(?:-beta\.(\d+))?$/.exec(target);
+    if (!parsed) throw new Error("Version must be patch, minor, major, beta, stable, or x.y.z[-beta.n].");
+    for (let index = 1; index <= 3; index += 1) {
+      const delta = Number(parsed[index]) - Number(match[index]);
+      if (delta !== 0) return delta;
+    }
+    if (!match[4] && parsed[4]) return -1;
+    if (match[4] && !parsed[4]) return 1;
+    return Number(parsed[4] ?? 0) - Number(match[4] ?? 0);
+  };
+  if (/^\d+\.\d+\.\d+(?:-beta\.\d+)?$/.test(spec)) {
+    if (compare(spec) <= 0) throw new Error(`Target version ${spec} must be newer than ${current}.`);
+    return spec;
+  }
+  if (spec === "beta") {
+    return betaNumber === null ? `${major}.${minor}.${patch + 1}-beta.1` : `${major}.${minor}.${patch}-beta.${betaNumber + 1}`;
+  }
+  if (spec === "stable") {
+    if (betaNumber === null) throw new Error("The current version is already stable.");
+    return `${major}.${minor}.${patch}`;
+  }
   if (spec === "major") {
     major += 1;
     minor = 0;
@@ -56,7 +70,7 @@ export function nextVersion(current, spec) {
   } else if (spec === "patch") {
     patch += 1;
   } else {
-    throw new Error("Version must be patch, minor, major, or an explicit x.y.z value.");
+    throw new Error("Version must be patch, minor, major, beta, stable, or an explicit x.y.z[-beta.n] value.");
   }
   return `${major}.${minor}.${patch}`;
 }
@@ -171,7 +185,7 @@ async function main() {
   }
 
   const spec = args.find((arg) => !arg.startsWith("--"));
-  if (!spec) throw new Error("Usage: npm run release -- patch|minor|major|x.y.z [--dry-run] [--no-push] [--yes]");
+  if (!spec) throw new Error("Usage: npm run release -- patch|minor|major|beta|stable|x.y.z[-beta.n] [--dry-run] [--no-push] [--yes]");
   const dryRun = args.includes("--dry-run");
   const noPush = args.includes("--no-push");
   const assumeYes = args.includes("--yes");

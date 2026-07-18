@@ -43,7 +43,7 @@ mod windows {
     }
 
     fn decrypt_dpapi(input: &[u8]) -> Result<Vec<u8>, &'static str> {
-        let mut source = CRYPT_INTEGER_BLOB {
+        let source = CRYPT_INTEGER_BLOB {
             cbData: input.len() as u32,
             pbData: input.as_ptr() as *mut u8,
         };
@@ -53,7 +53,7 @@ mod windows {
         };
         let ok = unsafe {
             CryptUnprotectData(
-                &mut source,
+                &source,
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
@@ -427,9 +427,7 @@ mod windows {
     }
 
     pub async fn snapshot(client: &reqwest::Client) -> Option<ProviderSnapshot> {
-        if root().is_none() {
-            return None;
-        }
+        root()?;
         let auth = match load_auth() {
             Ok(auth) => auth,
             Err(message) => {

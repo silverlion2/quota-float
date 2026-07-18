@@ -1,6 +1,8 @@
 export type ProviderId = "codex" | "qoder" | "trae" | "workbuddy" | "volcengine";
 export type SnapshotStatus = "ok" | "stale" | "loading" | "unavailable" | "signed_out";
 export type Language = "zh-CN" | "en";
+export type LayoutMode = "compact" | "standard" | "detailed";
+export type UpdateChannel = "stable" | "beta";
 
 export interface UsageWindow {
   remainingPercent: number;
@@ -32,6 +34,66 @@ export interface WidgetPreferences {
   autoRotateSeconds: number;
   language: Language;
   skippedUpdateVersion?: string | null;
+  hiddenProviders: ProviderId[];
+  collapsedProviders: ProviderId[];
+  layoutMode: LayoutMode;
+  accentColor: string;
+  alertThreshold: number;
+  notificationsEnabled: boolean;
+  notifyOnReset: boolean;
+  notifyOnRecovery: boolean;
+  quietHoursStart: number;
+  quietHoursEnd: number;
+  notificationCooldownMinutes: number;
+  updateChannel: UpdateChannel;
+  automaticUpdates: boolean;
+}
+
+export type ActivityKind = "quota" | "reset" | "warning" | "recovered" | "update";
+
+export interface ActivityEvent {
+  id: string;
+  provider: ProviderId | null;
+  kind: ActivityKind;
+  occurredAt: string;
+  title: string;
+  detail: string;
+}
+
+export interface QuotaHistoryPoint {
+  provider: ProviderId;
+  capturedAt: string;
+  metric: number | null;
+  metricKind: "percent" | "balance" | "unlimited" | "none";
+  status: SnapshotStatus;
+  resetsAt: string | null;
+}
+
+export interface SavedLayout {
+  id: string;
+  name: string;
+  createdAt: string;
+  providerOrder: ProviderId[];
+  hiddenProviders: ProviderId[];
+  collapsedProviders: ProviderId[];
+  layoutMode: LayoutMode;
+  accentColor: string;
+}
+
+export interface RuntimeState {
+  schemaVersion: 1;
+  history: QuotaHistoryPoint[];
+  events: ActivityEvent[];
+  savedLayouts: SavedLayout[];
+  lastNotifications: Record<string, string>;
+}
+
+export interface AppDiagnostics {
+  appVersion: string;
+  platform: string;
+  configDirectory: string;
+  preferencesBackupAvailable: boolean;
+  runtimeBackupAvailable: boolean;
 }
 
 export interface VolcengineDiagnostics {

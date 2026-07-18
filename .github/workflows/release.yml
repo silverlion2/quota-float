@@ -76,5 +76,17 @@ jobs:
           releaseName: Quota Float v__VERSION__
           releaseBody: ${{ steps.release_notes.outputs.result }}
           releaseDraft: false
-          prerelease: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
           args: ${{ matrix.args }}
+
+  upgrade-smoke:
+    if: ${{ !contains(github.ref_name, '-') }}
+    needs: publish
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify previous-to-current per-user upgrade
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./scripts/verify-windows-upgrade.ps1 -Repository "${{ github.repository }}" -CurrentTag "${{ github.ref_name }}"

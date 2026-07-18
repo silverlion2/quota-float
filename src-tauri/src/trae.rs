@@ -305,9 +305,7 @@ mod windows {
     }
 
     pub async fn snapshot(client: &reqwest::Client) -> Option<ProviderSnapshot> {
-        if root().is_none() {
-            return None;
-        }
+        root()?;
         let auth = match load_auth() {
             Ok(value) => value,
             Err(message) => {

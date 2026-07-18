@@ -12,14 +12,18 @@ Quota Float is designed to be local-first and minimal.
 
 ## What It Stores
 
-Quota Float stores only widget preferences in its own application config directory:
+Quota Float stores only local application state in its own application config directory:
 
 - locked state
 - always-on-top state
 - pinned provider
 - auto-rotate interval
+- provider ordering, visibility, condensed rows, colors, and saved layout profiles
+- notification thresholds, quiet hours, cooldowns, and update-channel preferences
+- a bounded timeline of quota percentages or balances, provider status changes, and detected reset/recovery events
+- rotating settings/history recovery points created before updates
 
-It does not copy or persist provider tokens, account IDs, raw quota responses, user prompts, chat history, or local file paths.
+Backups exported by the user contain the same local application state. They do not contain provider tokens, account IDs, raw quota responses, user prompts, chat history, or provider authentication paths.
 
 ## What It Sends
 
