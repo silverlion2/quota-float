@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.0 - 2026-07-18
+
+- feat: add quota control center and resilient updates
+
 ## 0.1.9 - 2026-07-18
 
 - fix: publish per-user Windows updater
