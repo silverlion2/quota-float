@@ -1,5 +1,5 @@
 import { ArrowClockwise, ArrowsInSimple, ArrowsOutSimple, CheckCircle, ClockCounterClockwise, CloudArrowDown, CloudSlash, DotsSixVertical, Pulse, PushPin, PushPinSlash, SignIn, SpinnerGap, WarningCircle, X } from "@phosphor-icons/react";
-import { memo, type DragEvent as ReactDragEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { memo, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { clampPercent, formatDateTime, formatResetDate, formatResetTime, quotaTier } from "../lib/format";
 import { copy, normalizeLanguage } from "../lib/i18n";
 import { normalizeProviderOrder, PROVIDER_CATALOG, type ProviderDefinition } from "../lib/providers";
@@ -74,10 +74,10 @@ function ProviderLedgerRow({
   sortable,
   dragging,
   dragTarget,
-  onDragStart,
-  onDragOver,
-  onDrop,
-  onDragEnd,
+  onReorderPointerDown,
+  onReorderPointerMove,
+  onReorderPointerUp,
+  onReorderPointerCancel,
   onMove,
 }: {
   definition: ProviderDefinition;
@@ -89,10 +89,10 @@ function ProviderLedgerRow({
   sortable: boolean;
   dragging: boolean;
   dragTarget: boolean;
-  onDragStart: (event: ReactDragEvent<HTMLDivElement>, provider: ProviderId) => void;
-  onDragOver: (event: ReactDragEvent<HTMLDivElement>, provider: ProviderId) => void;
-  onDrop: (event: ReactDragEvent<HTMLDivElement>, provider: ProviderId) => void;
-  onDragEnd: () => void;
+  onReorderPointerDown: (event: ReactPointerEvent<HTMLButtonElement>, provider: ProviderId) => void;
+  onReorderPointerMove: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onReorderPointerUp: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onReorderPointerCancel: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onMove: (provider: ProviderId, offset: -1 | 1) => void;
 }) {
   const t = copy[language];
@@ -126,16 +126,12 @@ function ProviderLedgerRow({
   return (
     <div
       className={`provider-row-shell${dragging ? " is-dragging" : ""}${dragTarget ? " is-drag-target" : ""}`}
-      draggable={sortable}
+      data-provider-id={definition.id}
       role="listitem"
       tabIndex={sortable ? 0 : -1}
       aria-label={sortable ? t.reorderProvider(definition.label) : undefined}
       title={sortable ? t.reorderProvider(definition.label) : undefined}
       onMouseDown={(event) => event.stopPropagation()}
-      onDragStart={(event) => onDragStart(event, definition.id)}
-      onDragOver={(event) => onDragOver(event, definition.id)}
-      onDrop={(event) => onDrop(event, definition.id)}
-      onDragEnd={onDragEnd}
       onKeyDown={(event) => {
         if (!sortable || !event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
         event.preventDefault();
@@ -160,7 +156,21 @@ function ProviderLedgerRow({
           <small>{detail}</small>
         </span>
       </button>
-      {sortable ? <span className="provider-reorder-grip" aria-hidden="true"><DotsSixVertical weight="bold" /></span> : null}
+      {sortable ? (
+        <button
+          type="button"
+          className="provider-reorder-grip"
+          aria-label={t.reorderProvider(definition.label)}
+          title={t.reorderProvider(definition.label)}
+          onMouseDown={(event) => event.stopPropagation()}
+          onPointerDown={(event) => onReorderPointerDown(event, definition.id)}
+          onPointerMove={onReorderPointerMove}
+          onPointerUp={onReorderPointerUp}
+          onPointerCancel={onReorderPointerCancel}
+        >
+          <DotsSixVertical weight="bold" />
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -281,6 +291,7 @@ export const QuotaCard = memo(function QuotaCard({
   const [draggedProvider, setDraggedProvider] = useState<ProviderId | null>(null);
   const [dragTargetProvider, setDragTargetProvider] = useState<ProviderId | null>(null);
   const [reorderAnnouncement, setReorderAnnouncement] = useState("");
+  const providerPointerDrag = useRef<{ source: ProviderId; target: ProviderId; after: boolean; pointerId: number } | null>(null);
   const language = normalizeLanguage(preferences.language);
   const t = copy[language];
   const weekly = snapshot.weeklyWindow ? clampPercent(snapshot.weeklyWindow.remainingPercent) : null;
@@ -348,6 +359,40 @@ export const QuotaCard = memo(function QuotaCard({
     [order[index], order[nextIndex]] = [order[nextIndex], order[index]];
     onReorderProviders(order);
     setReorderAnnouncement(t.providerMoved(providerDefinitions[index].label, nextIndex + 1));
+  };
+
+  const providerAtPoint = (clientX: number, clientY: number) => {
+    const row = document.elementFromPoint?.(clientX, clientY)?.closest<HTMLElement>("[data-provider-id]");
+    if (!row) return null;
+    const provider = row.dataset.providerId as ProviderId | undefined;
+    if (!provider || !providerDefinitions.some((definition) => definition.id === provider)) return null;
+    const bounds = row.getBoundingClientRect();
+    return { provider, after: clientY > bounds.top + bounds.height / 2 };
+  };
+
+  const updateProviderPointerDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = providerPointerDrag.current;
+    if (!drag || drag.pointerId !== (event.pointerId ?? 1)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const target = providerAtPoint(event.clientX, event.clientY);
+    if (!target) return;
+    providerPointerDrag.current = { ...drag, target: target.provider, after: target.after };
+    setDragTargetProvider(target.provider);
+  };
+
+  const finishProviderPointerDrag = (event: ReactPointerEvent<HTMLButtonElement>, canceled: boolean) => {
+    const drag = providerPointerDrag.current;
+    if (!drag || drag.pointerId !== (event.pointerId ?? 1)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const finalTarget = providerAtPoint(event.clientX, event.clientY);
+    const target = finalTarget ? { ...drag, target: finalTarget.provider, after: finalTarget.after } : drag;
+    if (event.currentTarget.hasPointerCapture?.(drag.pointerId)) event.currentTarget.releasePointerCapture(drag.pointerId);
+    providerPointerDrag.current = null;
+    setDraggedProvider(null);
+    setDragTargetProvider(null);
+    if (!canceled) commitProviderOrder(target.source, target.target, target.after);
   };
 
   return (
@@ -482,27 +527,19 @@ export const QuotaCard = memo(function QuotaCard({
               sortable={!preferences.locked}
               dragging={draggedProvider === definition.id}
               dragTarget={dragTargetProvider === definition.id && draggedProvider !== definition.id}
-              onDragStart={(event, provider) => {
+              onReorderPointerDown={(event, provider) => {
+                if (event.button !== 0) return;
+                event.preventDefault();
+                event.stopPropagation();
+                const pointerId = event.pointerId ?? 1;
+                providerPointerDrag.current = { source: provider, target: provider, after: false, pointerId };
                 setDraggedProvider(provider);
                 setDragTargetProvider(provider);
-                event.dataTransfer.effectAllowed = "move";
-                event.dataTransfer.setData("text/plain", provider);
+                event.currentTarget.setPointerCapture?.(pointerId);
               }}
-              onDragOver={(event, provider) => {
-                if (!draggedProvider || draggedProvider === provider) return;
-                event.preventDefault();
-                event.dataTransfer.dropEffect = "move";
-                setDragTargetProvider(provider);
-              }}
-              onDrop={(event, provider) => {
-                event.preventDefault();
-                const source = draggedProvider ?? event.dataTransfer.getData("text/plain") as ProviderId;
-                const bounds = event.currentTarget.getBoundingClientRect();
-                commitProviderOrder(source, provider, event.clientY > bounds.top + bounds.height / 2);
-                setDraggedProvider(null);
-                setDragTargetProvider(null);
-              }}
-              onDragEnd={() => { setDraggedProvider(null); setDragTargetProvider(null); }}
+              onReorderPointerMove={updateProviderPointerDrag}
+              onReorderPointerUp={(event) => finishProviderPointerDrag(event, false)}
+              onReorderPointerCancel={(event) => finishProviderPointerDrag(event, true)}
               onMove={moveProvider}
             />
           ))}

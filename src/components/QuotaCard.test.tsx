@@ -231,8 +231,18 @@ describe("QuotaCard platform ledger", () => {
     expect(screen.getByText("Recently reset")).toBeInTheDocument();
   });
 
-  it("reorders quota rows by drag and preserves the resulting order", () => {
+  it("reorders quota rows by dragging the grip and preserves the resulting order", () => {
+    class TestPointerEvent extends MouseEvent {
+      pointerId: number;
+
+      constructor(type: string, init: MouseEventInit & { pointerId?: number } = {}) {
+        super(type, init);
+        this.pointerId = init.pointerId ?? 1;
+      }
+    }
+    Object.defineProperty(window, "PointerEvent", { configurable: true, value: TestPointerEvent });
     const onReorderProviders = vi.fn();
+    const onWindowDrag = vi.fn();
     render(
       <QuotaCard
         snapshot={codex}
@@ -242,7 +252,7 @@ describe("QuotaCard platform ledger", () => {
         onReorderProviders={onReorderProviders}
         onLock={noop}
         onLanguage={noop}
-        onDrag={noop}
+        onDrag={onWindowDrag}
         onHover={noop}
         consumingProviders={new Set()}
       />,
@@ -250,11 +260,18 @@ describe("QuotaCard platform ledger", () => {
 
     const codexRow = screen.getByRole("listitem", { name: /Reorder CODEX/i });
     const traeRow = screen.getByRole("listitem", { name: /Reorder TRAE/i });
-    const dataTransfer = { effectAllowed: "", dropEffect: "", setData: vi.fn(), getData: vi.fn(() => "codex") };
-    fireEvent.dragStart(codexRow, { dataTransfer });
-    fireEvent.dragOver(traeRow, { dataTransfer });
     vi.spyOn(traeRow, "getBoundingClientRect").mockReturnValue({ top: 0, height: 20 } as DOMRect);
-    fireEvent.drop(traeRow, { dataTransfer, clientY: 1 });
+    const elementFromPoint = vi.fn(() => traeRow);
+    Object.defineProperty(document, "elementFromPoint", { configurable: true, value: elementFromPoint });
+    const codexGrip = screen.getByRole("button", { name: /Reorder CODEX/i });
+
+    fireEvent.mouseDown(codexGrip, { button: 0 });
+    expect(onWindowDrag).not.toHaveBeenCalled();
+    fireEvent.pointerDown(codexGrip, { button: 0, pointerId: 1, clientY: 1 });
+    expect(codexRow).toHaveClass("is-dragging");
+    fireEvent.pointerMove(codexGrip, { pointerId: 1, clientY: 1 });
+    expect(traeRow).toHaveClass("is-drag-target");
+    fireEvent.pointerUp(codexGrip, { pointerId: 1, clientY: 1 });
 
     expect(onReorderProviders).toHaveBeenCalledWith(["qoder", "codex", "trae", "workbuddy", "volcengine"]);
   });

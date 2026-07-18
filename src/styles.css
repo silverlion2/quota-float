@@ -185,12 +185,11 @@ button { font: inherit; }
 .ledger-header > p span { margin-left: 7px; color: rgba(23,25,31,.38); font-variant-numeric: tabular-nums; letter-spacing: .04em; }
 .provider-list { display: grid; gap: 3px; }
 .provider-row-shell { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 14px; align-items: center; gap: 3px; border-radius: 9px; outline: none; transition: opacity .16s ease, transform .16s ease, background-color .16s ease; }
-.provider-row-shell[draggable="true"] { cursor: grab; }
-.provider-row-shell[draggable="true"]:active { cursor: grabbing; }
 .provider-row-shell:focus-visible { box-shadow: 0 0 0 2px rgba(57,122,224,.42); }
 .provider-row-shell.is-dragging { opacity: .38; transform: scale(.985); }
 .provider-row-shell.is-drag-target { background: rgba(57,122,224,.12); box-shadow: 0 -2px 0 rgba(57,122,224,.58); }
-.provider-reorder-grip { width: 14px; height: 24px; display: grid; place-items: center; color: rgba(23,25,31,.28); }
+.provider-reorder-grip { width: 14px; height: 24px; display: grid; place-items: center; padding: 0; border: 0; color: rgba(23,25,31,.28); background: transparent; cursor: grab; touch-action: none; user-select: none; }
+.provider-reorder-grip:active { cursor: grabbing; }
 .provider-row-shell:hover .provider-reorder-grip, .provider-row-shell:focus-visible .provider-reorder-grip { color: rgba(35,73,119,.64); }
 .provider-reorder-grip svg { width: 11px; height: 11px; }
 .provider-row { width: 100%; height: 27px; display: grid; grid-template-columns: 20px minmax(90px, 1fr) minmax(110px, auto); align-items: center; gap: 7px; padding: 2px 7px; border: 1px solid transparent; border-radius: 9px; color: #17191f; background: rgba(255,255,255,.16); cursor: pointer; text-align: left; transition: border-color .16s ease, background-color .16s ease, transform .16s ease; }
