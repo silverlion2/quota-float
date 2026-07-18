@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Quota Float",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "identifier": "app.quotafloat.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -31,7 +31,9 @@
         "visible": true
       }
     ],
-    "security": { "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:" }
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:"
+    }
   },
   "bundle": {
     "active": true,
@@ -41,13 +43,23 @@
     "shortDescription": "Codex quota at a glance",
     "longDescription": "A lightweight floating desktop card for Codex usage limits.",
     "copyright": "Copyright Quota Float contributors",
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"]
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
   },
   "plugins": {
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVFQkQzMDg3OERGMDA4QTIKUldTaUNQQ05oekM5N2pEQVBjNkRJeEZVczlZWk1TTzVlWHlQYTR3T3Z0R00rODNwM0ErLzU0N1cK",
-      "endpoints": ["https://github.com/silverlion2/quota-float/releases/latest/download/latest.json"],
-      "windows": { "installMode": "passive" }
+      "endpoints": [
+        "https://github.com/silverlion2/quota-float/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }
