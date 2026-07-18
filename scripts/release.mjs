@@ -13,12 +13,11 @@ const CARGO_LOCK = resolve(ROOT, "src-tauri", "Cargo.lock");
 const TAURI_CONFIG = resolve(ROOT, "src-tauri", "tauri.conf.json");
 const CHANGELOG = resolve(ROOT, "CHANGELOG.md");
 
-function executable(name) {
-  return process.platform === "win32" && name === "npm" ? "npm.cmd" : name;
-}
-
 function run(name, args, { capture = false } = {}) {
-  const result = spawnSync(executable(name), args, {
+  const windowsNpm = process.platform === "win32" && name === "npm";
+  const command = windowsNpm ? process.env.ComSpec || "cmd.exe" : name;
+  const commandArgs = windowsNpm ? ["/d", "/s", "/c", "npm", ...args] : args;
+  const result = spawnSync(command, commandArgs, {
     cwd: ROOT,
     encoding: "utf8",
     stdio: capture ? ["ignore", "pipe", "pipe"] : "inherit",
