@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import { assertVersionSync, buildChangelog, nextVersion, updateCargoManifest } from "./release.mjs";
 
 describe("release automation", () => {
@@ -28,5 +29,11 @@ describe("release automation", () => {
     const result = buildChangelog("# Changelog\n\n## 0.1.6 - 2026-07-16\n\n- Previous.\n", "0.1.7", ["Fix updater", "Add retry"], "2026-07-18");
     expect(result.indexOf("## 0.1.7")).toBeLessThan(result.indexOf("## 0.1.6"));
     expect(result).toContain("- Fix updater\n- Add retry");
+  });
+
+  it("publishes a per-user NSIS updater on Windows", () => {
+    const workflow = readFileSync(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
+    expect(workflow).toMatch(/platform: windows-latest\s+args: "--bundles nsis"/);
+    expect(workflow).toMatch(/platform: macos-latest\s+args: "--target universal-apple-darwin --bundles app,dmg"/);
   });
 });

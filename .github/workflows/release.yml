@@ -32,9 +32,9 @@ jobs:
       matrix:
         include:
           - platform: windows-latest
-            args: ""
+            args: "--bundles nsis"
           - platform: macos-latest
-            args: "--target universal-apple-darwin"
+            args: "--target universal-apple-darwin --bundles app,dmg"
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
