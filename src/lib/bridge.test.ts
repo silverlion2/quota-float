@@ -40,4 +40,12 @@ describe("widget transitions", () => {
       "end:collapse_widget",
     ]);
   });
+
+  it("uses dedicated redacted diagnostics and reconnect commands", async () => {
+    const { getVolcengineDiagnostics, reconnectVolcengine } = await import("./bridge");
+    await getVolcengineDiagnostics();
+    await reconnectVolcengine();
+    expect(api.invoke).toHaveBeenCalledWith("get_volcengine_diagnostics");
+    expect(api.invoke).toHaveBeenCalledWith("reconnect_volcengine");
+  });
 });

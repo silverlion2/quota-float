@@ -14,11 +14,13 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run version:check
       - run: npm test
       - run: npm run build
       - run: npm audit --audit-level=high
 
   desktop:
+    needs: frontend
     strategy:
       fail-fast: false
       matrix:

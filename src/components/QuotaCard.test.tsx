@@ -3,7 +3,7 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ProviderSnapshot, WidgetPreferences } from "../types";
+import type { ProviderSnapshot, VolcengineDiagnostics, WidgetPreferences } from "../types";
 import { QuotaCard, QuotaOrb } from "./QuotaCard";
 
 const codex: ProviderSnapshot = {
@@ -44,6 +44,32 @@ const trae: ProviderSnapshot = {
   updatedAt: "2026-07-16T00:00:00Z",
   status: "ok",
   message: null,
+};
+
+const signedOutVolcengine: ProviderSnapshot = {
+  ...codex,
+  provider: "volcengine",
+  displayName: "VOLCENGINE",
+  plan: null,
+  weeklyWindow: null,
+  resetCredits: null,
+  status: "signed_out",
+  message: "Volcengine login expired. Reconnect to continue.",
+};
+
+const diagnostics: VolcengineDiagnostics = {
+  installed: true,
+  executablePath: "~\\AppData\\Roaming\\npm\\arkcli.cmd",
+  executableSource: "npm fallback",
+  stalePath: true,
+  cliVersion: "arkcli version 1.0.3",
+  authenticated: false,
+  authMethod: null,
+  profileName: "coding-plan_personal",
+  profileType: "coding-plan",
+  profileRegion: "cn-beijing",
+  recommendedProfile: true,
+  lastError: "Volcengine login expired. Reconnect to continue.",
 };
 
 const preferences: WidgetPreferences = {
@@ -107,5 +133,150 @@ describe("QuotaCard platform ledger", () => {
   it("shows an unlimited free plan without inventing a numeric quota", () => {
     render(<QuotaOrb snapshot={trae} language="en" onDrag={noop} onHover={noop} />);
     expect(screen.getByLabelText("Unlimited")).toHaveTextContent("∞");
+  });
+
+  it("offers an in-app reconnect action for an expired Volcengine login", () => {
+    const onReconnect = vi.fn();
+    render(
+      <QuotaCard
+        snapshot={signedOutVolcengine}
+        snapshots={[signedOutVolcengine]}
+        preferences={preferences}
+        onSelectProvider={noop}
+        onLock={noop}
+        onLanguage={noop}
+        onDrag={noop}
+        onHover={noop}
+        onReconnect={onReconnect}
+        consumingProviders={new Set()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Reconnect" }));
+    expect(onReconnect).toHaveBeenCalledOnce();
+    expect(screen.getByText("Reconnect VOLCENGINE")).toBeInTheDocument();
+  });
+
+  it("shows only redacted Volcengine diagnostics", () => {
+    render(
+      <QuotaCard
+        snapshot={signedOutVolcengine}
+        snapshots={[signedOutVolcengine]}
+        preferences={preferences}
+        onSelectProvider={noop}
+        onLock={noop}
+        onLanguage={noop}
+        onDrag={noop}
+        onHover={noop}
+        diagnostics={diagnostics}
+        diagnosticsOpen
+        consumingProviders={new Set()}
+      />,
+    );
+
+    expect(screen.getByRole("dialog", { name: "Volcengine connection" })).toBeInTheDocument();
+    expect(screen.getByText(/~\\AppData\\Roaming\\npm\\arkcli\.cmd/)).toBeInTheDocument();
+    expect(screen.queryByText(/refresh_token|ark-[a-z0-9]{8}/i)).not.toBeInTheDocument();
+  });
+
+  it("keeps a downloaded update ready until the user chooses to restart", () => {
+    const onUpdateInstall = vi.fn();
+    const onUpdateLater = vi.fn();
+    render(
+      <QuotaCard
+        snapshot={codex}
+        snapshots={[codex]}
+        preferences={preferences}
+        onSelectProvider={noop}
+        onLock={noop}
+        onLanguage={noop}
+        onDrag={noop}
+        onHover={noop}
+        consumingProviders={new Set()}
+        updateOpen
+        updateState={{
+          phase: "ready",
+          info: { version: "0.2.0", body: "Background updates.", date: null, platform: "windows" },
+          progress: { downloadedBytes: 100, totalBytes: 100, percent: 100 },
+          error: null,
+        }}
+        onUpdateInstall={onUpdateInstall}
+        onUpdateLater={onUpdateLater}
+      />,
+    );
+
+    expect(screen.getByRole("dialog", { name: "Quota Float update" })).toHaveTextContent("0.2.0 is ready");
+    fireEvent.click(screen.getByRole("button", { name: "Later" }));
+    expect(onUpdateLater).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: /Restart and install/i }));
+    expect(onUpdateInstall).toHaveBeenCalledOnce();
+  });
+
+  it("shows when the current Codex window recently reset", () => {
+    render(
+      <QuotaCard
+        snapshot={codex}
+        snapshots={[codex]}
+        preferences={preferences}
+        onSelectProvider={noop}
+        onLock={noop}
+        onLanguage={noop}
+        onDrag={noop}
+        onHover={noop}
+        consumingProviders={new Set()}
+        recentCodexReset={{ detectedAt: "2026-07-18T01:00:00Z", resetAt: "2026-07-18T01:00:00Z", source: "window" }}
+      />,
+    );
+
+    expect(screen.getByText("Recently reset")).toBeInTheDocument();
+  });
+
+  it("reorders quota rows by drag and preserves the resulting order", () => {
+    const onReorderProviders = vi.fn();
+    render(
+      <QuotaCard
+        snapshot={codex}
+        snapshots={[codex, qoder]}
+        preferences={preferences}
+        onSelectProvider={noop}
+        onReorderProviders={onReorderProviders}
+        onLock={noop}
+        onLanguage={noop}
+        onDrag={noop}
+        onHover={noop}
+        consumingProviders={new Set()}
+      />,
+    );
+
+    const codexRow = screen.getByRole("listitem", { name: /Reorder CODEX/i });
+    const traeRow = screen.getByRole("listitem", { name: /Reorder TRAE/i });
+    const dataTransfer = { effectAllowed: "", dropEffect: "", setData: vi.fn(), getData: vi.fn(() => "codex") };
+    fireEvent.dragStart(codexRow, { dataTransfer });
+    fireEvent.dragOver(traeRow, { dataTransfer });
+    vi.spyOn(traeRow, "getBoundingClientRect").mockReturnValue({ top: 0, height: 20 } as DOMRect);
+    fireEvent.drop(traeRow, { dataTransfer, clientY: 1 });
+
+    expect(onReorderProviders).toHaveBeenCalledWith(["qoder", "codex", "trae", "workbuddy", "volcengine"]);
+  });
+
+  it("supports Alt plus arrow keys as a sorting alternative", () => {
+    const onReorderProviders = vi.fn();
+    render(
+      <QuotaCard
+        snapshot={codex}
+        snapshots={[codex, qoder]}
+        preferences={preferences}
+        onSelectProvider={noop}
+        onReorderProviders={onReorderProviders}
+        onLock={noop}
+        onLanguage={noop}
+        onDrag={noop}
+        onHover={noop}
+        consumingProviders={new Set()}
+      />,
+    );
+
+    fireEvent.keyDown(screen.getByRole("listitem", { name: /Reorder CODEX/i }), { key: "ArrowDown", altKey: true });
+    expect(onReorderProviders).toHaveBeenCalledWith(["qoder", "codex", "trae", "workbuddy", "volcengine"]);
   });
 });

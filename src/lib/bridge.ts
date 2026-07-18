@@ -1,6 +1,6 @@
-import type { ProviderSnapshot, WidgetPreferences } from "../types";
+import type { ProviderSnapshot, VolcengineDiagnostics, WidgetPreferences } from "../types";
 
-const defaultPreferences: WidgetPreferences = { locked: false, alwaysOnTop: true, stayExpanded: false, pinnedProvider: null, autoRotateSeconds: 12, language: "zh-CN" };
+const defaultPreferences: WidgetPreferences = { locked: false, alwaysOnTop: true, stayExpanded: false, pinnedProvider: null, providerOrder: ["codex", "qoder", "trae", "workbuddy", "volcengine"], autoRotateSeconds: 12, language: "zh-CN", skippedUpdateVersion: null };
 
 const mockSnapshots: ProviderSnapshot[] = [{
   provider: "codex",
@@ -61,6 +61,21 @@ const mockSnapshots: ProviderSnapshot[] = [{
   message: null,
 }];
 
+const mockVolcengineDiagnostics: VolcengineDiagnostics = {
+  installed: true,
+  executablePath: "~/AppData/Roaming/npm/arkcli.cmd",
+  executableSource: "PATH",
+  stalePath: false,
+  cliVersion: "arkcli version 1.0.3",
+  authenticated: true,
+  authMethod: "sso",
+  profileName: "coding-plan_personal",
+  profileType: "coding-plan",
+  profileRegion: "cn-beijing",
+  recommendedProfile: true,
+  lastError: null,
+};
+
 let widgetTransition: Promise<void> = Promise.resolve();
 
 function enqueueWidgetTransition(operation: () => Promise<void>): Promise<void> {
@@ -75,6 +90,18 @@ export async function fetchSnapshots(force = false): Promise<ProviderSnapshot[]>
   if (!isTauri()) return mockSnapshots;
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<ProviderSnapshot[]>(force ? "refresh_snapshots" : "get_snapshots");
+}
+
+export async function getVolcengineDiagnostics(): Promise<VolcengineDiagnostics> {
+  if (!isTauri()) return mockVolcengineDiagnostics;
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<VolcengineDiagnostics>("get_volcengine_diagnostics");
+}
+
+export async function reconnectVolcengine(): Promise<VolcengineDiagnostics> {
+  if (!isTauri()) return mockVolcengineDiagnostics;
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<VolcengineDiagnostics>("reconnect_volcengine");
 }
 
 export async function getPreferences(): Promise<WidgetPreferences> {

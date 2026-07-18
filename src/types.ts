@@ -28,6 +28,23 @@ export interface WidgetPreferences {
   alwaysOnTop: boolean;
   stayExpanded: boolean;
   pinnedProvider: ProviderId | null;
+  providerOrder?: ProviderId[];
   autoRotateSeconds: number;
   language: Language;
+  skippedUpdateVersion?: string | null;
+}
+
+export interface VolcengineDiagnostics {
+  installed: boolean;
+  executablePath: string | null;
+  executableSource: string | null;
+  stalePath: boolean;
+  cliVersion: string | null;
+  authenticated: boolean;
+  authMethod: string | null;
+  profileName: string | null;
+  profileType: string | null;
+  profileRegion: string | null;
+  recommendedProfile: boolean;
+  lastError: string | null;
 }

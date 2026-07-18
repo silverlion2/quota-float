@@ -9,7 +9,24 @@ permissions:
   contents: write
 
 jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Verify release version matches tag
+        run: npm run version:check -- --tag "$GITHUB_REF_NAME"
+      - run: npm test
+      - run: npm run build
+
   publish:
+    needs: verify
     strategy:
       fail-fast: false
       matrix:
@@ -21,6 +38,8 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -33,8 +52,20 @@ jobs:
         with:
           workspaces: src-tauri
       - run: npm ci
-      - run: npm test
       - run: cargo test --manifest-path src-tauri/Cargo.toml
+      - name: Generate release notes
+        id: release_notes
+        uses: actions/github-script@v7
+        with:
+          result-encoding: string
+          script: |
+            const tag = context.ref.replace("refs/tags/", "");
+            const { data } = await github.rest.repos.generateReleaseNotes({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: tag,
+            });
+            return `${data.body}\n\n## Privacy\n\nQuota Float remains local-first: it reads existing local sign-in state only for quota requests and does not upload prompts, chats, raw quota responses, or local credentials.`;
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -43,17 +74,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: Quota Float v__VERSION__
-          releaseBody: |
-            ## What's new
-
-            - Adds local quota collection for TRAE, WorkBuddy, Volcengine Ark Coding Plan, and Qoder alongside Codex.
-            - Replaces the square detail card with a compact horizontal ledger showing exact values for every detected platform.
-            - Shows Codex weekly quota only while retaining the legacy 5-hour data in the backend for compatibility.
-            - Keeps automatic updates, persistent expansion, edge docking, and transparent rounded-window rendering.
-
-            ## Privacy
-
-            Quota Float remains local-first: it reads existing local sign-in state only for quota requests and does not upload prompts, chats, raw quota responses, or local credentials.
+          releaseBody: ${{ steps.release_notes.outputs.result }}
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}

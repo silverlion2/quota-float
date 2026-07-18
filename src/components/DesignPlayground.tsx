@@ -1,6 +1,7 @@
 import { useMemo, useState, type CSSProperties } from "react";
 import type { ProviderId, ProviderSnapshot, WidgetPreferences } from "../types";
 import { QuotaCard, QuotaOrb } from "./QuotaCard";
+import type { UpdateViewState } from "./UpdatePanel";
 
 const preview: ProviderSnapshot = {
   provider: "codex",
@@ -15,6 +16,7 @@ const preview: ProviderSnapshot = {
   message: null,
 };
 const preferences: WidgetPreferences = { locked: false, alwaysOnTop: true, stayExpanded: false, pinnedProvider: "codex", autoRotateSeconds: 12, language: "en" };
+const sortedPreferences: WidgetPreferences = { ...preferences, providerOrder: ["qoder", "codex", "trae", "workbuddy", "volcengine"] };
 const peerPreviews: ProviderSnapshot[] = [{
   provider: "qoder", displayName: "QODER", plan: "PRO", shortWindow: null, weeklyWindow: null,
   resetCredits: null, balanceRemaining: 1280, balanceUnit: "credits", updatedAt: new Date().toISOString(), status: "ok", message: null,
@@ -33,6 +35,18 @@ const noConsumingProviders = new Set<string>();
 const codexConsuming = new Set<string>(["codex"]);
 const noop = () => undefined;
 const noSelect = (_provider: ProviderId) => undefined;
+
+const readyUpdate: UpdateViewState = {
+  phase: "ready",
+  info: {
+    version: "0.2.0",
+    body: "Background downloads, a clearer update status, and one-command releases.",
+    date: new Date().toISOString(),
+    platform: "windows",
+  },
+  progress: { downloadedBytes: 100, totalBytes: 100, percent: 100 },
+  error: null,
+};
 
 function previewSnapshots(active: ProviderSnapshot): ProviderSnapshot[] {
   return [active, ...peerPreviews];
@@ -122,6 +136,26 @@ export function DesignPlayground() {
               <QuotaCard snapshot={makePreview(mode as PreviewMode)} snapshots={previewSnapshots(makePreview(mode as PreviewMode))} preferences={preferences} onSelectProvider={noSelect} onLock={noop} onToggleStayExpanded={noop} onLanguage={noop} onDrag={noop} onHover={noop} isConsuming={mode === 35} consumingProviders={mode === 35 ? codexConsuming : noConsumingProviders} />
             </div>
           ))}
+        </div>
+      );
+    }
+
+    if (shotKind === "update-ready") {
+      return (
+        <div className="screenshot-stage" style={style}>
+          <div className="design-card-frame">
+            <QuotaCard snapshot={preview} snapshots={previewSnapshots(preview)} preferences={preferences} onSelectProvider={noSelect} onLock={noop} onToggleStayExpanded={noop} onLanguage={noop} onDrag={noop} onHover={noop} consumingProviders={noConsumingProviders} updateOpen updateState={readyUpdate} />
+          </div>
+        </div>
+      );
+    }
+
+    if (shotKind === "reset-sort") {
+      return (
+        <div className="screenshot-stage" style={style}>
+          <div className="design-card-frame">
+            <QuotaCard snapshot={preview} snapshots={previewSnapshots(preview)} preferences={sortedPreferences} onSelectProvider={noSelect} onReorderProviders={noop} onLock={noop} onToggleStayExpanded={noop} onLanguage={noop} onDrag={noop} onHover={noop} consumingProviders={noConsumingProviders} recentCodexReset={{ detectedAt: new Date().toISOString(), resetAt: new Date().toISOString(), source: "window" }} />
+          </div>
         </div>
       );
     }

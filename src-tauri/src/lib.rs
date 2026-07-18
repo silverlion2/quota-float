@@ -242,6 +242,23 @@ async fn refresh_snapshots(state: State<'_, AppState>) -> Result<Vec<ProviderSna
     Ok(fetch_snapshots_uncached(&state).await)
 }
 
+#[tauri::command]
+async fn get_volcengine_diagnostics() -> volcengine::VolcengineDiagnostics {
+    volcengine::diagnostics().await
+}
+
+#[tauri::command]
+async fn reconnect_volcengine(
+    state: State<'_, AppState>,
+) -> Result<volcengine::VolcengineDiagnostics, String> {
+    let _guard = state.fetch_lock.lock().await;
+    volcengine::reconnect().await?;
+    if let Ok(mut cache) = state.snapshot_cache.lock() {
+        *cache = None;
+    }
+    Ok(volcengine::diagnostics().await)
+}
+
 fn clamp_position_to_monitor(
     position: PhysicalPosition<i32>,
     size: PhysicalSize<u32>,
@@ -1191,6 +1208,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_snapshots,
             refresh_snapshots,
+            get_volcengine_diagnostics,
+            reconnect_volcengine,
             expand_widget,
             collapse_widget,
             begin_widget_drag,

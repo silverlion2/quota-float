@@ -1,84 +1,64 @@
-# GitHub 发布与分享清单
+# GitHub 发布清单
 
-## 需要提前安装或准备什么
+## 最省事的发布方式
 
-本机 Windows 不需要安装 macOS 构建工具，也不能直接构建 macOS 安装包。macOS 包由 GitHub Actions 的 `macos-latest` runner 构建。
-
-本机需要：
-
-- Git
-- Node.js 20+
-- Rust stable
-- npm 依赖已安装
-
-GitHub 需要：
-
-- 一个 GitHub 仓库
-- GitHub Actions 已启用
-- 代码已推送到默认分支
-
-macOS Universal 构建需要的 Rust targets 已经在 CI/release workflow 中自动安装：
+在干净、已同步远端的 `main` 分支运行：
 
 ```bash
-rustup target add aarch64-apple-darwin x86_64-apple-darwin
+npm run release -- patch
 ```
 
-你不需要在 Windows 本机安装这两个 target。
+也可以把 `patch` 换成 `minor`、`major` 或明确版本号，例如 `0.2.0`。
 
-## 第一次上传到 GitHub
+脚本会自动完成：
 
-如果本地仓库还没有 remote，先在 GitHub 创建一个空仓库，然后执行：
+- 确认当前分支为 `main`，工作区干净且没有落后于 `origin/main`。
+- 检查 `package.json`、Cargo 和 Tauri 配置中的版本是否一致。
+- 显示从上一个 tag 至今的提交，并在真正修改前要求确认。
+- 运行前端测试、前端构建和 Rust 测试。
+- 同步所有版本文件并更新 `CHANGELOG.md`。
+- 创建 release commit 和带说明的 `v*` tag。
+- 推送 `main` 和 tag，由 GitHub Actions 构建 Windows、macOS 和更新器文件。
+- 自动生成 release notes，并直接发布 GitHub Release。
+
+首次使用或想先确认流程时，运行只读预演：
 
 ```bash
-git remote add origin https://github.com/<owner>/<repo>.git
-git branch -M main
-git add .
-git commit -m "Prepare Windows and macOS unsigned release"
-git push -u origin main
+npm run release -- patch --dry-run
 ```
 
-如果已经有 remote，只需要：
+如需只在本地生成 commit 和 tag、暂不上传：
 
 ```bash
-git add .
-git commit -m "Prepare Windows and macOS unsigned release"
-git push origin main
+npm run release -- patch --no-push
 ```
 
-## 生成可分享版本
+## 发布前只需确认
 
-推送 `v*` tag 会触发 release workflow：
+- Git、Node.js 20+、Rust stable 和 npm 依赖可用。
+- GitHub Actions 已启用。
+- 仓库 Secrets 已配置 `TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。
+- 准备发布的代码已经合入并推送到 `main`。
 
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
+macOS Universal target 会由 GitHub Actions 自动安装，本地 Windows 不需要配置 macOS 工具链。
 
-构建完成后，到 GitHub 仓库的 Releases 页面检查 draft release。附件应包含：
+## 发布后检查
 
-- `quota-float-windows-unsigned.zip`
-- `quota-float-macos-universal-unsigned.zip`
+打开 GitHub Releases，确认本次版本包含：
 
-确认无误后点击 Publish release，然后把 Release 链接发给用户。
+- Windows `.exe` 或 `.msi` 安装包。
+- macOS Universal `.dmg`。
+- Windows 更新器归档及签名。
+- `latest.json`。
+- 根据提交自动生成的版本说明。
 
-## 发给 Mac 用户时的说明
+应用内更新中心会静默检查新版本。Windows 会后台下载签名更新，用户可选择稍后重启安装；macOS 会打开对应的 GitHub Releases 下载页。
 
-当前 macOS 包是 unsigned 包。用户首次打开可能会被 Gatekeeper 拦截，可以这样打开：
+## 面向公开用户分发
 
-1. 下载 `quota-float-macos-universal-unsigned.zip`。
-2. 解压后把应用拖到 Applications 或任意测试目录。
-3. 右键点击应用，选择 Open。
-4. 在系统提示里再次选择 Open。
-5. 如果仍被拦截，到 System Settings -> Privacy & Security 里允许打开。
+Tauri 更新包已有项目更新密钥签名，但操作系统信任还需要额外证书：
 
-## 以后公开分发还需要什么
+- Windows 代码签名证书可减少 SmartScreen 提示。
+- Apple Developer ID、Team ID、app-specific password 和 notarization 可减少 Gatekeeper 提示。
 
-如果要面向非技术用户公开分发，建议补：
-
-- Windows 代码签名证书。
-- Apple Developer ID Application 证书。
-- Apple Team ID。
-- Apple app-specific password。
-- GitHub Secrets 中的签名和公证配置。
-
-这些账号、证书和密码不能由代码生成，需要项目所有者申请或购买。
+这些账号、证书和密码需要项目所有者申请或购买，并通过 GitHub Secrets 配置，不能由发布脚本生成。

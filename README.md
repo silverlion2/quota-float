@@ -12,9 +12,11 @@ Lightweight floating desktop widget for checking coding-assistant quotas from ex
 - Uses clear quota states for healthy, caution, and critical remaining usage.
 - Collapses into a small floating orb when idle, then expands on hover.
 - Indicates whether quota is currently being consumed.
+- Detects when the Codex weekly window has recently reset using window timing and observed quota recovery.
+- Lets you drag platform rows into a preferred order; the order persists and also controls automatic rotation.
 - Includes persistent expansion, always-on-top controls, and localized tray actions.
 - Falls back to a clearly marked weekly-quota view when the 5-hour window is unavailable.
-- Checks for app updates automatically and supports signed in-app updates on Windows.
+- Checks for app updates automatically, downloads signed Windows updates in the background, and lets you restart when convenient.
 - Shows reset credit count and available reset-credit expiration times when the quota service provides them.
 - Handles stale data, signed-out sessions, unavailable quota responses, and loading states without fabricating values.
 
@@ -125,6 +127,20 @@ GitHub Actions are configured for:
 
 - CI on push/PR: frontend tests, Rust tests, web build, Tauri build.
 - `v*` tags: Windows and macOS Universal installers, updater signatures, `latest.json`, and a public GitHub Release.
+
+For maintainers, a release is one command from a clean, up-to-date `main` branch:
+
+```bash
+npm run release -- patch
+```
+
+Use `minor`, `major`, or an exact version in place of `patch`. The command checks the branch and version files, shows the commits being released, asks for confirmation, runs frontend and Rust verification, updates every version source and `CHANGELOG.md`, then commits, tags, and pushes. To inspect everything without changing files, run:
+
+```bash
+npm run release -- patch --dry-run
+```
+
+To prepare a local release commit and tag without pushing them, use `--no-push`.
 
 See [docs/GITHUB-RELEASE-CHECKLIST.md](docs/GITHUB-RELEASE-CHECKLIST.md) before publishing a version for others.
 
