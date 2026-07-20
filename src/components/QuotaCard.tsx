@@ -1,11 +1,11 @@
-import { ArrowClockwise, ArrowsInSimple, ArrowsOutSimple, CheckCircle, ClockCounterClockwise, CloudArrowDown, CloudSlash, DotsSixVertical, GearSix, Pulse, PushPin, PushPinSlash, SignIn, SpinnerGap, WarningCircle, X } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowsInSimple, ArrowsOutSimple, CheckCircle, ClockCounterClockwise, CloudArrowDown, CloudSlash, DotsSixVertical, Gauge, GearSix, Pulse, PushPin, PushPinSlash, SignIn, SpinnerGap, WarningCircle, X } from "@phosphor-icons/react";
 import { memo, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { clampPercent, formatDateTime, formatResetDate, formatResetTime, quotaTier } from "../lib/format";
-import { copy, normalizeLanguage } from "../lib/i18n";
+import { copy, normalizeLanguage, resetForecastLabel, resetForecastTitle } from "../lib/i18n";
 import { normalizeProviderOrder, PROVIDER_CATALOG, type ProviderDefinition } from "../lib/providers";
 import { calculateQuotaPace, trackedQuotaWindows, type NamedQuotaWindow, type QuotaPace, type QuotaPeriod } from "../lib/quotaPace";
 import type { RecentCodexReset } from "../lib/resetDetection";
-import type { Language, ProviderId, ProviderSnapshot, VolcengineDiagnostics, WidgetPreferences } from "../types";
+import type { Language, ProviderId, ProviderSnapshot, ResetForecast, VolcengineDiagnostics, WidgetPreferences } from "../types";
 import { ProviderMark } from "./ProviderMark";
 import { EMPTY_UPDATE_STATE, UpdatePanel, type UpdateViewState } from "./UpdatePanel";
 
@@ -29,6 +29,8 @@ interface Props {
   diagnosticsLoading?: boolean;
   reconnecting?: boolean;
   recentCodexReset?: RecentCodexReset | null;
+  resetForecast?: ResetForecast | null;
+  onOpenResetForecast?: (url: string) => void;
   updateState?: UpdateViewState;
   updateOpen?: boolean;
   onUpdateOpen?: () => void;
@@ -337,6 +339,8 @@ export const QuotaCard = memo(function QuotaCard({
   diagnosticsLoading = false,
   reconnecting = false,
   recentCodexReset = null,
+  resetForecast = null,
+  onOpenResetForecast = () => undefined,
   updateState = EMPTY_UPDATE_STATE,
   updateOpen = false,
   onUpdateOpen = () => undefined,
@@ -411,6 +415,7 @@ export const QuotaCard = memo(function QuotaCard({
     return normalizeProviderOrder(preferences.providerOrder).filter((provider) => !preferences.hiddenProviders.includes(provider)).map((provider) => byProvider.get(provider)!);
   }, [preferences.hiddenProviders, preferences.providerOrder]);
   const resetMarker = snapshot.provider === "codex" && snapshot.status === "ok" ? recentCodexReset : null;
+  const visibleResetForecast = snapshot.provider === "codex" ? resetForecast : null;
 
   const commitProviderOrder = (source: ProviderId, target: ProviderId, after = false) => {
     const order = providerDefinitions.map((definition) => definition.id);
@@ -514,6 +519,19 @@ export const QuotaCard = memo(function QuotaCard({
             <div className="metric-context">
               {snapshot.status !== "stale" ? <p className="updated">{metricTitle}</p> : null}
               {resetMarker ? <span className="recent-reset" title={t.resetDetectedAt(formatDateTime(resetMarker.resetAt, language))}><ClockCounterClockwise weight="bold" />{t.recentlyReset}</span> : null}
+              {visibleResetForecast ? (
+                <button
+                  type="button"
+                  className={`reset-forecast${visibleResetForecast.resetAnnounced ? " reset-forecast--announced" : ""}`}
+                  title={resetForecastTitle(language)}
+                  aria-label={resetForecastTitle(language)}
+                  onMouseDown={(event) => event.stopPropagation()}
+                  onClick={() => onOpenResetForecast(visibleResetForecast.sourceUrl)}
+                >
+                  <Gauge weight="bold" />
+                  {resetForecastLabel(language, visibleResetForecast.score, visibleResetForecast.windowHours, visibleResetForecast.resetAnnounced)}
+                </button>
+              ) : null}
             </div>
           </div>
         </header>

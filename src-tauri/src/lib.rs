@@ -1,6 +1,7 @@
 mod codex;
 mod models;
 mod qoder;
+mod reset_forecast;
 mod trae;
 mod volcengine;
 mod workbuddy;
@@ -419,6 +420,13 @@ async fn get_snapshots(state: State<'_, AppState>) -> Result<Vec<ProviderSnapsho
 #[tauri::command]
 async fn refresh_snapshots(state: State<'_, AppState>) -> Result<Vec<ProviderSnapshot>, String> {
     Ok(fetch_snapshots_uncached(&state).await)
+}
+
+#[tauri::command]
+async fn get_codex_reset_forecast(
+    state: State<'_, AppState>,
+) -> Result<Option<reset_forecast::ResetForecast>, String> {
+    Ok(reset_forecast::fetch(&state.client).await)
 }
 
 #[tauri::command]
@@ -1412,6 +1420,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_snapshots,
             refresh_snapshots,
+            get_codex_reset_forecast,
             get_volcengine_diagnostics,
             reconnect_volcengine,
             expand_widget,

@@ -3,7 +3,7 @@ import { QuotaCard, QuotaOrb } from "./components/QuotaCard";
 import { ControlCenter } from "./components/ControlCenter";
 import { EMPTY_UPDATE_STATE } from "./components/UpdatePanel";
 import type { UpdateViewState } from "./components/UpdatePanel";
-import { createAutomaticBackup, exportAppData, fetchSnapshots, getAppDiagnostics, getAutostartEnabled, getPreferences, getRuntimeState, getVolcengineDiagnostics, importAppData, listenDesktopEvents, reconnectVolcengine, restoreLatestBackup, sendDesktopNotification, setAlwaysOnTop, setAutostartEnabled, setWidgetExpanded, startDragging, updatePreferences, updateRuntimeState } from "./lib/bridge";
+import { createAutomaticBackup, exportAppData, fetchCodexResetForecast, fetchSnapshots, getAppDiagnostics, getAutostartEnabled, getPreferences, getRuntimeState, getVolcengineDiagnostics, importAppData, listenDesktopEvents, openExternalUrl, reconnectVolcengine, restoreLatestBackup, sendDesktopNotification, setAlwaysOnTop, setAutostartEnabled, setWidgetExpanded, startDragging, updatePreferences, updateRuntimeState } from "./lib/bridge";
 import { needsFastRefresh } from "./lib/format";
 import { checkForAppUpdate, discardAppUpdate, downloadAppUpdate, installAppUpdate, openReleasePage } from "./lib/appUpdate";
 import type { AppUpdateInfo } from "./lib/appUpdate";
@@ -16,7 +16,7 @@ import { mergeSnapshots } from "./lib/snapshots";
 import { canSendNotification, EMPTY_RUNTIME_STATE, isQuietHour, normalizeRuntimeState, recordSnapshotActivity } from "./lib/activity";
 import { DEFAULT_WIDGET_PREFERENCES, normalizeWidgetPreferences } from "./lib/preferences";
 import { loadStartupState } from "./lib/startup";
-import type { AppDiagnostics, ProviderId, ProviderSnapshot, RuntimeState, VolcengineDiagnostics, WidgetPreferences } from "./types";
+import type { AppDiagnostics, ProviderId, ProviderSnapshot, ResetForecast, RuntimeState, VolcengineDiagnostics, WidgetPreferences } from "./types";
 
 const DEFAULT_PREFS = DEFAULT_WIDGET_PREFERENCES;
 
@@ -29,6 +29,7 @@ function errorMessage(error: unknown, fallback: string): string {
 export default function App() {
   const [snapshots, setSnapshots] = useState<ProviderSnapshot[]>([]);
   const [recentCodexReset, setRecentCodexReset] = useState<RecentCodexReset | null>(null);
+  const [codexResetForecast, setCodexResetForecast] = useState<ResetForecast | null>(null);
   const [preferences, setPreferences] = useState(DEFAULT_PREFS);
   const [activeIndex, setActiveIndex] = useState(0);
   const [hovered, setHovered] = useState(false);
@@ -126,7 +127,11 @@ export default function App() {
 
   const refresh = useCallback(async (force = false) => {
     try {
-      const values = await fetchSnapshots(force);
+      const [values, forecast] = await Promise.all([
+        fetchSnapshots(force),
+        fetchCodexResetForecast().catch(() => null),
+      ]);
+      setCodexResetForecast(forecast);
       const hasFailure = values.some((item) => item.status !== "ok");
       if (hasFailure) failures.current += 1;
       else failures.current = 0;
@@ -473,6 +478,8 @@ export default function App() {
       diagnosticsLoading={diagnosticsLoading}
       reconnecting={reconnecting}
       recentCodexReset={recentCodexReset}
+      resetForecast={codexResetForecast}
+      onOpenResetForecast={(url) => void openExternalUrl(url).catch(() => setOperationError("Reset forecast could not be opened."))}
       updateState={updateState}
       updateOpen={updateOpen}
       onUpdateOpen={handleUpdateOpen}

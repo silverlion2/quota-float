@@ -1,4 +1,4 @@
-import type { AppDiagnostics, ProviderSnapshot, RuntimeState, VolcengineDiagnostics, WidgetPreferences } from "../types";
+import type { AppDiagnostics, ProviderSnapshot, ResetForecast, RuntimeState, VolcengineDiagnostics, WidgetPreferences } from "../types";
 import { EMPTY_RUNTIME_STATE, normalizeRuntimeState } from "./activity";
 import { DEFAULT_WIDGET_PREFERENCES } from "./preferences";
 
@@ -100,6 +100,27 @@ export async function fetchSnapshots(force = false): Promise<ProviderSnapshot[]>
   if (!isTauri()) return mockSnapshots;
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<ProviderSnapshot[]>(force ? "refresh_snapshots" : "get_snapshots");
+}
+
+export async function fetchCodexResetForecast(): Promise<ResetForecast | null> {
+  if (!isTauri()) return {
+    score: 62,
+    windowHours: 48,
+    fetchedAt: new Date().toISOString(),
+    resetAnnounced: false,
+    sourceUrl: "https://www.willcodexquotareset.com/",
+  };
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<ResetForecast | null>("get_codex_reset_forecast");
+}
+
+export async function openExternalUrl(url: string): Promise<void> {
+  if (!isTauri()) {
+    window.open(url, "_blank", "noopener,noreferrer");
+    return;
+  }
+  const { openUrl } = await import("@tauri-apps/plugin-opener");
+  await openUrl(url);
 }
 
 export async function getVolcengineDiagnostics(): Promise<VolcengineDiagnostics> {

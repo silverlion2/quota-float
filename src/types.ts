@@ -26,6 +26,14 @@ export interface ProviderSnapshot {
   message: string | null;
 }
 
+export interface ResetForecast {
+  score: number;
+  windowHours: number;
+  fetchedAt: string;
+  resetAnnounced: boolean;
+  sourceUrl: string;
+}
+
 export interface WidgetPreferences {
   locked: boolean;
   alwaysOnTop: boolean;

@@ -99,6 +99,35 @@ const noop = () => undefined;
 afterEach(cleanup);
 
 describe("QuotaCard platform ledger", () => {
+  it("shows the live Codex reset forecast and opens its source", () => {
+    const onOpenResetForecast = vi.fn();
+    render(
+      <QuotaCard
+        snapshot={codex}
+        snapshots={[codex]}
+        preferences={preferences}
+        onSelectProvider={noop}
+        onLock={noop}
+        onLanguage={noop}
+        onDrag={noop}
+        onHover={noop}
+        consumingProviders={new Set()}
+        resetForecast={{
+          score: 92,
+          windowHours: 48,
+          fetchedAt: "2026-07-20T18:14:26.948Z",
+          resetAnnounced: false,
+          sourceUrl: "https://www.willcodexquotareset.com/",
+        }}
+        onOpenResetForecast={onOpenResetForecast}
+      />,
+    );
+
+    expect(screen.getByText("48h chance · 92%")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Unofficial reset likelihood/i }));
+    expect(onOpenResetForecast).toHaveBeenCalledWith("https://www.willcodexquotareset.com/");
+  });
+
   it("lists real platform values and selects a connected platform", () => {
     const onSelectProvider = vi.fn();
     render(

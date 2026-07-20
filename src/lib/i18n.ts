@@ -240,3 +240,14 @@ export function normalizeLanguage(value: unknown): Language {
 export function nextLanguage(language: Language): Language {
   return language === "en" ? "zh-CN" : "en";
 }
+
+export function resetForecastLabel(language: Language, score: number, hours: number, announced: boolean): string {
+  if (language === "en") return announced ? "Reset announced" : `${hours}h chance · ${score}%`;
+  return announced ? "已宣布重置" : `${hours}小时概率 · ${score}%`;
+}
+
+export function resetForecastTitle(language: Language): string {
+  return language === "en"
+    ? "Unofficial reset likelihood from Will Codex Reset? Open the forecast source."
+    : "来自 Will Codex Reset? 的非官方重置概率。打开来源。";
+}
