@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1 - 2026-07-20
+
+- feat: add quota pace guidance
+
 ## 0.2.0 - 2026-07-18
 
 - feat: add quota control center and resilient updates
