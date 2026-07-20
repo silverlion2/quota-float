@@ -13,6 +13,7 @@ export interface QuotaPace {
   status: QuotaPaceStatus;
   usedPercent: number;
   recommendedUsedPercent: number | null;
+  todayRemainingPercent: number | null;
   overByPercent: number;
   averageRate: number;
   unit: QuotaPaceUnit;
@@ -25,6 +26,12 @@ const CLOCK_TOLERANCE_MS = 2 * 60_000;
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
+}
+
+function endOfLocalDay(now: Date): number {
+  const end = new Date(now);
+  end.setHours(24, 0, 0, 0);
+  return end.getTime();
 }
 
 export function providerQuotaWindows(snapshot: ProviderSnapshot): NamedQuotaWindow[] {
@@ -55,6 +62,7 @@ export function calculateQuotaPace(window: UsageWindow, now = new Date()): Quota
       status: usedPercent <= SCHEDULE_TOLERANCE_PERCENT ? "on_track" : "unknown",
       usedPercent,
       recommendedUsedPercent: null,
+      todayRemainingPercent: null,
       overByPercent: 0,
       averageRate,
       unit,
@@ -64,15 +72,19 @@ export function calculateQuotaPace(window: UsageWindow, now = new Date()): Quota
   const startsAt = resetAt - durationMs;
   const nowMs = now.getTime();
   if (nowMs < startsAt - CLOCK_TOLERANCE_MS || nowMs > resetAt + CLOCK_TOLERANCE_MS) {
-    return { status: "unknown", usedPercent, recommendedUsedPercent: null, overByPercent: 0, averageRate, unit };
+    return { status: "unknown", usedPercent, recommendedUsedPercent: null, todayRemainingPercent: null, overByPercent: 0, averageRate, unit };
   }
 
   const recommendedUsedPercent = clamp(((nowMs - startsAt) / durationMs) * 100, 0, 100);
+  const planningHorizon = Math.min(resetAt, endOfLocalDay(now));
+  const recommendedUsedByHorizon = clamp(((planningHorizon - startsAt) / durationMs) * 100, 0, 100);
+  const todayRemainingPercent = clamp(recommendedUsedByHorizon - usedPercent, 0, 100 - usedPercent);
   const overByPercent = Math.max(0, usedPercent - recommendedUsedPercent);
   return {
     status: overByPercent <= SCHEDULE_TOLERANCE_PERCENT ? "on_track" : "over_pace",
     usedPercent,
     recommendedUsedPercent,
+    todayRemainingPercent,
     overByPercent,
     averageRate,
     unit,

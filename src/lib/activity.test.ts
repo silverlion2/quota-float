@@ -49,7 +49,7 @@ describe("activity timeline and notification policy", () => {
     const update = recordSnapshotActivity(
       EMPTY_RUNTIME_STATE,
       [volcengine(100)],
-      [volcengine(90)],
+      [volcengine(99)],
       null,
       15,
       new Date("2026-07-19T00:00:00Z"),
@@ -89,13 +89,74 @@ describe("activity timeline and notification policy", () => {
     const update = recordSnapshotActivity(
       EMPTY_RUNTIME_STATE,
       [snapshot(100)],
+      [snapshot(80)],
+      null,
+      15,
+      new Date("2026-07-19T02:00:00Z"),
+    );
+    expect(update.createdEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "warning", provider: "codex", title: "CODEX usage is over pace", detail: expect.stringContaining("remains in today's plan") }),
+    ]));
+    expect(update.notificationCandidates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: "pace:codex:weekly" }),
+    ]));
+  });
+
+  it("repeats an over-pace notification after cooldown without duplicating the activity log", () => {
+    const current = {
+      ...EMPTY_RUNTIME_STATE,
+      lastNotifications: { "pace:codex:weekly": "2026-07-18T23:00:00Z" },
+    };
+    const update = recordSnapshotActivity(
+      current,
+      [snapshot(80)],
+      [snapshot(79)],
+      null,
+      15,
+      new Date("2026-07-19T02:00:00Z"),
+      "en",
+      120,
+    );
+    expect(update.createdEvents.filter((item) => item.kind === "warning")).toHaveLength(0);
+    expect(update.notificationCandidates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: "pace:codex:weekly", event: expect.objectContaining({ title: "CODEX usage is over pace" }) }),
+    ]));
+  });
+
+  it("does not repeat an over-pace notification before cooldown expires", () => {
+    const current = {
+      ...EMPTY_RUNTIME_STATE,
+      lastNotifications: { "pace:codex:weekly": "2026-07-19T01:30:00Z" },
+    };
+    const update = recordSnapshotActivity(
+      current,
+      [snapshot(80)],
+      [snapshot(79)],
+      null,
+      15,
+      new Date("2026-07-19T02:00:00Z"),
+      "en",
+      120,
+    );
+    expect(update.notificationCandidates.some((item) => item.key === "pace:codex:weekly")).toBe(false);
+  });
+
+  it("escalates immediately when today's planned quota reaches zero", () => {
+    const update = recordSnapshotActivity(
+      EMPTY_RUNTIME_STATE,
+      [snapshot(80)],
       [snapshot(50)],
       null,
       15,
-      new Date("2026-07-19T01:00:00Z"),
+      new Date("2026-07-19T02:00:00Z"),
+      "en",
+      120,
     );
     expect(update.createdEvents).toEqual(expect.arrayContaining([
-      expect.objectContaining({ kind: "warning", provider: "codex", title: "CODEX usage is over pace" }),
+      expect.objectContaining({ title: "CODEX today's pace budget is used up", detail: expect.stringContaining("0% remains in today's plan") }),
+    ]));
+    expect(update.notificationCandidates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: "pace-zero:codex:weekly" }),
     ]));
   });
 

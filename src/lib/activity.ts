@@ -1,7 +1,7 @@
 import type { ActivityEvent, Language, ProviderId, ProviderSnapshot, QuotaHistoryPoint, RuntimeState } from "../types";
 import type { RecentCodexReset } from "./resetDetection";
 import { DEFAULT_PROVIDER_ORDER, normalizeProviderOrder } from "./providers";
-import { mostOverPaceWindow, trackedQuotaWindows } from "./quotaPace";
+import { calculateQuotaPace, mostOverPaceWindow, trackedQuotaWindows, type NamedQuotaWindow, type QuotaPace } from "./quotaPace";
 
 export const EMPTY_RUNTIME_STATE: RuntimeState = {
   schemaVersion: 1,
@@ -109,6 +109,44 @@ function event(kind: ActivityEvent["kind"], provider: ProviderId | null, occurre
 export interface RuntimeUpdate {
   state: RuntimeState;
   createdEvents: ActivityEvent[];
+  notificationCandidates: Array<{ key: string; event: ActivityEvent }>;
+}
+
+function pacePeriodLabel(period: NamedQuotaWindow["period"], language: Language): string {
+  if (language === "zh-CN") return period === "5h" ? "5 小时" : period === "weekly" ? "周度" : "月度";
+  return period === "5h" ? "5-hour" : period;
+}
+
+function paceReminderEvent(
+  snapshot: ProviderSnapshot,
+  period: NamedQuotaWindow["period"],
+  pace: QuotaPace,
+  occurredAt: string,
+  language: Language,
+): ActivityEvent {
+  const periodLabel = pacePeriodLabel(period, language);
+  const todayRemaining = pace.todayRemainingPercent ?? 0;
+  const depleted = todayRemaining <= 0.05;
+  if (language === "zh-CN") {
+    return event(
+      "warning",
+      snapshot.provider,
+      occurredAt,
+      depleted ? `${snapshot.displayName} 今日计划额度已用完` : `${snapshot.displayName} 用量进度偏快`,
+      depleted
+        ? `${periodLabel}额度已超出当前计划 ${pace.overByPercent.toFixed(1)}%；今日计划还可用 0%，建议暂停使用，等待计划进度追上。`
+        : `${periodLabel}额度已超出当前计划 ${pace.overByPercent.toFixed(1)}%；今日计划还可用 ${todayRemaining.toFixed(1)}%。`,
+    );
+  }
+  return event(
+    "warning",
+    snapshot.provider,
+    occurredAt,
+    depleted ? `${snapshot.displayName} today's pace budget is used up` : `${snapshot.displayName} usage is over pace`,
+    depleted
+      ? `${periodLabel} usage is ${pace.overByPercent.toFixed(1)}% ahead of plan; 0% remains in today's plan. Pause usage until the plan catches up.`
+      : `${periodLabel} usage is ${pace.overByPercent.toFixed(1)}% ahead of plan; ${todayRemaining.toFixed(1)}% remains in today's plan.`,
+  );
 }
 
 export function recordSnapshotActivity(
@@ -119,6 +157,7 @@ export function recordSnapshotActivity(
   alertThreshold: number,
   now = new Date(),
   language: Language = "en",
+  notificationCooldownMinutes = 120,
 ): RuntimeUpdate {
   const occurredAt = now.toISOString();
   const previousByProvider = new Map(previousSnapshots.map((snapshot) => [snapshot.provider, snapshot]));
@@ -130,6 +169,8 @@ export function recordSnapshotActivity(
 
   const additions: QuotaHistoryPoint[] = [];
   const createdEvents: ActivityEvent[] = [];
+  const notificationKeyOverrides = new Map<ActivityEvent, string>();
+  const repeatedNotifications: Array<{ key: string; event: ActivityEvent }> = [];
   for (const snapshot of nextSnapshots) {
     const value = metric(snapshot);
     const point: QuotaHistoryPoint = { provider: snapshot.provider, capturedAt: occurredAt, status: snapshot.status, ...value };
@@ -168,26 +209,31 @@ export function recordSnapshotActivity(
         }
       }
       const nextPace = mostOverPaceWindow(snapshot, now);
-      const previousPace = mostOverPaceWindow(previous, now);
-      if (nextPace && !previousPace) {
-        const period = language === "zh-CN"
-          ? nextPace.period === "5h" ? "5 小时" : nextPace.period === "weekly" ? "周度" : "月度"
-          : nextPace.period === "5h" ? "5-hour" : nextPace.period;
-        createdEvents.push(event(
-          "warning",
-          snapshot.provider,
-          occurredAt,
-          language === "zh-CN" ? `${snapshot.displayName} 用量进度偏快` : `${snapshot.displayName} usage is over pace`,
-          language === "zh-CN"
-            ? `${period}用量超出平均周期建议 ${nextPace.pace.overByPercent.toFixed(1)}%。`
-            : `${period} usage is ${nextPace.pace.overByPercent.toFixed(1)}% ahead of the even-cycle recommendation.`,
-        ));
+      if (nextPace) {
+        const previousWindow = trackedQuotaWindows(previous).find((item) => item.period === nextPace.period);
+        const previousPace = previousWindow ? calculateQuotaPace(previousWindow.window, now) : null;
+        const wasOverPace = previousPace?.status === "over_pace";
+        const isDepleted = (nextPace.pace.todayRemainingPercent ?? 0) <= 0.05;
+        const wasDepleted = wasOverPace && (previousPace?.todayRemainingPercent ?? 0) <= 0.05;
+        const key = `pace${isDepleted ? "-zero" : ""}:${snapshot.provider}:${nextPace.period}`;
+        const reminder = paceReminderEvent(snapshot, nextPace.period, nextPace.pace, occurredAt, language);
+        if (!wasOverPace || (isDepleted && !wasDepleted)) {
+          createdEvents.push(reminder);
+          notificationKeyOverrides.set(reminder, key);
+        } else if (canSendNotification(current, key, notificationCooldownMinutes, now)) {
+          repeatedNotifications.push({ key, event: reminder });
+        }
       }
     }
   }
   if (recentReset && !current.events.some((item) => item.kind === "reset" && item.occurredAt === recentReset.resetAt)) {
     createdEvents.push(event("reset", "codex", recentReset.resetAt, "Codex quota reset", `Detected from ${recentReset.source} data.`));
   }
+
+  const notificationCandidates = createdEvents.map((item) => ({
+    key: notificationKeyOverrides.get(item) ?? `${item.kind}:${item.provider ?? "app"}`,
+    event: item,
+  }));
 
   return {
     state: {
@@ -196,6 +242,7 @@ export function recordSnapshotActivity(
       events: [...createdEvents, ...current.events].slice(0, 200),
     },
     createdEvents,
+    notificationCandidates: [...notificationCandidates, ...repeatedNotifications],
   };
 }
 

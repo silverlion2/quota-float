@@ -156,13 +156,14 @@ export default function App() {
         detectedReset = detected;
         setRecentCodexReset((current) => detected ?? (isRecentCodexReset(current, now) ? current : null));
       }
-      const activity = recordSnapshotActivity(runtimeStateRef.current, snapshotsRef.current, values, detectedReset, preferencesRef.current.alertThreshold, now, preferencesRef.current.language);
+      const activity = recordSnapshotActivity(runtimeStateRef.current, snapshotsRef.current, values, detectedReset, preferencesRef.current.alertThreshold, now, preferencesRef.current.language, preferencesRef.current.notificationCooldownMinutes);
       let nextRuntimeState = activity.state;
       const notificationPreferences = preferencesRef.current;
       if (notificationPreferences.notificationsEnabled && !isQuietHour(now.getHours(), notificationPreferences.quietHoursStart, notificationPreferences.quietHoursEnd)) {
-        for (const item of activity.createdEvents) {
+        for (const candidate of activity.notificationCandidates) {
+          const item = candidate.event;
           const enabled = item.kind === "reset" ? notificationPreferences.notifyOnReset : item.kind === "recovered" ? notificationPreferences.notifyOnRecovery : item.kind === "quota" || item.kind === "warning";
-          const key = `${item.kind}:${item.provider ?? "app"}`;
+          const key = candidate.key;
           if (!enabled || !canSendNotification(nextRuntimeState, key, notificationPreferences.notificationCooldownMinutes, now)) continue;
           if (await sendDesktopNotification(item.title, item.detail).catch(() => false)) {
             nextRuntimeState = { ...nextRuntimeState, lastNotifications: { ...nextRuntimeState.lastNotifications, [key]: now.toISOString() } };

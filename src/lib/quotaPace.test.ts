@@ -10,6 +10,7 @@ describe("quota pace", () => {
     );
     expect(pace.status).toBe("on_track");
     expect(pace.recommendedUsedPercent).toBeCloseTo(40);
+    expect(pace.todayRemainingPercent).toBeCloseTo(90);
     expect(pace.averageRate).toBeCloseTo(20);
     expect(pace.unit).toBe("hour");
   });
@@ -21,6 +22,7 @@ describe("quota pace", () => {
     );
     expect(pace.status).toBe("over_pace");
     expect(pace.recommendedUsedPercent).toBeCloseTo(28.571, 2);
+    expect(pace.todayRemainingPercent).toBe(0);
     expect(pace.overByPercent).toBeCloseTo(21.429, 2);
     expect(pace.averageRate).toBeCloseTo(14.286, 2);
     expect(pace.unit).toBe("day");
@@ -30,6 +32,17 @@ describe("quota pace", () => {
     const pace = calculateQuotaPace({ remainingPercent: 100, resetsAt: null, windowSeconds: 18_000 });
     expect(pace.status).toBe("on_track");
     expect(pace.recommendedUsedPercent).toBeNull();
+    expect(pace.todayRemainingPercent).toBeNull();
+  });
+
+  it("reports how much of the even-cycle plan remains through local midnight", () => {
+    const startsAt = new Date(2026, 6, 20, 0, 0, 0);
+    const resetsAt = new Date(startsAt.getTime() + 7 * 86_400_000);
+    const pace = calculateQuotaPace(
+      { remainingPercent: 90, resetsAt: resetsAt.toISOString(), windowSeconds: 604_800 },
+      new Date(2026, 6, 22, 12, 0, 0),
+    );
+    expect(pace.todayRemainingPercent).toBeCloseTo(32.857, 2);
   });
 
   it("tracks only the weekly Codex window even when compatibility data includes 5h", () => {

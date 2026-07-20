@@ -58,7 +58,7 @@ function StatusIcon({ status, expired = false }: { status: ProviderSnapshot["sta
 function QuotaPaceHint({ pace, language }: { pace: QuotaPace; language: Language }) {
   const t = copy[language];
   const number = new Intl.NumberFormat(language === "en" ? "en-US" : "zh-CN", { maximumFractionDigits: 1 });
-  const statusLabel = pace.status === "on_track" ? t.onTrack : pace.status === "over_pace" ? t.overPace : t.paceUnknown;
+  const statusLabel = pace.status === "on_track" ? t.onTrack : pace.status === "over_pace" ? t.overPaceBy(number.format(pace.overByPercent)) : t.paceUnknown;
   const unit = pace.unit === "hour" ? t.hourUnit : t.dayUnit;
   return (
     <div className={`quota-pace-hint quota-pace-hint--${pace.status}`} role="status">
@@ -66,8 +66,8 @@ function QuotaPaceHint({ pace, language }: { pace: QuotaPace; language: Language
         {pace.status === "on_track" ? <CheckCircle weight="fill" /> : pace.status === "over_pace" ? <WarningCircle weight="fill" /> : <ClockCounterClockwise />}
         {statusLabel}
       </span>
+      {pace.todayRemainingPercent !== null ? <small className="quota-pace-today">{t.todayPlannedRemaining(number.format(pace.todayRemainingPercent))}</small> : null}
       <small>{t.averageSuggested(number.format(pace.averageRate), unit)}</small>
-      {pace.status === "over_pace" ? <small>{t.paceExceeded(number.format(pace.overByPercent))}</small> : null}
     </div>
   );
 }
@@ -85,7 +85,7 @@ function QuotaWindowList({ windows, language }: { windows: NamedQuotaWindow[]; l
       {windows.map(({ period, window }) => {
         const remaining = clampPercent(window.remainingPercent);
         const pace = calculateQuotaPace(window);
-        const statusLabel = pace.status === "on_track" ? t.onTrack : pace.status === "over_pace" ? t.overPace : t.paceUnknown;
+        const statusLabel = pace.status === "on_track" ? t.onTrack : pace.status === "over_pace" ? t.overPaceBy(number.format(pace.overByPercent)) : t.paceUnknown;
         const unit = pace.unit === "hour" ? t.hourUnit : t.dayUnit;
         return (
           <article className={`quota-window quota-window--${pace.status}`} key={period}>
@@ -101,8 +101,9 @@ function QuotaWindowList({ windows, language }: { windows: NamedQuotaWindow[]; l
               <span style={{ width: `${remaining}%` }} />
             </div>
             <footer>
+              {pace.todayRemainingPercent !== null ? <span className="quota-pace-today">{t.todayPlannedRemaining(number.format(pace.todayRemainingPercent))}</span> : null}
               <span>{t.averageSuggested(number.format(pace.averageRate), unit)}</span>
-              <span>{pace.status === "over_pace" ? t.paceExceeded(number.format(pace.overByPercent)) : formatResetTime(window.resetsAt, new Date(), language)}</span>
+              <span>{formatResetTime(window.resetsAt, new Date(), language)}</span>
             </footer>
           </article>
         );
