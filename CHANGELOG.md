@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.2 - 2026-07-20
+
+- feat: add daily quota pace alerts
+
 ## 0.2.1 - 2026-07-20
 
 - feat: add quota pace guidance
