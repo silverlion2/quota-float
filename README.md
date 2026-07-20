@@ -1,157 +1,129 @@
-# Quota Float
+<p align="center">
+  <img src="assets/icon.svg" width="96" alt="Quota Float app icon">
+</p>
 
-Lightweight floating desktop widget for checking coding-assistant quotas from existing local login states.
+<h1 align="center">Quota Float — Coding Assistant Quota Monitor</h1>
 
-![Quota Float quota states](docs/images/quota-states.png)
+<p align="center">
+  A lightweight, local-first desktop widget that keeps Codex, Qoder, TRAE, WorkBuddy, and Volcengine Ark Coding Plan usage limits visible at a glance.
+</p>
 
-## Highlights
+<p align="center">
+  <a href="https://github.com/silverlion2/quota-float/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/silverlion2/quota-float?display_name=tag&sort=semver"></a>
+  <a href="https://github.com/silverlion2/quota-float/releases"><img alt="GitHub downloads" src="https://img.shields.io/github/downloads/silverlion2/quota-float/total"></a>
+  <a href="https://github.com/silverlion2/quota-float/actions/workflows/ci.yml"><img alt="CI status" src="https://github.com/silverlion2/quota-float/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/github/license/silverlion2/quota-float"></a>
+  <img alt="Windows and macOS" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS-2878c7">
+</p>
 
-- Collects Codex, Qoder, TRAE, WorkBuddy, and Volcengine Ark Coding Plan quota where their local apps or CLI are available.
-- Shows weekly windows, exact remaining balances, or unlimited plans in a compact always-on-top widget.
-- Expands into a compact platform ledger with detailed values for every detected provider.
-- Uses clear quota states for healthy, caution, and critical remaining usage.
-- Collapses into a small floating orb when idle, then expands on hover.
-- Indicates whether quota is currently being consumed.
-- Detects when the Codex weekly window has recently reset using window timing and observed quota recovery.
-- Lets you drag platform rows into a preferred order; the order persists and also controls automatic rotation.
-- Adds a local control center for compact/standard/detailed layouts, custom accent colors, hidden or condensed providers, and reusable layout profiles.
-- Keeps a bounded local quota timeline and records resets, low-quota crossings, provider failures, and recoveries.
-- Supports configurable desktop alerts, quiet hours, cooldowns, Stable/Beta discovery, and system-login autostart.
-- Automatically retries transient provider failures and keeps last-known-good values clearly marked as stale.
-- Creates rotating recovery points before updates and supports one-file export/import for settings, layouts, and history.
-- Produces a redacted, copyable diagnostic report without including tokens, account IDs, or raw provider responses.
-- Includes persistent expansion, always-on-top controls, and localized tray actions.
-- Falls back to a clearly marked weekly-quota view when the 5-hour window is unavailable.
-- Checks for app updates automatically, downloads signed Windows updates in the background, and lets you restart when convenient.
-- Shows reset credit count and available reset-credit expiration times when the quota service provides them.
-- Handles stale data, signed-out sessions, unavailable quota responses, and loading states without fabricating values.
+<p align="center">
+  <strong><a href="https://github.com/silverlion2/quota-float/releases/latest">Download for Windows or macOS</a></strong>
+  · <a href="README.zh-CN.md">简体中文</a>
+  · <a href="https://github.com/silverlion2/quota-float/issues">Report an issue</a>
+</p>
+
+![Quota Float showing healthy, caution, and critical coding-assistant quota states](docs/images/quota-states.png)
+
+Quota Float is an always-on-top **Codex quota monitor and coding-assistant usage dashboard** for Windows and macOS. It reads the sign-in state already stored by supported local apps and CLIs, then displays real quota windows, remaining balances, reset times, and daily usage pace without asking you to paste credentials.
+
+## Why Quota Float?
+
+- **All quotas in one place:** monitor Codex, Qoder, TRAE, WorkBuddy, and Volcengine Ark Coding Plan from one compact widget.
+- **Useful before a limit hits:** see healthy, caution, and critical states, quota pace guidance, reset timing, and configurable desktop alerts.
+- **Stays out of the way:** collapse to a floating orb, expand on hover, reorder providers, and choose compact, standard, or detailed layouts.
+- **Resilient by design:** transient failures are retried, while last-known-good values remain visible and clearly marked as stale.
+- **Private by default:** no telemetry, analytics, account modification, prompt collection, or third-party tracking.
+- **Desktop-native:** built with Tauri, Rust, React, and TypeScript, with signed in-app update artifacts and Stable/Beta channels.
+
+## Supported Providers
+
+| Provider | Quota source | Requirement |
+| --- | --- | --- |
+| OpenAI Codex | Existing Codex local sign-in state | Codex Desktop or Codex CLI signed in |
+| Qoder | Local account cache | Qoder installed and signed in |
+| TRAE | Existing TRAE local sign-in state | TRAE installed and signed in |
+| WorkBuddy | Existing WorkBuddy local sign-in state | WorkBuddy installed and signed in |
+| Volcengine Ark Coding Plan | Authenticated `arkcli usage plan` output | Ark CLI installed and signed in |
+
+Quota Float uses these sources in read-only mode. If a provider changes its response format or a session expires, the app reports an unavailable or stale state instead of inventing a value.
+
+## Download and Install
+
+Get the newest build from **[GitHub Releases](https://github.com/silverlion2/quota-float/releases/latest)**.
+
+- **Windows:** download the per-user `x64-setup.exe` installer. Administrator access is not required.
+- **macOS:** download the Universal `.dmg`, compatible with Apple silicon and Intel Macs.
+
+Updater artifacts are signed with the project's Tauri update key. Windows Authenticode signing and macOS notarization require separate certificates, so unsigned builds may still trigger SmartScreen or Gatekeeper warnings.
+
+## Features
+
+- Real quota windows, exact remaining balances, unlimited-plan states, and reset-credit expiration times when available.
+- Daily quota pace guidance and alerts, configurable thresholds, quiet hours, and notification cooldowns.
+- Floating orb, persistent expansion, always-on-top control, provider rotation, drag-to-reorder, and localized tray actions.
+- Local quota timeline for resets, low-quota crossings, provider failures, recoveries, and updates.
+- Custom accent colors, hidden or condensed providers, reusable layout profiles, and system-login autostart.
+- Rotating recovery points before updates plus one-file export/import for settings, layouts, and history.
+- Redacted diagnostic reports that exclude tokens, account IDs, local auth paths, and raw provider responses.
+- Automatic updates with Stable/Beta discovery and a convenient restart flow.
 
 ## Screenshots
 
-| Quota states | Floating orb | Reset credit expiration |
+| Floating orb | Reset credit expiration | Weekly quota fallback |
 | --- | --- | --- |
-| ![Healthy, caution, and critical quota states](docs/images/quota-states.png) | ![Collapsed quota orb](docs/images/quota-orb.png) | ![Reset credit expiration popover](docs/images/quota-reset-expiration.png) |
+| ![Collapsed Quota Float quota orb](docs/images/quota-orb.png) | ![Quota reset credit expiration popover](docs/images/quota-reset-expiration.png) | ![Expanded weekly Codex quota fallback](docs/images/quota-v0.1.4-weekly-fallback.png) |
 
-### Weekly quota fallback
+## Privacy and Security
 
-| Expanded weekly view | Weekly quota orb |
-| --- | --- |
-| ![Expanded weekly quota fallback](docs/images/quota-v0.1.4-weekly-fallback.png) | ![Weekly quota orb with W badge](docs/images/quota-v0.1.4-weekly-orb.png) |
+Quota Float sends each provider's existing token only to that provider's official quota service; Volcengine access stays inside Ark CLI. The app stores only its own preferences, bounded quota samples, event summaries, layout profiles, and recovery points.
 
-## Repository Metadata
+It does **not** store provider tokens, account IDs, prompts, chat history, raw quota responses, or local auth paths. It does not redeem reset credits or change provider account settings. See [Privacy](PRIVACY.md) and [Security](SECURITY.md) for the complete boundary.
 
-Suggested repository description:
+## FAQ
 
-```text
-Floating Windows/macOS desktop widget for checking Codex quota from the local Codex Desktop login state.
-```
+### How do I check my Codex quota?
 
-Suggested topics:
+Install Quota Float on the same computer where Codex Desktop or Codex CLI is already signed in. The widget reads that existing local session and shows the available Codex usage windows and reset times.
 
-```text
-codex, quota, tauri, react, rust, desktop-app, windows, macos, productivity
-```
+### Does Quota Float calculate usage from local token counts?
 
-## How It Works
+No. It displays provider-reported quota data or a supported local account cache. It does not estimate quota from prompts or local token counts.
 
-Quota Float reuses existing local login states in read-only mode. Codex, TRAE, and WorkBuddy are queried through their own quota services; Qoder uses its local account cache; Volcengine uses the authenticated `arkcli usage plan` command. It does not estimate usage from local token counts or modify account settings.
+### Do I need to enter an API key or copy a token?
 
-Browser preview uses mock data. Real quota reading requires the Tauri desktop app and an existing Codex Desktop login on the same machine.
+No. Quota Float reuses supported local sign-in states in read-only mode. Never paste a token into an issue or diagnostic report.
 
-## Download
+### Can I monitor several coding assistants at once?
 
-For normal users, download the latest installer from GitHub Releases:
+Yes. Every detected provider appears in the same widget, and you can reorder, hide, condense, or rotate providers.
 
-- Latest release: https://github.com/silverlion2/quota-float/releases/latest
-- Windows: use the per-user `x64-setup.exe` installer; it does not require administrator access.
-- macOS Universal: use the `.dmg` bundle.
+### Does the browser preview show my real quota?
 
-Updater artifacts are signed with the project's Tauri update key. Windows Authenticode signing and macOS notarization are separate platform-signing steps; builds without those certificates may still trigger SmartScreen or Gatekeeper warnings.
-
-## Feedback
-
-Please use GitHub Issues for bugs, compatibility reports, and feature requests:
-
-https://github.com/silverlion2/quota-float/issues
-
-## Privacy Boundary
-
-Quota Float is local-first and intentionally narrow:
-
-- Reads only the local authentication or account cache needed for each detected provider.
-- Sends each provider's existing token only to that provider's official quota endpoint; Volcengine access remains inside Ark CLI.
-- Stores widget preferences, bounded quota samples, event summaries, layout profiles, and rotating recovery points in its own app config directory.
-- Does not store provider tokens, account IDs, prompts, chat history, raw quota responses, or local auth paths.
-- Does not include telemetry, analytics, crash reporting, or third-party tracking.
-- Does not redeem reset credits or modify account settings.
-
-See [PRIVACY.md](PRIVACY.md) and [SECURITY.md](SECURITY.md) for the full boundary.
-
-## Accuracy Boundary
-
-Quota is read from provider responses, local account caches, or Ark CLI output. If a response format changes, the app shows an unavailable or stale state instead of inventing quota values.
+No. `npm run dev` uses mock data. Real quota reading requires the Tauri desktop app and an existing supported local login.
 
 ## Development
 
-Requirements:
-
-- Node.js 20+
-- Rust stable
-- Tauri 2 system dependencies for your platform
+Requirements: Node.js 20+, Rust stable, and the [Tauri 2 system dependencies](https://v2.tauri.app/start/prerequisites/) for your platform.
 
 ```bash
 npm install
-npm run dev
 npm run test
 npm run build
 npm run tauri dev
 ```
 
-After Codex Desktop updates, run the compatibility check:
-
-```bash
-npm run check:codex
-```
-
-See [docs/CODEX-UPDATE-CHECK.md](docs/CODEX-UPDATE-CHECK.md) for the automated update-check workflow and optional Task Scheduler setup.
-
-## Build
+Build a desktop bundle with:
 
 ```bash
 npm run tauri build
 ```
 
-On Windows, Tauri may download WiX to create an MSI installer. If WiX download fails, the release executable may still be produced at:
+After a Codex Desktop update, run `npm run check:codex`. See the [Codex update compatibility guide](docs/CODEX-UPDATE-CHECK.md) and [release checklist](docs/GITHUB-RELEASE-CHECKLIST.md) for maintainer workflows.
 
-```text
-src-tauri/target/release/quota-float.exe
-```
+## Contributing
 
-## Release
-
-GitHub Actions are configured for:
-
-- CI on push/PR: frontend tests, Rust tests, web build, Tauri build.
-- `v*` tags: Windows and macOS Universal installers, updater signatures, `latest.json`, and a public GitHub Release.
-
-For maintainers, a release is one command from a clean, up-to-date `main` branch:
-
-```bash
-npm run release -- patch
-```
-
-Use `minor`, `major`, `beta`, `stable`, or an exact version in place of `patch`. `beta` creates or advances an `x.y.z-beta.n` prerelease; `stable` promotes the current beta. The command checks the branch and version files, shows the commits being released, asks for confirmation, runs frontend and Rust verification, updates every version source and `CHANGELOG.md`, then commits, tags, and pushes. Stable releases also run a clean Windows upgrade smoke test from the previous public version. To inspect everything without changing files, run:
-
-```bash
-npm run release -- patch --dry-run
-```
-
-To prepare a local release commit and tag without pushing them, use `--no-push`.
-
-See [docs/GITHUB-RELEASE-CHECKLIST.md](docs/GITHUB-RELEASE-CHECKLIST.md) before publishing a version for others.
-
-Do not upload local credentials, `.codex`, `.env*`, screenshots with personal data, `node_modules`, `dist`, `src-tauri/target`, or local installers to source control.
+Bug reports, compatibility reports, feature requests, and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first, and remove personal data from screenshots and logs before posting.
 
 ## License
 
-MIT
+Quota Float is available under the [MIT License](LICENSE).
