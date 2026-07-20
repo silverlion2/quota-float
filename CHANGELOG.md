@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.3 - 2026-07-20
+
+- feat: add live Codex reset forecast
+- docs: improve GitHub discoverability
+
 ## 0.2.2 - 2026-07-20
 
 - feat: add daily quota pace alerts
