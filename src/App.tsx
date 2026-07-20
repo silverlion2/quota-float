@@ -11,6 +11,7 @@ import { copy, nextLanguage, normalizeLanguage } from "./lib/i18n";
 import { normalizeProviderOrder } from "./lib/providers";
 import { detectRecentCodexReset, isRecentCodexReset } from "./lib/resetDetection";
 import type { RecentCodexReset } from "./lib/resetDetection";
+import { trackedQuotaWindows } from "./lib/quotaPace";
 import { mergeSnapshots } from "./lib/snapshots";
 import { canSendNotification, EMPTY_RUNTIME_STATE, isQuietHour, normalizeRuntimeState, recordSnapshotActivity } from "./lib/activity";
 import { DEFAULT_WIDGET_PREFERENCES, normalizeWidgetPreferences } from "./lib/preferences";
@@ -130,7 +131,10 @@ export default function App() {
       if (hasFailure) failures.current += 1;
       else failures.current = 0;
       for (const item of values) {
-        const nextMetric = item.weeklyWindow?.remainingPercent ?? item.balanceRemaining ?? undefined;
+        const percentWindows = trackedQuotaWindows(item);
+        const nextMetric = percentWindows.length > 0
+          ? percentWindows.reduce((total, value) => total + value.window.remainingPercent, 0)
+          : item.balanceRemaining ?? undefined;
         const previous = previousMetric.current.get(item.provider);
         if (nextMetric !== undefined && previous !== undefined && nextMetric < previous) {
           setConsumingProviders((current) => new Set(current).add(item.provider));
@@ -152,7 +156,7 @@ export default function App() {
         detectedReset = detected;
         setRecentCodexReset((current) => detected ?? (isRecentCodexReset(current, now) ? current : null));
       }
-      const activity = recordSnapshotActivity(runtimeStateRef.current, snapshotsRef.current, values, detectedReset, preferencesRef.current.alertThreshold, now);
+      const activity = recordSnapshotActivity(runtimeStateRef.current, snapshotsRef.current, values, detectedReset, preferencesRef.current.alertThreshold, now, preferencesRef.current.language);
       let nextRuntimeState = activity.state;
       const notificationPreferences = preferencesRef.current;
       if (notificationPreferences.notificationsEnabled && !isQuietHour(now.getHours(), notificationPreferences.quietHoursStart, notificationPreferences.quietHoursEnd)) {

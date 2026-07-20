@@ -35,6 +35,7 @@ describe("quota formatting", () => {
     expect(needsFastRefresh({ ...snapshot, weeklyWindow: { remainingPercent: 1, resetsAt: "2026-07-07T00:10:00Z", windowSeconds: 604_800 } }, now)).toBe(true);
     expect(needsFastRefresh({ ...snapshot, weeklyWindow: { remainingPercent: 1, resetsAt: "2026-07-07T01:00:00Z", windowSeconds: 604_800 } }, now)).toBe(false);
     expect(needsFastRefresh({ ...snapshot, weeklyWindow: { remainingPercent: 1, resetsAt: "2026-07-06T23:58:00Z", windowSeconds: 604_800 } }, now)).toBe(true);
+    expect(needsFastRefresh({ ...snapshot, weeklyWindow: null, shortWindow: { remainingPercent: 50, resetsAt: "2026-07-07T00:05:00Z", windowSeconds: 18_000 } }, now)).toBe(true);
   });
 
   it("formats the weekly reset as a compact date", () => {

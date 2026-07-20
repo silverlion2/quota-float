@@ -28,8 +28,10 @@ const peerPreviews: ProviderSnapshot[] = [{
   provider: "workbuddy", displayName: "WORKBUDDY", plan: null, shortWindow: null, weeklyWindow: null,
   resetCredits: null, balanceRemaining: 420, balanceUnit: "credits", updatedAt: new Date().toISOString(), status: "ok", message: null,
 }, {
-  provider: "volcengine", displayName: "VOLCENGINE", plan: "CODING", shortWindow: null,
+  provider: "volcengine", displayName: "VOLCENGINE", plan: "CODING",
+  shortWindow: { remainingPercent: 88, resetsAt: new Date(Date.now() + 3 * 3_600_000).toISOString(), windowSeconds: 18_000 },
   weeklyWindow: { remainingPercent: 86, resetsAt: new Date(Date.now() + 5.4 * 86_400_000).toISOString(), windowSeconds: 604_800 },
+  monthlyWindow: { remainingPercent: 45, resetsAt: new Date(Date.now() + 20.4 * 86_400_000).toISOString(), windowSeconds: 31 * 86_400 },
   resetCredits: null, updatedAt: new Date().toISOString(), status: "ok", message: null,
 }];
 const noConsumingProviders = new Set<string>();

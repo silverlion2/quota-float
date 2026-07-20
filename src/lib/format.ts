@@ -29,10 +29,11 @@ export function formatResetTime(value: string | null, now = new Date(), language
 }
 
 export function needsFastRefresh(snapshot: ProviderSnapshot, now = new Date()): boolean {
-  const reset = snapshot.weeklyWindow?.resetsAt;
-  if (!reset) return false;
-  const remaining = new Date(reset).getTime() - now.getTime();
-  return remaining > -5 * 60_000 && remaining <= 15 * 60_000;
+  return [snapshot.shortWindow, snapshot.weeklyWindow, snapshot.monthlyWindow].some((window) => {
+    if (!window?.resetsAt) return false;
+    const remaining = new Date(window.resetsAt).getTime() - now.getTime();
+    return remaining > -5 * 60_000 && remaining <= 15 * 60_000;
+  });
 }
 
 export function formatResetDate(value: string | null, language: Language = "zh-CN"): string {

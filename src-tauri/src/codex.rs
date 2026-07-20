@@ -463,6 +463,7 @@ pub async fn fetch_snapshot(client: &reqwest::Client) -> ProviderSnapshot {
         plan: pick_string(&usage, &["plan_type", "planType"]).map(|value| value.to_uppercase()),
         short_window,
         weekly_window,
+        monthly_window: None,
         reset_credits,
         reset_credit_expires_at,
         balance_remaining: None,

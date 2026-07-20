@@ -235,6 +235,54 @@ fn failure_snapshot(status: &str, message: &str) -> ProviderSnapshot {
     ProviderSnapshot::provider_failure("volcengine", "VOLCENGINE", status, message)
 }
 
+fn find_period<'a>(periods: &'a [Value], labels: &[&str]) -> Option<&'a Value> {
+    periods.iter().find(|period| {
+        period
+            .get("label")
+            .and_then(Value::as_str)
+            .is_some_and(|label| {
+                labels
+                    .iter()
+                    .any(|candidate| label.eq_ignore_ascii_case(candidate))
+            })
+    })
+}
+
+fn monthly_window_seconds(reset_at: Option<&str>) -> u64 {
+    reset_at
+        .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+        .and_then(|reset| {
+            reset
+                .checked_sub_months(chrono::Months::new(1))
+                .map(|start| (reset - start).num_seconds())
+        })
+        .filter(|seconds| *seconds > 0)
+        .map(|seconds| seconds as u64)
+        .unwrap_or(30 * 86_400)
+}
+
+fn parse_period(
+    period: Option<&Value>,
+    default_window_seconds: u64,
+    calendar_month: bool,
+) -> Option<UsageWindow> {
+    let period = period?;
+    let used_percent = period.get("percent").and_then(Value::as_f64)?;
+    let resets_at = period
+        .get("reset_at")
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    Some(UsageWindow {
+        remaining_percent: (100.0 - used_percent).clamp(0.0, 100.0),
+        window_seconds: if calendar_month {
+            monthly_window_seconds(resets_at.as_deref())
+        } else {
+            default_window_seconds
+        },
+        resets_at,
+    })
+}
+
 fn parse_snapshot(value: &Value) -> Result<ProviderSnapshot, &'static str> {
     let items = value
         .get("items")
@@ -248,19 +296,18 @@ fn parse_snapshot(value: &Value) -> Result<ProviderSnapshot, &'static str> {
     if item.get("subscribed").and_then(Value::as_bool) == Some(false) {
         return Err("No active Coding Plan subscription was found.");
     }
-    let weekly = item
+    let periods = item
         .get("periods")
         .and_then(Value::as_array)
-        .and_then(|periods| {
-            periods
-                .iter()
-                .find(|period| period.get("label").and_then(Value::as_str) == Some("weekly"))
-        })
+        .ok_or("Coding Plan response is missing quota periods.")?;
+    let short_window = parse_period(
+        find_period(periods, &["5h", "5hr", "session"]),
+        5 * 3_600,
+        false,
+    );
+    let weekly_window = parse_period(find_period(periods, &["weekly"]), 7 * 86_400, false)
         .ok_or("Coding Plan response is missing the weekly quota.")?;
-    let used_percent = weekly
-        .get("percent")
-        .and_then(Value::as_f64)
-        .ok_or("Coding Plan weekly quota has an unsupported format.")?;
+    let monthly_window = parse_period(find_period(periods, &["monthly"]), 30 * 86_400, true);
     let updated_at = item
         .get("updated_at")
         .and_then(Value::as_i64)
@@ -285,15 +332,9 @@ fn parse_snapshot(value: &Value) -> Result<ProviderSnapshot, &'static str> {
                 value => format!("Coding Plan {}", value),
             })
             .or_else(|| Some("Coding Plan".into())),
-        short_window: None,
-        weekly_window: Some(UsageWindow {
-            remaining_percent: (100.0 - used_percent).clamp(0.0, 100.0),
-            resets_at: weekly
-                .get("reset_at")
-                .and_then(Value::as_str)
-                .map(str::to_owned),
-            window_seconds: 604_800,
-        }),
+        short_window,
+        weekly_window: Some(weekly_window),
+        monthly_window,
         reset_credits: None,
         reset_credit_expires_at: Vec::new(),
         balance_remaining: None,
@@ -507,10 +548,17 @@ mod tests {
         });
         let snapshot = parse_snapshot(&value).unwrap();
         assert_eq!(snapshot.plan.as_deref(), Some("Coding Plan Personal"));
+        assert_eq!(
+            snapshot.short_window.as_ref().unwrap().remaining_percent,
+            100.0
+        );
         assert!(
-            (snapshot.weekly_window.unwrap().remaining_percent - 72.45338473333333).abs()
+            (snapshot.weekly_window.as_ref().unwrap().remaining_percent - 72.45338473333333).abs()
                 < 0.000_001
         );
+        let monthly = snapshot.monthly_window.as_ref().unwrap();
+        assert!((monthly.remaining_percent - 56.70491393333334).abs() < 0.000_001);
+        assert_eq!(monthly.window_seconds, 31 * 86_400);
         assert_eq!(snapshot.status, "ok");
     }
 

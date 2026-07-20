@@ -16,6 +16,7 @@ export interface ProviderSnapshot {
   plan: string | null;
   shortWindow: UsageWindow | null;
   weeklyWindow: UsageWindow | null;
+  monthlyWindow?: UsageWindow | null;
   resetCredits: number | null;
   resetCreditExpiresAt?: string[];
   balanceRemaining?: number | null;

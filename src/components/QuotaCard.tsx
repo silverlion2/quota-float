@@ -3,6 +3,7 @@ import { memo, type CSSProperties, type PointerEvent as ReactPointerEvent, type 
 import { clampPercent, formatDateTime, formatResetDate, formatResetTime, quotaTier } from "../lib/format";
 import { copy, normalizeLanguage } from "../lib/i18n";
 import { normalizeProviderOrder, PROVIDER_CATALOG, type ProviderDefinition } from "../lib/providers";
+import { calculateQuotaPace, trackedQuotaWindows, type NamedQuotaWindow, type QuotaPace, type QuotaPeriod } from "../lib/quotaPace";
 import type { RecentCodexReset } from "../lib/resetDetection";
 import type { Language, ProviderId, ProviderSnapshot, VolcengineDiagnostics, WidgetPreferences } from "../types";
 import { ProviderMark } from "./ProviderMark";
@@ -52,6 +53,62 @@ function StatusIcon({ status, expired = false }: { status: ProviderSnapshot["sta
   if (status === "stale" || expired) return <ClockCounterClockwise weight="duotone" />;
   if (status === "unavailable") return <CloudSlash weight="duotone" />;
   return <WarningCircle weight="duotone" />;
+}
+
+function QuotaPaceHint({ pace, language }: { pace: QuotaPace; language: Language }) {
+  const t = copy[language];
+  const number = new Intl.NumberFormat(language === "en" ? "en-US" : "zh-CN", { maximumFractionDigits: 1 });
+  const statusLabel = pace.status === "on_track" ? t.onTrack : pace.status === "over_pace" ? t.overPace : t.paceUnknown;
+  const unit = pace.unit === "hour" ? t.hourUnit : t.dayUnit;
+  return (
+    <div className={`quota-pace-hint quota-pace-hint--${pace.status}`} role="status">
+      <span>
+        {pace.status === "on_track" ? <CheckCircle weight="fill" /> : pace.status === "over_pace" ? <WarningCircle weight="fill" /> : <ClockCounterClockwise />}
+        {statusLabel}
+      </span>
+      <small>{t.averageSuggested(number.format(pace.averageRate), unit)}</small>
+      {pace.status === "over_pace" ? <small>{t.paceExceeded(number.format(pace.overByPercent))}</small> : null}
+    </div>
+  );
+}
+
+function QuotaWindowList({ windows, language }: { windows: NamedQuotaWindow[]; language: Language }) {
+  const t = copy[language];
+  const number = new Intl.NumberFormat(language === "en" ? "en-US" : "zh-CN", { maximumFractionDigits: 1 });
+  const labels: Record<QuotaPeriod, string> = {
+    "5h": t.fiveHourShort,
+    weekly: t.weeklyShort,
+    monthly: t.monthlyShort,
+  };
+  return (
+    <section className="quota-window-list" aria-label={t.quotaWindows}>
+      {windows.map(({ period, window }) => {
+        const remaining = clampPercent(window.remainingPercent);
+        const pace = calculateQuotaPace(window);
+        const statusLabel = pace.status === "on_track" ? t.onTrack : pace.status === "over_pace" ? t.overPace : t.paceUnknown;
+        const unit = pace.unit === "hour" ? t.hourUnit : t.dayUnit;
+        return (
+          <article className={`quota-window quota-window--${pace.status}`} key={period}>
+            <header>
+              <strong>{labels[period]}</strong>
+              <span>{remaining}%</span>
+              <em>
+                {pace.status === "on_track" ? <CheckCircle weight="fill" /> : pace.status === "over_pace" ? <WarningCircle weight="fill" /> : <ClockCounterClockwise />}
+                {statusLabel}
+              </em>
+            </header>
+            <div className="quota-window-progress" role="progressbar" aria-label={`${labels[period]} ${remaining}%`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={remaining}>
+              <span style={{ width: `${remaining}%` }} />
+            </div>
+            <footer>
+              <span>{t.averageSuggested(number.format(pace.averageRate), unit)}</span>
+              <span>{pace.status === "over_pace" ? t.paceExceeded(number.format(pace.overByPercent)) : formatResetTime(window.resetsAt, new Date(), language)}</span>
+            </footer>
+          </article>
+        );
+      })}
+    </section>
+  );
 }
 
 function localizedBackendMessage(message: string | null, language: Language, provider = "Volcengine"): string | null {
@@ -306,6 +363,9 @@ export const QuotaCard = memo(function QuotaCard({
   const language = normalizeLanguage(preferences.language);
   const t = copy[language];
   const weekly = snapshot.weeklyWindow ? clampPercent(snapshot.weeklyWindow.remainingPercent) : null;
+  const quotaWindows = trackedQuotaWindows(snapshot);
+  const showQuotaWindowList = quotaWindows.length > 1;
+  const singleWindowPace = quotaWindows.length === 1 ? calculateQuotaPace(quotaWindows[0].window) : null;
   const balance = snapshot.balanceRemaining ?? null;
   const unlimited = snapshot.balanceUnit === "unlimited";
   const unlimitedLabel = language === "en" ? "Unlimited" : "不限量";
@@ -314,8 +374,10 @@ export const QuotaCard = memo(function QuotaCard({
     : balance !== null
     ? new Intl.NumberFormat(language === "en" ? "en-US" : "zh-CN", { maximumFractionDigits: 1 }).format(balance)
     : null;
-  const metricTitle = unlimited ? unlimitedLabel : weekly !== null ? t.weeklyRemaining : balance !== null ? t.balanceRemaining : t.unavailableStatus;
-  const metricLabel = weekly !== null
+  const metricTitle = showQuotaWindowList ? t.quotaWindows : unlimited ? unlimitedLabel : weekly !== null ? t.weeklyRemaining : balance !== null ? t.balanceRemaining : t.unavailableStatus;
+  const metricLabel = showQuotaWindowList
+    ? t.quotaWindows
+    : weekly !== null
     ? t.availableLabel(weekly)
     : unlimited
       ? unlimitedLabel
@@ -325,7 +387,7 @@ export const QuotaCard = memo(function QuotaCard({
   const staleAge = Date.now() - new Date(snapshot.updatedAt).getTime();
   const staleExpired = snapshot.status === "stale" && staleAge > 30 * 60_000;
   const available = snapshot.status === "ok" || (snapshot.status === "stale" && !staleExpired);
-  const tier = quotaTier(weekly);
+  const tier = quotaTier(showQuotaWindowList ? Math.min(...quotaWindows.map(({ window }) => clampPercent(window.remainingPercent))) : weekly);
   const indicatorState = isConsuming ? "active" : snapshot.status === "ok" ? "ok" : snapshot.status === "stale" ? "stale" : "error";
   const indicatorLabel = isConsuming
     ? t.active
@@ -455,17 +517,26 @@ export const QuotaCard = memo(function QuotaCard({
           </div>
         </header>
 
-        {available && (weekly !== null || balance !== null) ? (
+        {available && (quotaWindows.length > 0 || balance !== null) ? (
           <>
-            <section className="primary-metric" aria-label={metricLabel ?? undefined}>
-              <span>{weekly ?? formattedBalance}</span><small>{weekly !== null ? "%" : unlimited ? "" : ` ${snapshot.balanceUnit ?? ""}`}</small>
-            </section>
-            {weekly !== null ? <div className="progress" role="progressbar" aria-label={t.availableLabel(weekly)} aria-valuemin={0} aria-valuemax={100} aria-valuenow={weekly}>
-              <span style={{ width: `${weekly}%` }} />
-            </div> : null}
-            <p className="reset-time">{weekly !== null ? formatResetTime(snapshot.weeklyWindow?.resetsAt ?? null, new Date(), language) : unlimited ? unlimitedLabel : snapshot.balanceUnit ?? ""}</p>
-            <footer className="primary-footer">
-              {weekly !== null || snapshot.resetCredits !== null ? <div className="quota-meta">
+            {showQuotaWindowList ? (
+              <QuotaWindowList windows={quotaWindows} language={language} />
+            ) : (
+              <>
+                <section className="primary-metric" aria-label={metricLabel ?? undefined}>
+                  <span>{weekly ?? formattedBalance}</span><small>{weekly !== null ? "%" : unlimited ? "" : ` ${snapshot.balanceUnit ?? ""}`}</small>
+                </section>
+                {weekly !== null ? <div className="progress" role="progressbar" aria-label={t.availableLabel(weekly)} aria-valuemin={0} aria-valuemax={100} aria-valuenow={weekly}>
+                  <span style={{ width: `${weekly}%` }} />
+                </div> : null}
+                <p className="reset-time">{weekly !== null ? formatResetTime(snapshot.weeklyWindow?.resetsAt ?? null, new Date(), language) : unlimited ? unlimitedLabel : snapshot.balanceUnit ?? ""}</p>
+                {singleWindowPace ? <QuotaPaceHint pace={singleWindowPace} language={language} /> : balance !== null && !unlimited ? (
+                  <div className="quota-pace-hint quota-pace-hint--unknown" role="status"><span><ClockCounterClockwise />{t.paceNeedsPeriod}</span></div>
+                ) : null}
+              </>
+            )}
+            <footer className={`primary-footer${showQuotaWindowList ? " primary-footer--windows" : ""}`}>
+              {!showQuotaWindowList && (weekly !== null || snapshot.resetCredits !== null) ? <div className="quota-meta">
                 {weekly !== null ? <p>{t.weeklyResetDate(formatResetDate(snapshot.weeklyWindow?.resetsAt ?? null, language))}</p> : null}
                 <div className="reset-credit-row" onMouseDown={(event) => event.stopPropagation()}>
                   <span>{snapshot.resetCredits === null ? t.resetCreditUnknown : t.resetCredits(snapshot.resetCredits)}</span>
@@ -479,7 +550,7 @@ export const QuotaCard = memo(function QuotaCard({
                   </div>
                 ) : null}
               </div> : null}
-              <ProviderMark provider={snapshot.provider} label={snapshot.displayName} />
+              {!showQuotaWindowList ? <ProviderMark provider={snapshot.provider} label={snapshot.displayName} /> : null}
             </footer>
           </>
         ) : (

@@ -238,8 +238,32 @@ button { font: inherit; }
 .progress { height: var(--progress-height, 4px); margin-top: 10px; overflow: hidden; border-radius: 999px; background: rgba(255,255,255,.24); box-shadow: inset 0 1px 2px rgba(64,76,102,.12); }
 .progress span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--progress-start, #397ae0), var(--progress-end, #89b7ff)); box-shadow: 0 0 14px color-mix(in srgb, var(--progress-start, #397ae0) 38%, transparent); transition: width .5s ease; }
 .reset-time { margin-top: 5px; font-size: 9px; color: rgba(17,20,27,.54); letter-spacing: .04em; }
+.quota-pace-hint { min-width: 0; min-height: 13px; margin-top: 4px; display: flex; align-items: center; gap: 6px; color: rgba(17,20,27,.54); font-size: 7px; }
+.quota-pace-hint > span { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 3px; color: #286b48; font-weight: 760; white-space: nowrap; }
+.quota-pace-hint svg { width: 9px; height: 9px; }
+.quota-pace-hint small { min-width: 0; overflow: hidden; color: inherit; font-size: 7px; font-weight: 590; text-overflow: ellipsis; white-space: nowrap; }
+.quota-pace-hint--over_pace > span, .quota-pace-hint--over_pace small:last-child { color: #a6422b; }
+.quota-pace-hint--unknown > span { color: rgba(17,20,27,.5); }
+
+.quota-window-list { min-height: 0; display: grid; align-content: start; gap: 4px; margin-top: 2px; }
+.quota-window { min-width: 0; padding: 4px 7px; border: 1px solid rgba(255,255,255,.3); border-radius: 9px; background: rgba(255,255,255,.18); box-shadow: inset 0 1px 0 rgba(255,255,255,.2); }
+.quota-window header { min-width: 0; display: grid; grid-template-columns: minmax(48px, 1fr) auto auto; align-items: center; gap: 6px; }
+.quota-window header strong { font-size: 8px; font-weight: 760; letter-spacing: .04em; }
+.quota-window header > span { font-size: 12px; font-weight: 720; font-variant-numeric: tabular-nums; letter-spacing: -.03em; }
+.quota-window header em { display: inline-flex; align-items: center; gap: 2px; color: #286b48; font-size: 6px; font-style: normal; font-weight: 760; white-space: nowrap; }
+.quota-window header em svg { width: 8px; height: 8px; }
+.quota-window--over_pace { border-color: rgba(199,79,45,.2); background: rgba(255,238,228,.28); }
+.quota-window--over_pace header em { color: #a6422b; }
+.quota-window--unknown header em { color: rgba(23,25,31,.5); }
+.quota-window-progress { height: 3px; margin-top: 2px; overflow: hidden; border-radius: 999px; background: rgba(255,255,255,.28); box-shadow: inset 0 1px 1px rgba(64,76,102,.1); }
+.quota-window-progress span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--progress-start, #397ae0), var(--progress-end, #89b7ff)); transition: width .5s ease; }
+.quota-window--over_pace .quota-window-progress span { background: linear-gradient(90deg, #e05f40, #f5a25d); }
+.quota-window footer { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 5px; margin-top: 2px; color: rgba(17,20,27,.54); font-size: 6px; font-weight: 590; }
+.quota-window footer span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quota-window--over_pace footer span:last-child { color: #9b3e29; font-weight: 720; }
 
 .primary-footer { position: relative; min-height: 30px; margin-top: auto; display: flex; align-items: flex-end; justify-content: space-between; }
+.primary-footer--windows { min-height: 0; }
 .quota-meta p { font-size: 9px; font-weight: 400; letter-spacing: .06em; }
 .quota-meta span { display: block; margin: 0; font-size: 9px; font-weight: 550; color: rgba(17,20,27,.82); }
 .reset-credit-row { position: relative; margin-top: 4px; display: flex; align-items: center; gap: 5px; }

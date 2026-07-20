@@ -33,6 +33,72 @@ describe("activity timeline and notification policy", () => {
     expect(canSendNotification(state, "quota:codex", 120, new Date("2026-07-19T03:01:00Z"))).toBe(true);
   });
 
+  it("creates a reminder when Volcengine usage crosses the even-cycle pace", () => {
+    const volcengine = (monthlyRemaining: number): ProviderSnapshot => ({
+      provider: "volcengine",
+      displayName: "VOLCENGINE",
+      plan: "Coding Plan Personal",
+      shortWindow: null,
+      weeklyWindow: { remainingPercent: 100, resetsAt: "2026-07-26T00:00:00Z", windowSeconds: 604_800 },
+      monthlyWindow: { remainingPercent: monthlyRemaining, resetsAt: "2026-08-18T00:00:00Z", windowSeconds: 2_592_000 },
+      resetCredits: null,
+      updatedAt: "2026-07-19T00:00:00Z",
+      status: "ok",
+      message: null,
+    });
+    const update = recordSnapshotActivity(
+      EMPTY_RUNTIME_STATE,
+      [volcengine(100)],
+      [volcengine(90)],
+      null,
+      15,
+      new Date("2026-07-19T00:00:00Z"),
+    );
+    expect(update.createdEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "warning", provider: "volcengine", title: "VOLCENGINE usage is over pace" }),
+    ]));
+  });
+
+  it("tracks low-quota crossings for every Volcengine window", () => {
+    const volcengine = (shortRemaining: number): ProviderSnapshot => ({
+      provider: "volcengine",
+      displayName: "VOLCENGINE",
+      plan: "Coding Plan Personal",
+      shortWindow: { remainingPercent: shortRemaining, resetsAt: "2026-07-19T05:00:00Z", windowSeconds: 18_000 },
+      weeklyWindow: { remainingPercent: 80, resetsAt: "2026-07-26T00:00:00Z", windowSeconds: 604_800 },
+      monthlyWindow: { remainingPercent: 70, resetsAt: "2026-08-18T00:00:00Z", windowSeconds: 2_592_000 },
+      resetCredits: null,
+      updatedAt: "2026-07-19T00:00:00Z",
+      status: "ok",
+      message: null,
+    });
+    const update = recordSnapshotActivity(
+      EMPTY_RUNTIME_STATE,
+      [volcengine(30)],
+      [volcengine(12)],
+      null,
+      15,
+      new Date("2026-07-19T01:00:00Z"),
+    );
+    expect(update.createdEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "quota", detail: "12% 5-hour quota remains." }),
+    ]));
+  });
+
+  it("reminds when the Codex weekly window moves over pace", () => {
+    const update = recordSnapshotActivity(
+      EMPTY_RUNTIME_STATE,
+      [snapshot(100)],
+      [snapshot(50)],
+      null,
+      15,
+      new Date("2026-07-19T01:00:00Z"),
+    );
+    expect(update.createdEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "warning", provider: "codex", title: "CODEX usage is over pace" }),
+    ]));
+  });
+
   it("drops malformed imported history, events, layouts, and notification dates", () => {
     const normalized = normalizeRuntimeState({
       schemaVersion: 99,

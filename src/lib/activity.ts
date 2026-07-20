@@ -1,6 +1,7 @@
-import type { ActivityEvent, ProviderId, ProviderSnapshot, QuotaHistoryPoint, RuntimeState } from "../types";
+import type { ActivityEvent, Language, ProviderId, ProviderSnapshot, QuotaHistoryPoint, RuntimeState } from "../types";
 import type { RecentCodexReset } from "./resetDetection";
 import { DEFAULT_PROVIDER_ORDER, normalizeProviderOrder } from "./providers";
+import { mostOverPaceWindow, trackedQuotaWindows } from "./quotaPace";
 
 export const EMPTY_RUNTIME_STATE: RuntimeState = {
   schemaVersion: 1,
@@ -117,6 +118,7 @@ export function recordSnapshotActivity(
   recentReset: RecentCodexReset | null,
   alertThreshold: number,
   now = new Date(),
+  language: Language = "en",
 ): RuntimeUpdate {
   const occurredAt = now.toISOString();
   const previousByProvider = new Map(previousSnapshots.map((snapshot) => [snapshot.provider, snapshot]));
@@ -147,10 +149,40 @@ export function recordSnapshotActivity(
     } else if (previous.status === "ok" && snapshot.status !== "ok") {
       createdEvents.push(event("warning", snapshot.provider, occurredAt, `${snapshot.displayName} needs attention`, `Provider status changed to ${snapshot.status}; automatic retry is active.`));
     }
-    const previousMetric = metric(previous);
-    if (value.metricKind === "percent" && previousMetric.metricKind === "percent" && value.metric !== null && previousMetric.metric !== null
-      && previousMetric.metric > alertThreshold && value.metric <= alertThreshold) {
-      createdEvents.push(event("quota", snapshot.provider, occurredAt, `${snapshot.displayName} quota is low`, `${Math.round(value.metric)}% weekly quota remains.`));
+    const quotaWindows = trackedQuotaWindows(snapshot);
+    if (quotaWindows.length > 0) {
+      const previousWindows = new Map(trackedQuotaWindows(previous).map((item) => [item.period, item.window]));
+      for (const item of quotaWindows) {
+        const previousWindow = previousWindows.get(item.period);
+        if (previousWindow && previousWindow.remainingPercent > alertThreshold && item.window.remainingPercent <= alertThreshold) {
+          const period = language === "zh-CN"
+            ? item.period === "5h" ? "5 小时" : item.period === "weekly" ? "周度" : "月度"
+            : item.period === "5h" ? "5-hour" : item.period;
+          createdEvents.push(event(
+            "quota",
+            snapshot.provider,
+            occurredAt,
+            language === "zh-CN" ? `${snapshot.displayName} 额度偏低` : `${snapshot.displayName} quota is low`,
+            language === "zh-CN" ? `${period}额度剩余 ${Math.round(item.window.remainingPercent)}%。` : `${Math.round(item.window.remainingPercent)}% ${period} quota remains.`,
+          ));
+        }
+      }
+      const nextPace = mostOverPaceWindow(snapshot, now);
+      const previousPace = mostOverPaceWindow(previous, now);
+      if (nextPace && !previousPace) {
+        const period = language === "zh-CN"
+          ? nextPace.period === "5h" ? "5 小时" : nextPace.period === "weekly" ? "周度" : "月度"
+          : nextPace.period === "5h" ? "5-hour" : nextPace.period;
+        createdEvents.push(event(
+          "warning",
+          snapshot.provider,
+          occurredAt,
+          language === "zh-CN" ? `${snapshot.displayName} 用量进度偏快` : `${snapshot.displayName} usage is over pace`,
+          language === "zh-CN"
+            ? `${period}用量超出平均周期建议 ${nextPace.pace.overByPercent.toFixed(1)}%。`
+            : `${period} usage is ${nextPace.pace.overByPercent.toFixed(1)}% ahead of the even-cycle recommendation.`,
+        ));
+      }
     }
   }
   if (recentReset && !current.events.some((item) => item.kind === "reset" && item.occurredAt === recentReset.resetAt)) {

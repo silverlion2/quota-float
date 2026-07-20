@@ -58,6 +58,17 @@ const signedOutVolcengine: ProviderSnapshot = {
   message: "Volcengine login expired. Reconnect to continue.",
 };
 
+const volcengine: ProviderSnapshot = {
+  ...codex,
+  provider: "volcengine",
+  displayName: "VOLCENGINE",
+  plan: "Coding Plan Personal",
+  shortWindow: { remainingPercent: 90, resetsAt: "2026-07-20T03:00:00Z", windowSeconds: 18_000 },
+  weeklyWindow: { remainingPercent: 80, resetsAt: "2026-07-25T00:00:00Z", windowSeconds: 604_800 },
+  monthlyWindow: { remainingPercent: 45, resetsAt: "2026-08-09T00:00:00Z", windowSeconds: 31 * 86_400 },
+  resetCredits: null,
+};
+
 const diagnostics: VolcengineDiagnostics = {
   installed: true,
   executablePath: "~\\AppData\\Roaming\\npm\\arkcli.cmd",
@@ -132,6 +143,54 @@ describe("QuotaCard platform ledger", () => {
     expect(screen.getByLabelText("1280 credits")).toBeInTheDocument();
   });
 
+  it("keeps the Codex weekly design and adds a compact pace hint only", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-20T00:00:00Z"));
+    try {
+      const weeklyOnlyCodex: ProviderSnapshot = {
+        ...codex,
+        shortWindow: { remainingPercent: 5, resetsAt: "2026-07-20T05:00:00Z", windowSeconds: 18_000 },
+        weeklyWindow: { remainingPercent: 74, resetsAt: "2026-07-25T00:00:00Z", windowSeconds: 604_800 },
+      };
+      render(
+        <QuotaCard
+          snapshot={weeklyOnlyCodex}
+          snapshots={[weeklyOnlyCodex]}
+          preferences={preferences}
+          onSelectProvider={noop}
+          onLock={noop}
+          onLanguage={noop}
+          onDrag={noop}
+          onHover={noop}
+          consumingProviders={new Set()}
+        />,
+      );
+      expect(screen.getByText("Weekly remaining")).toBeInTheDocument();
+      expect(screen.getByText("On track")).toBeInTheDocument();
+      expect(screen.getByText("Average ≤ 14.3%/day")).toBeInTheDocument();
+      expect(screen.queryByText("5 hours")).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("explains when a balance quota has no period for pace guidance", () => {
+    render(
+      <QuotaCard
+        snapshot={qoder}
+        snapshots={[qoder]}
+        preferences={preferences}
+        onSelectProvider={noop}
+        onLock={noop}
+        onLanguage={noop}
+        onDrag={noop}
+        onHover={noop}
+        consumingProviders={new Set()}
+      />,
+    );
+    expect(screen.getByText("Pace needs a quota period")).toBeInTheDocument();
+  });
+
   it("shows an unlimited free plan without inventing a numeric quota", () => {
     render(<QuotaOrb snapshot={trae} language="en" onDrag={noop} onHover={noop} />);
     expect(screen.getByLabelText("Unlimited")).toHaveTextContent("∞");
@@ -157,6 +216,34 @@ describe("QuotaCard platform ledger", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reconnect" }));
     expect(onReconnect).toHaveBeenCalledOnce();
     expect(screen.getByText("Reconnect VOLCENGINE")).toBeInTheDocument();
+  });
+
+  it("shows Volcengine 5-hour, weekly, and monthly pace guidance", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-20T00:00:00Z"));
+    try {
+      render(
+        <QuotaCard
+          snapshot={volcengine}
+          snapshots={[volcengine]}
+          preferences={preferences}
+          onSelectProvider={noop}
+          onLock={noop}
+          onLanguage={noop}
+          onDrag={noop}
+          onHover={noop}
+          consumingProviders={new Set()}
+        />,
+      );
+
+      expect(screen.getByRole("region", { name: "Quota windows" })).toHaveTextContent("5 hours");
+      expect(screen.getByRole("region", { name: "Quota windows" })).toHaveTextContent("Weekly");
+      expect(screen.getByRole("region", { name: "Quota windows" })).toHaveTextContent("Monthly");
+      expect(screen.getByText("Average ≤ 20%/hour")).toBeInTheDocument();
+      expect(screen.getByText("Over pace")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows only redacted Volcengine diagnostics", () => {

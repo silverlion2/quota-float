@@ -265,6 +265,7 @@ mod windows {
             plan: Some(best_plan.0.into()),
             short_window: None,
             weekly_window: None,
+            monthly_window: None,
             reset_credits: None,
             reset_credit_expires_at: Vec::new(),
             balance_remaining: Some(remaining),

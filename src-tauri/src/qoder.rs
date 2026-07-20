@@ -130,6 +130,7 @@ mod windows {
                         .map(str::to_owned),
                     short_window: None,
                     weekly_window: None,
+                    monthly_window: None,
                     reset_credits: None,
                     reset_credit_expires_at: Vec::new(),
                     balance_remaining: Some(if exceeded { 0.0 } else { quota }),
