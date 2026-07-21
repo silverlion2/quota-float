@@ -18,7 +18,7 @@
       "identifier": "opener:allow-open-url",
       "allow": [
         { "url": "https://github.com/silverlion2/quota-float/releases/*" },
-        { "url": "https://www.willcodexquotareset.com/" }
+        { "url": "https://codexresetradar.com/" }
       ]
     },
     "window-state:default"

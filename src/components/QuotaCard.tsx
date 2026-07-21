@@ -3,9 +3,9 @@ import { memo, type CSSProperties, type PointerEvent as ReactPointerEvent, type 
 import { clampPercent, formatDateTime, formatResetDate, formatResetTime, quotaTier } from "../lib/format";
 import { copy, normalizeLanguage, resetForecastLabel, resetForecastTitle } from "../lib/i18n";
 import { normalizeProviderOrder, PROVIDER_CATALOG, type ProviderDefinition } from "../lib/providers";
-import { calculateQuotaPace, trackedQuotaWindows, type NamedQuotaWindow, type QuotaPace, type QuotaPeriod } from "../lib/quotaPace";
+import { calculateQuotaPace, paceBaselineKey, trackedQuotaWindows, type NamedQuotaWindow, type QuotaPace, type QuotaPeriod } from "../lib/quotaPace";
 import type { RecentCodexReset } from "../lib/resetDetection";
-import type { Language, ProviderId, ProviderSnapshot, ResetForecast, VolcengineDiagnostics, WidgetPreferences } from "../types";
+import type { DailyPaceBaseline, Language, ProviderId, ProviderSnapshot, ResetForecast, VolcengineDiagnostics, WidgetPreferences } from "../types";
 import { ProviderMark } from "./ProviderMark";
 import { EMPTY_UPDATE_STATE, UpdatePanel, type UpdateViewState } from "./UpdatePanel";
 
@@ -31,6 +31,7 @@ interface Props {
   recentCodexReset?: RecentCodexReset | null;
   resetForecast?: ResetForecast | null;
   onOpenResetForecast?: (url: string) => void;
+  paceBaselines?: Record<string, DailyPaceBaseline>;
   updateState?: UpdateViewState;
   updateOpen?: boolean;
   onUpdateOpen?: () => void;
@@ -74,7 +75,7 @@ function QuotaPaceHint({ pace, language }: { pace: QuotaPace; language: Language
   );
 }
 
-function QuotaWindowList({ windows, language }: { windows: NamedQuotaWindow[]; language: Language }) {
+function QuotaWindowList({ windows, provider, language, paceBaselines }: { windows: NamedQuotaWindow[]; provider: ProviderId; language: Language; paceBaselines: Record<string, DailyPaceBaseline> }) {
   const t = copy[language];
   const number = new Intl.NumberFormat(language === "en" ? "en-US" : "zh-CN", { maximumFractionDigits: 1 });
   const labels: Record<QuotaPeriod, string> = {
@@ -86,7 +87,7 @@ function QuotaWindowList({ windows, language }: { windows: NamedQuotaWindow[]; l
     <section className="quota-window-list" aria-label={t.quotaWindows}>
       {windows.map(({ period, window }) => {
         const remaining = clampPercent(window.remainingPercent);
-        const pace = calculateQuotaPace(window);
+        const pace = calculateQuotaPace(window, new Date(), paceBaselines[paceBaselineKey(provider, period)] ?? null);
         const statusLabel = pace.status === "on_track" ? t.onTrack : pace.status === "over_pace" ? t.overPaceBy(number.format(pace.overByPercent)) : t.paceUnknown;
         const unit = pace.unit === "hour" ? t.hourUnit : t.dayUnit;
         return (
@@ -341,6 +342,7 @@ export const QuotaCard = memo(function QuotaCard({
   recentCodexReset = null,
   resetForecast = null,
   onOpenResetForecast = () => undefined,
+  paceBaselines = {},
   updateState = EMPTY_UPDATE_STATE,
   updateOpen = false,
   onUpdateOpen = () => undefined,
@@ -370,7 +372,9 @@ export const QuotaCard = memo(function QuotaCard({
   const weekly = snapshot.weeklyWindow ? clampPercent(snapshot.weeklyWindow.remainingPercent) : null;
   const quotaWindows = trackedQuotaWindows(snapshot);
   const showQuotaWindowList = quotaWindows.length > 1;
-  const singleWindowPace = quotaWindows.length === 1 ? calculateQuotaPace(quotaWindows[0].window) : null;
+  const singleWindowPace = quotaWindows.length === 1
+    ? calculateQuotaPace(quotaWindows[0].window, new Date(), paceBaselines[paceBaselineKey(snapshot.provider, quotaWindows[0].period)] ?? null)
+    : null;
   const balance = snapshot.balanceRemaining ?? null;
   const unlimited = snapshot.balanceUnit === "unlimited";
   const unlimitedLabel = language === "en" ? "Unlimited" : "不限量";
@@ -539,7 +543,7 @@ export const QuotaCard = memo(function QuotaCard({
         {available && (quotaWindows.length > 0 || balance !== null) ? (
           <>
             {showQuotaWindowList ? (
-              <QuotaWindowList windows={quotaWindows} language={language} />
+              <QuotaWindowList windows={quotaWindows} provider={snapshot.provider} language={language} paceBaselines={paceBaselines} />
             ) : (
               <>
                 <section className="primary-metric" aria-label={metricLabel ?? undefined}>

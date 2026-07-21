@@ -141,11 +141,21 @@ describe("activity timeline and notification policy", () => {
     expect(update.notificationCandidates.some((item) => item.key === "pace:codex:weekly")).toBe(false);
   });
 
-  it("escalates immediately when today's planned quota reaches zero", () => {
-    const update = recordSnapshotActivity(
+  it("escalates immediately when the fixed daily budget reaches zero", () => {
+    const anchored = recordSnapshotActivity(
       EMPTY_RUNTIME_STATE,
-      [snapshot(80)],
-      [snapshot(50)],
+      [],
+      [snapshot(1)],
+      null,
+      15,
+      new Date("2026-07-19T01:00:00Z"),
+      "en",
+      120,
+    );
+    const update = recordSnapshotActivity(
+      anchored.state,
+      [snapshot(1)],
+      [snapshot(0)],
       null,
       15,
       new Date("2026-07-19T02:00:00Z"),
@@ -158,6 +168,33 @@ describe("activity timeline and notification policy", () => {
     expect(update.notificationCandidates).toEqual(expect.arrayContaining([
       expect.objectContaining({ key: "pace-zero:codex:weekly" }),
     ]));
+  });
+
+  it("resets the Codex daily pacing anchor when the weekly quota resets", () => {
+    const beforeReset = recordSnapshotActivity(
+      EMPTY_RUNTIME_STATE,
+      [],
+      [snapshot(20)],
+      null,
+      15,
+      new Date("2026-07-19T02:00:00Z"),
+    );
+    const resetSnapshot = snapshot(100);
+    resetSnapshot.weeklyWindow = { ...resetSnapshot.weeklyWindow!, resetsAt: "2026-08-01T00:00:00Z" };
+    const afterReset = recordSnapshotActivity(
+      beforeReset.state,
+      [snapshot(20)],
+      [resetSnapshot],
+      { resetAt: "2026-07-19T03:00:00Z", detectedAt: "2026-07-19T03:00:00Z", source: "observed" },
+      15,
+      new Date("2026-07-19T03:00:00Z"),
+    );
+    const baseline = afterReset.state.dailyPaceBaselines["codex:weekly"];
+
+    expect(baseline.remainingPercent).toBe(100);
+    expect(baseline.resetsAt).toBe("2026-08-01T00:00:00Z");
+    expect(baseline.capturedAt).toBe("2026-07-19T03:00:00.000Z");
+    expect(afterReset.createdEvents).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "reset" })]));
   });
 
   it("drops malformed imported history, events, layouts, and notification dates", () => {

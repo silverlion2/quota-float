@@ -108,7 +108,7 @@ export async function fetchCodexResetForecast(): Promise<ResetForecast | null> {
     windowHours: 48,
     fetchedAt: new Date().toISOString(),
     resetAnnounced: false,
-    sourceUrl: "https://www.willcodexquotareset.com/",
+    sourceUrl: "https://codexresetradar.com/",
   };
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<ResetForecast | null>("get_codex_reset_forecast");

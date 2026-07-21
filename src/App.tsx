@@ -480,6 +480,7 @@ export default function App() {
       recentCodexReset={recentCodexReset}
       resetForecast={codexResetForecast}
       onOpenResetForecast={(url) => void openExternalUrl(url).catch(() => setOperationError("Reset forecast could not be opened."))}
+      paceBaselines={runtimeState.dailyPaceBaselines}
       updateState={updateState}
       updateOpen={updateOpen}
       onUpdateOpen={handleUpdateOpen}

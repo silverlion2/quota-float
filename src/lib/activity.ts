@@ -1,7 +1,7 @@
-import type { ActivityEvent, Language, ProviderId, ProviderSnapshot, QuotaHistoryPoint, RuntimeState } from "../types";
+import type { ActivityEvent, DailyPaceBaseline, Language, ProviderId, ProviderSnapshot, QuotaHistoryPoint, RuntimeState } from "../types";
 import type { RecentCodexReset } from "./resetDetection";
 import { DEFAULT_PROVIDER_ORDER, normalizeProviderOrder } from "./providers";
-import { calculateQuotaPace, mostOverPaceWindow, trackedQuotaWindows, type NamedQuotaWindow, type QuotaPace } from "./quotaPace";
+import { calculateQuotaPace, mostOverPaceWindow, paceBaselineKey, refreshDailyPaceBaselines, trackedQuotaWindows, type NamedQuotaWindow, type QuotaPace } from "./quotaPace";
 
 export const EMPTY_RUNTIME_STATE: RuntimeState = {
   schemaVersion: 1,
@@ -9,6 +9,7 @@ export const EMPTY_RUNTIME_STATE: RuntimeState = {
   events: [],
   savedLayouts: [],
   lastNotifications: {},
+  dailyPaceBaselines: {},
 };
 
 const providerSet = new Set<ProviderId>(DEFAULT_PROVIDER_ORDER);
@@ -79,6 +80,23 @@ function savedLayout(value: unknown): RuntimeState["savedLayouts"][number] | nul
   };
 }
 
+function dailyPaceBaseline(value: unknown): DailyPaceBaseline | null {
+  const candidate = record(value);
+  const period = candidate?.period;
+  if (!candidate || !validProvider(candidate.provider) || !["5h", "weekly", "monthly"].includes(String(period))
+    || typeof candidate.localDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(candidate.localDate)
+    || !validDate(candidate.capturedAt) || !validDate(candidate.resetsAt)
+    || typeof candidate.remainingPercent !== "number" || !Number.isFinite(candidate.remainingPercent)) return null;
+  return {
+    provider: candidate.provider,
+    period: period as DailyPaceBaseline["period"],
+    localDate: candidate.localDate,
+    capturedAt: candidate.capturedAt,
+    remainingPercent: Math.min(100, Math.max(0, candidate.remainingPercent)),
+    resetsAt: candidate.resetsAt,
+  };
+}
+
 export function normalizeRuntimeState(value: unknown): RuntimeState {
   if (!value || typeof value !== "object") return structuredClone(EMPTY_RUNTIME_STATE);
   const candidate = value as Partial<RuntimeState>;
@@ -86,12 +104,18 @@ export function normalizeRuntimeState(value: unknown): RuntimeState {
   for (const [key, timestamp] of Object.entries(record(candidate.lastNotifications) ?? {})) {
     if (key.length > 0 && key.length <= 160 && validDate(timestamp)) lastNotifications[key] = timestamp;
   }
+  const dailyPaceBaselines: Record<string, DailyPaceBaseline> = {};
+  for (const [key, value] of Object.entries(record(candidate.dailyPaceBaselines) ?? {})) {
+    const baseline = dailyPaceBaseline(value);
+    if (baseline && key === paceBaselineKey(baseline.provider, baseline.period)) dailyPaceBaselines[key] = baseline;
+  }
   return {
     schemaVersion: 1,
     history: Array.isArray(candidate.history) ? candidate.history.map(historyPoint).filter((item): item is QuotaHistoryPoint => item !== null).slice(-1000) : [],
     events: Array.isArray(candidate.events) ? candidate.events.map(activityEvent).filter((item): item is ActivityEvent => item !== null).slice(0, 200) : [],
     savedLayouts: Array.isArray(candidate.savedLayouts) ? candidate.savedLayouts.map(savedLayout).filter((item): item is RuntimeState["savedLayouts"][number] => item !== null).slice(0, 12) : [],
     lastNotifications,
+    dailyPaceBaselines,
   };
 }
 
@@ -160,6 +184,8 @@ export function recordSnapshotActivity(
   notificationCooldownMinutes = 120,
 ): RuntimeUpdate {
   const occurredAt = now.toISOString();
+  const resetProviders = recentReset ? new Set<string>(["codex"]) : new Set<string>();
+  const dailyPaceBaselines = refreshDailyPaceBaselines(current.dailyPaceBaselines, nextSnapshots, now, resetProviders);
   const previousByProvider = new Map(previousSnapshots.map((snapshot) => [snapshot.provider, snapshot]));
   const latestHistory = new Map<ProviderId, QuotaHistoryPoint>();
   for (let index = current.history.length - 1; index >= 0; index -= 1) {
@@ -208,10 +234,11 @@ export function recordSnapshotActivity(
           ));
         }
       }
-      const nextPace = mostOverPaceWindow(snapshot, now);
+      const nextPace = mostOverPaceWindow(snapshot, now, dailyPaceBaselines);
       if (nextPace) {
         const previousWindow = trackedQuotaWindows(previous).find((item) => item.period === nextPace.period);
-        const previousPace = previousWindow ? calculateQuotaPace(previousWindow.window, now) : null;
+        const baseline = dailyPaceBaselines[paceBaselineKey(snapshot.provider, nextPace.period)] ?? null;
+        const previousPace = previousWindow ? calculateQuotaPace(previousWindow.window, now, baseline) : null;
         const wasOverPace = previousPace?.status === "over_pace";
         const isDepleted = (nextPace.pace.todayRemainingPercent ?? 0) <= 0.05;
         const wasDepleted = wasOverPace && (previousPace?.todayRemainingPercent ?? 0) <= 0.05;
@@ -240,6 +267,7 @@ export function recordSnapshotActivity(
       ...current,
       history: [...current.history, ...additions].slice(-1000),
       events: [...createdEvents, ...current.events].slice(0, 200),
+      dailyPaceBaselines,
     },
     createdEvents,
     notificationCandidates: [...notificationCandidates, ...repeatedNotifications],

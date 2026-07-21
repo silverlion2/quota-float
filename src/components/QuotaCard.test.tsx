@@ -117,7 +117,7 @@ describe("QuotaCard platform ledger", () => {
           windowHours: 48,
           fetchedAt: "2026-07-20T18:14:26.948Z",
           resetAnnounced: false,
-          sourceUrl: "https://www.willcodexquotareset.com/",
+          sourceUrl: "https://codexresetradar.com/",
         }}
         onOpenResetForecast={onOpenResetForecast}
       />,
@@ -125,7 +125,7 @@ describe("QuotaCard platform ledger", () => {
 
     expect(screen.getByText("48h chance · 92%")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Unofficial reset likelihood/i }));
-    expect(onOpenResetForecast).toHaveBeenCalledWith("https://www.willcodexquotareset.com/");
+    expect(onOpenResetForecast).toHaveBeenCalledWith("https://codexresetradar.com/");
   });
 
   it("lists real platform values and selects a connected platform", () => {
@@ -197,7 +197,7 @@ describe("QuotaCard platform ledger", () => {
       expect(screen.getByText("Weekly remaining")).toBeInTheDocument();
       expect(screen.getByText("On track")).toBeInTheDocument();
       expect(screen.getByText(/Today's plan: [\d.]+% left/)).toBeInTheDocument();
-      expect(screen.getByText("Average ≤ 14.3%/day")).toBeInTheDocument();
+      expect(screen.getByText("Daily suggestion ≤ 14.8%/day")).toBeInTheDocument();
       expect(screen.queryByText("5 hours")).not.toBeInTheDocument();
     } finally {
       vi.useRealTimers();
@@ -270,7 +270,7 @@ describe("QuotaCard platform ledger", () => {
       expect(screen.getByRole("region", { name: "Quota windows" })).toHaveTextContent("Weekly");
       expect(screen.getByRole("region", { name: "Quota windows" })).toHaveTextContent("Monthly");
       expect(screen.getAllByText(/Today's plan: [\d.]+% left/)).toHaveLength(3);
-      expect(screen.getByText("Average ≤ 20%/hour")).toBeInTheDocument();
+      expect(screen.getByText("Daily suggestion ≤ 30%/hour")).toBeInTheDocument();
       expect(screen.getByText(/Over pace \+[\d.]+%/)).toBeInTheDocument();
     } finally {
       vi.useRealTimers();

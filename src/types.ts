@@ -89,12 +89,22 @@ export interface SavedLayout {
   accentColor: string;
 }
 
+export interface DailyPaceBaseline {
+  provider: ProviderId;
+  period: "5h" | "weekly" | "monthly";
+  localDate: string;
+  capturedAt: string;
+  remainingPercent: number;
+  resetsAt: string;
+}
+
 export interface RuntimeState {
   schemaVersion: 1;
   history: QuotaHistoryPoint[];
   events: ActivityEvent[];
   savedLayouts: SavedLayout[];
   lastNotifications: Record<string, string>;
+  dailyPaceBaselines: Record<string, DailyPaceBaseline>;
 }
 
 export interface AppDiagnostics {

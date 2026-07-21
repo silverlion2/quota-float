@@ -110,7 +110,7 @@ export const copy = {
     onTrack: "进度正常",
     overPace: "消耗偏快",
     paceUnknown: "进度待确认",
-    averageSuggested: (rate: string, unit: string) => `平均建议 ≤ ${rate}%/${unit}`,
+    averageSuggested: (rate: string, unit: string) => `每日建议 ≤ ${rate}%/${unit}`,
     overPaceBy: (percent: string) => `消耗偏快 +${percent}%`,
     todayPlannedRemaining: (percent: string) => `今日计划还可用 ${percent}%`,
     paceNeedsPeriod: "缺少周期信息，无法判断进度",
@@ -224,7 +224,7 @@ export const copy = {
     onTrack: "On track",
     overPace: "Over pace",
     paceUnknown: "Pace unavailable",
-    averageSuggested: (rate: string, unit: string) => `Average ≤ ${rate}%/${unit}`,
+    averageSuggested: (rate: string, unit: string) => `Daily suggestion ≤ ${rate}%/${unit}`,
     overPaceBy: (percent: string) => `Over pace +${percent}%`,
     todayPlannedRemaining: (percent: string) => `Today's plan: ${percent}% left`,
     paceNeedsPeriod: "Pace needs a quota period",
@@ -248,6 +248,6 @@ export function resetForecastLabel(language: Language, score: number, hours: num
 
 export function resetForecastTitle(language: Language): string {
   return language === "en"
-    ? "Unofficial reset likelihood from Will Codex Reset? Open the forecast source."
-    : "来自 Will Codex Reset? 的非官方重置概率。打开来源。";
+    ? "Unofficial reset likelihood from Codex Reset Radar. Open the source-first forecast."
+    : "来自 Codex Reset Radar 的非官方重置概率。打开来源优先的预测。";
 }

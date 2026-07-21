@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-const FORECAST_API_URL: &str = "https://www.willcodexquotareset.com/api/forecast";
-const FORECAST_SOURCE_URL: &str = "https://www.willcodexquotareset.com/";
+const FORECAST_API_URL: &str = "https://codexresetradar.com/api/status";
+const FORECAST_SOURCE_URL: &str = "https://codexresetradar.com/";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -17,16 +17,25 @@ pub struct ResetForecast {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ForecastResponse {
-    fetched_at: String,
+    generated_at: String,
     forecast: ForecastPayload,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ForecastPayload {
-    score: i16,
-    #[serde(default)]
-    reset_announced: bool,
+    probability: i16,
+    window_hours: u8,
+}
+
+fn normalize(response: ForecastResponse) -> ResetForecast {
+    ResetForecast {
+        score: response.forecast.probability.clamp(0, 100) as u8,
+        window_hours: response.forecast.window_hours,
+        fetched_at: response.generated_at,
+        reset_announced: false,
+        source_url: FORECAST_SOURCE_URL.into(),
+    }
 }
 
 pub async fn fetch(client: &reqwest::Client) -> Option<ResetForecast> {
@@ -45,11 +54,24 @@ pub async fn fetch(client: &reqwest::Client) -> Option<ResetForecast> {
         .ok()?
         .ok()?;
 
-    Some(ResetForecast {
-        score: response.forecast.score.clamp(0, 100) as u8,
-        window_hours: 48,
-        fetched_at: response.fetched_at,
-        reset_announced: response.forecast.reset_announced,
-        source_url: FORECAST_SOURCE_URL.into(),
-    })
+    Some(normalize(response))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{normalize, ForecastResponse};
+
+    #[test]
+    fn parses_reset_radar_status_shape() {
+        let response: ForecastResponse = serde_json::from_str(
+            r#"{"generatedAt":"2026-07-21T06:00:08.979Z","forecast":{"probability":85,"windowHours":48}}"#,
+        )
+        .expect("Reset Radar response should parse");
+        let forecast = normalize(response);
+
+        assert_eq!(forecast.score, 85);
+        assert_eq!(forecast.window_hours, 48);
+        assert_eq!(forecast.fetched_at, "2026-07-21T06:00:08.979Z");
+        assert_eq!(forecast.source_url, "https://codexresetradar.com/");
+    }
 }
