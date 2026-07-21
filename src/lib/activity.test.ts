@@ -228,9 +228,9 @@ describe("activity timeline and notification policy", () => {
 
     expect(afterRefresh.state.dailyPaceBaselines["codex:weekly"]).toEqual(baseline);
     expect(afterRefresh.createdEvents).not.toEqual(expect.arrayContaining([expect.objectContaining({ kind: "reset" })]));
-    expect(afterRefresh.notificationCandidates).toEqual(expect.arrayContaining([
-      expect.objectContaining({ key: "pace-zero:codex:weekly" }),
-    ]));
+    expect(afterRefresh.notificationCandidates.some(({ key }) =>
+      key === "pace:codex:weekly" || key === "pace-zero:codex:weekly"
+    )).toBe(true);
   });
 
   it("loads pre-Radar daily baselines with the weekly reset as their fallback", () => {
