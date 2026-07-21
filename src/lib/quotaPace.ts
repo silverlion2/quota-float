@@ -1,4 +1,4 @@
-import type { DailyPaceBaseline, ProviderSnapshot, UsageWindow } from "../types";
+import type { DailyPaceBaseline, ProviderSnapshot, ResetForecast, UsageWindow } from "../types";
 
 export type QuotaPeriod = "5h" | "weekly" | "monthly";
 export type QuotaPaceStatus = "on_track" | "over_pace" | "unknown";
@@ -45,16 +45,42 @@ export function paceBaselineKey(provider: ProviderSnapshot["provider"], period: 
   return `${provider}:${period}`;
 }
 
+export function forecastAdjustedResetAt(resetsAt: string, now: Date, forecast: ResetForecast | null): string {
+  const guaranteedResetAt = Date.parse(resetsAt);
+  const nowMs = now.getTime();
+  if (!forecast || !Number.isFinite(guaranteedResetAt) || guaranteedResetAt <= nowMs
+    || !Number.isFinite(forecast.score) || !Number.isFinite(forecast.windowHours)) return resetsAt;
+  const probability = clamp(forecast.score, 0, 100) / 100;
+  const forecastWindowMs = Math.max(0, forecast.windowHours) * HOUR_MS;
+  if (probability <= 0 || !Number.isFinite(forecastWindowMs) || forecastWindowMs <= 0) return resetsAt;
+
+  // Radar reports a chance within a window, not an exact time. Treat the
+  // midpoint as the conditional reset time, then retain the regular Codex
+  // reset as the probability-weighted fallback.
+  const guaranteedRemainingMs = guaranteedResetAt - nowMs;
+  const conditionalResetMs = Math.min(guaranteedRemainingMs, forecastWindowMs / 2);
+  const expectedRemainingMs = probability * conditionalResetMs + (1 - probability) * guaranteedRemainingMs;
+  return new Date(nowMs + expectedRemainingMs).toISOString();
+}
+
 export function refreshDailyPaceBaselines(
   current: Record<string, DailyPaceBaseline>,
   snapshots: ProviderSnapshot[],
   now = new Date(),
   resetProviders: ReadonlySet<string> = new Set(),
+  resetForecast: ResetForecast | null = null,
 ): Record<string, DailyPaceBaseline> {
   const next: Record<string, DailyPaceBaseline> = {};
   const localDate = localDateKey(now);
   for (const snapshot of snapshots) {
-    for (const { period, window } of trackedQuotaWindows(snapshot)) {
+    const windows = trackedQuotaWindows(snapshot);
+    if (windows.length === 0 && ["unavailable", "stale", "loading"].includes(snapshot.status)) {
+      for (const [key, baseline] of Object.entries(current)) {
+        if (baseline.provider === snapshot.provider) next[key] = baseline;
+      }
+      continue;
+    }
+    for (const { period, window } of windows) {
       if (!window.resetsAt || !Number.isFinite(Date.parse(window.resetsAt))) continue;
       const key = paceBaselineKey(snapshot.provider, period);
       const existing = current[key];
@@ -64,6 +90,9 @@ export function refreshDailyPaceBaselines(
         && !quotaRestored
         && existing.localDate === localDate
         && existing.resetsAt === window.resetsAt;
+      const applicableForecast = snapshot.provider === "codex" && period === "weekly" && !resetProviders.has(snapshot.provider)
+        ? resetForecast
+        : null;
       next[key] = canReuse ? existing : {
         provider: snapshot.provider,
         period,
@@ -71,6 +100,9 @@ export function refreshDailyPaceBaselines(
         capturedAt: now.toISOString(),
         remainingPercent: clamp(window.remainingPercent, 0, 100),
         resetsAt: window.resetsAt,
+        planningResetsAt: forecastAdjustedResetAt(window.resetsAt, now, applicableForecast),
+        resetForecastScore: applicableForecast ? clamp(applicableForecast.score, 0, 100) : null,
+        resetForecastWindowHours: applicableForecast ? Math.max(0, applicableForecast.windowHours) : null,
       };
     }
   }
@@ -114,20 +146,35 @@ export function calculateQuotaPace(window: UsageWindow, now = new Date(), baseli
 
   const startsAt = resetAt - durationMs;
   const nowMs = now.getTime();
-  if (nowMs < startsAt - CLOCK_TOLERANCE_MS || nowMs > resetAt + CLOCK_TOLERANCE_MS) {
+  const matchingBaselineAt = baseline && baseline.localDate === localDateKey(now) && baseline.resetsAt === window.resetsAt
+    ? Date.parse(baseline.capturedAt)
+    : Number.NaN;
+  const hasEarlyResetBaseline = Number.isFinite(matchingBaselineAt)
+    && matchingBaselineAt <= nowMs
+    && matchingBaselineAt < startsAt - CLOCK_TOLERANCE_MS
+    && nowMs <= resetAt + CLOCK_TOLERANCE_MS;
+  if ((nowMs < startsAt - CLOCK_TOLERANCE_MS && !hasEarlyResetBaseline) || nowMs > resetAt + CLOCK_TOLERANCE_MS) {
     return { status: "unknown", usedPercent, recommendedUsedPercent: null, todayRemainingPercent: null, overByPercent: 0, averageRate: baselineRate, unit };
   }
 
-  const recommendedUsedPercent = clamp(((nowMs - startsAt) / durationMs) * 100, 0, 100);
   const remainingPercent = clamp(window.remainingPercent, 0, 100);
-  const baselineAt = baseline && baseline.localDate === localDateKey(now) && baseline.resetsAt === window.resetsAt
-    ? Date.parse(baseline.capturedAt)
-    : nowMs;
+  const baselineAt = Number.isFinite(matchingBaselineAt) ? matchingBaselineAt : nowMs;
   const baselineRemaining = baselineAt <= nowMs && Number.isFinite(baselineAt)
     ? clamp(baseline?.remainingPercent ?? remainingPercent, 0, 100)
     : remainingPercent;
-  const baselineRemainingMs = Math.max(0, resetAt - baselineAt);
-  const planningHorizon = Math.min(resetAt, endOfLocalDay(new Date(baselineAt)));
+  const recommendedUsedPercent = hasEarlyResetBaseline
+    ? clamp(
+      100 - baselineRemaining + baselineRemaining * ((nowMs - baselineAt) / Math.max(1, resetAt - baselineAt)),
+      0,
+      100,
+    )
+    : clamp(((nowMs - startsAt) / durationMs) * 100, 0, 100);
+  const savedPlanningResetAt = baseline ? Date.parse(baseline.planningResetsAt) : Number.NaN;
+  const planningResetAt = Number.isFinite(savedPlanningResetAt) && savedPlanningResetAt >= baselineAt && savedPlanningResetAt <= resetAt
+    ? savedPlanningResetAt
+    : resetAt;
+  const baselineRemainingMs = Math.max(0, planningResetAt - baselineAt);
+  const planningHorizon = Math.min(planningResetAt, endOfLocalDay(new Date(baselineAt)));
   const horizonMs = Math.max(0, planningHorizon - baselineAt);
   const dailyBudget = baselineRemainingMs > 0
     ? clamp(baselineRemaining * (horizonMs / baselineRemainingMs), 0, baselineRemaining)

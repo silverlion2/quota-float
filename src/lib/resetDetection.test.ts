@@ -43,6 +43,14 @@ describe("recent Codex reset detection", () => {
     });
   });
 
+  it("uses Codex's own recovered percentage even when reset metadata is unchanged", () => {
+    const resetsAt = "2026-07-22T00:00:00Z";
+    expect(detectRecentCodexReset(codex(100, resetsAt, 0), codex(95, resetsAt, 0), now)).toMatchObject({
+      source: "observed",
+      resetAt: "2026-07-18T02:00:00.000Z",
+    });
+  });
+
   it("does not confuse normal consumption with a reset", () => {
     expect(detectRecentCodexReset(codex(61, "2026-07-22T00:00:00Z"), codex(64, "2026-07-22T00:00:00Z"), now)).toBeNull();
   });
@@ -51,4 +59,5 @@ describe("recent Codex reset detection", () => {
     expect(isRecentCodexReset({ detectedAt: "2026-07-18T00:00:00Z", resetAt: "2026-07-18T00:00:00Z", source: "observed" }, now)).toBe(true);
     expect(isRecentCodexReset({ detectedAt: "2026-07-17T19:00:00Z", resetAt: "2026-07-17T19:00:00Z", source: "observed" }, now)).toBe(false);
   });
+
 });

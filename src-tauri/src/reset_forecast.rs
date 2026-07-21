@@ -11,6 +11,7 @@ pub struct ResetForecast {
     pub window_hours: u8,
     pub fetched_at: String,
     pub reset_announced: bool,
+    pub reset_at: Option<String>,
     pub source_url: String,
 }
 
@@ -19,6 +20,10 @@ pub struct ResetForecast {
 struct ForecastResponse {
     generated_at: String,
     forecast: ForecastPayload,
+    #[serde(default)]
+    reset_today_utc: bool,
+    #[serde(default)]
+    reset_at: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -33,7 +38,8 @@ fn normalize(response: ForecastResponse) -> ResetForecast {
         score: response.forecast.probability.clamp(0, 100) as u8,
         window_hours: response.forecast.window_hours,
         fetched_at: response.generated_at,
-        reset_announced: false,
+        reset_announced: response.reset_today_utc,
+        reset_at: response.reset_at,
         source_url: FORECAST_SOURCE_URL.into(),
     }
 }
@@ -64,7 +70,7 @@ mod tests {
     #[test]
     fn parses_reset_radar_status_shape() {
         let response: ForecastResponse = serde_json::from_str(
-            r#"{"generatedAt":"2026-07-21T06:00:08.979Z","forecast":{"probability":85,"windowHours":48}}"#,
+            r#"{"generatedAt":"2026-07-21T06:00:08.979Z","forecast":{"probability":85,"windowHours":48},"resetTodayUtc":true,"resetAt":"2026-07-21T05:30:00Z"}"#,
         )
         .expect("Reset Radar response should parse");
         let forecast = normalize(response);
@@ -72,6 +78,8 @@ mod tests {
         assert_eq!(forecast.score, 85);
         assert_eq!(forecast.window_hours, 48);
         assert_eq!(forecast.fetched_at, "2026-07-21T06:00:08.979Z");
+        assert!(forecast.reset_announced);
+        assert_eq!(forecast.reset_at.as_deref(), Some("2026-07-21T05:30:00Z"));
         assert_eq!(forecast.source_url, "https://codexresetradar.com/");
     }
 }

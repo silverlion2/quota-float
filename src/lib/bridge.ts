@@ -81,6 +81,7 @@ const mockVolcengineDiagnostics: VolcengineDiagnostics = {
 
 let widgetTransition: Promise<void> = Promise.resolve();
 let preferenceWrite: Promise<void> = Promise.resolve();
+let runtimeWrite: Promise<void> = Promise.resolve();
 
 function enqueueWidgetTransition(operation: () => Promise<void>): Promise<void> {
   const next = widgetTransition.then(operation, operation);
@@ -91,6 +92,12 @@ function enqueueWidgetTransition(operation: () => Promise<void>): Promise<void> 
 function enqueuePreferenceWrite(operation: () => Promise<void>): Promise<void> {
   const next = preferenceWrite.then(operation, operation);
   preferenceWrite = next.catch(() => undefined);
+  return next;
+}
+
+function enqueueRuntimeWrite(operation: () => Promise<void>): Promise<void> {
+  const next = runtimeWrite.then(operation, operation);
+  runtimeWrite = next.catch(() => undefined);
   return next;
 }
 
@@ -108,6 +115,7 @@ export async function fetchCodexResetForecast(): Promise<ResetForecast | null> {
     windowHours: 48,
     fetchedAt: new Date().toISOString(),
     resetAnnounced: false,
+    resetAt: null,
     sourceUrl: "https://codexresetradar.com/",
   };
   const { invoke } = await import("@tauri-apps/api/core");
@@ -169,8 +177,10 @@ export async function getRuntimeState(): Promise<RuntimeState> {
 
 export async function updateRuntimeState(runtimeState: RuntimeState): Promise<void> {
   if (!isTauri()) return;
-  const { invoke } = await import("@tauri-apps/api/core");
-  await invoke("set_runtime_state", { runtimeState });
+  return enqueueRuntimeWrite(async () => {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("set_runtime_state", { runtimeState });
+  });
 }
 
 export async function exportAppData(bundle: unknown): Promise<string | null> {
@@ -238,8 +248,14 @@ export async function startDragging(): Promise<void> {
   const { invoke } = await import("@tauri-apps/api/core");
   const currentWindow = getCurrentWindow();
   await invoke("begin_widget_drag");
-  await currentWindow.startDragging();
-  let previous = await currentWindow.outerPosition();
+  let previous: { x: number; y: number };
+  try {
+    await currentWindow.startDragging();
+    previous = await currentWindow.outerPosition();
+  } catch (error) {
+    await invoke("finish_widget_drag").catch(() => undefined);
+    throw error;
+  }
   let stableTicks = 0;
   let attempts = 0;
   const finishWhenStable = window.setInterval(() => {
@@ -286,8 +302,14 @@ export async function listenDesktopEvents(handlers: {
 }): Promise<() => void> {
   if (!isTauri()) return () => undefined;
   const { listen } = await import("@tauri-apps/api/event");
-  const unlistenPreferences = await listen<WidgetPreferences>("preferences-changed", (event) => handlers.onPreferences(event.payload));
-  const unlistenRefresh = await listen("refresh-requested", handlers.onRefresh);
-  const unlistenUpdate = await listen("update-check-requested", handlers.onUpdate);
-  return () => { unlistenPreferences(); unlistenRefresh(); unlistenUpdate(); };
+  const unlisteners: Array<() => void> = [];
+  try {
+    unlisteners.push(await listen<WidgetPreferences>("preferences-changed", (event) => handlers.onPreferences(event.payload)));
+    unlisteners.push(await listen("refresh-requested", handlers.onRefresh));
+    unlisteners.push(await listen("update-check-requested", handlers.onUpdate));
+  } catch (error) {
+    for (const unlisten of [...unlisteners].reverse()) unlisten();
+    throw error;
+  }
+  return () => { for (const unlisten of [...unlisteners].reverse()) unlisten(); };
 }

@@ -683,8 +683,13 @@ export const QuotaOrb = memo(function QuotaOrb({ snapshot, onDrag, onHover, lang
       ? (activeLanguage === "en" ? "Unlimited" : "不限量")
     : `${balance} ${snapshot.balanceUnit ?? ""}`.trim();
 
-  useEffect(() => {
+  const scheduleIdle = () => {
+    if (idleTimer.current !== null) window.clearTimeout(idleTimer.current);
     idleTimer.current = window.setTimeout(() => setIdle(true), 2000);
+  };
+
+  useEffect(() => {
+    scheduleIdle();
     return () => {
       if (idleTimer.current !== null) window.clearTimeout(idleTimer.current);
     };
@@ -700,7 +705,7 @@ export const QuotaOrb = memo(function QuotaOrb({ snapshot, onDrag, onHover, lang
     <main
       className={`quota-orb quota-card--${snapshot.status} quota-card--${tier}${idle ? " quota-orb--idle" : ""}`}
       onMouseEnter={handleMouseEnter}
-      onMouseLeave={() => onHover(false)}
+      onMouseLeave={() => { onHover(false); scheduleIdle(); }}
       onMouseDown={(event) => { if (event.button === 0) void onDrag(); }}
       aria-label={available ? accessibleLabel : localizedBackendMessage(snapshot.message, activeLanguage, snapshot.displayName) ?? t.unavailableStatus}
     >

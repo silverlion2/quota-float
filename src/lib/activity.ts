@@ -1,4 +1,4 @@
-import type { ActivityEvent, DailyPaceBaseline, Language, ProviderId, ProviderSnapshot, QuotaHistoryPoint, RuntimeState } from "../types";
+import type { ActivityEvent, DailyPaceBaseline, Language, ProviderId, ProviderSnapshot, QuotaHistoryPoint, ResetForecast, RuntimeState } from "../types";
 import type { RecentCodexReset } from "./resetDetection";
 import { DEFAULT_PROVIDER_ORDER, normalizeProviderOrder } from "./providers";
 import { calculateQuotaPace, mostOverPaceWindow, paceBaselineKey, refreshDailyPaceBaselines, trackedQuotaWindows, type NamedQuotaWindow, type QuotaPace } from "./quotaPace";
@@ -94,6 +94,13 @@ function dailyPaceBaseline(value: unknown): DailyPaceBaseline | null {
     capturedAt: candidate.capturedAt,
     remainingPercent: Math.min(100, Math.max(0, candidate.remainingPercent)),
     resetsAt: candidate.resetsAt,
+    planningResetsAt: validDate(candidate.planningResetsAt) ? candidate.planningResetsAt : candidate.resetsAt,
+    resetForecastScore: typeof candidate.resetForecastScore === "number" && Number.isFinite(candidate.resetForecastScore)
+      ? Math.min(100, Math.max(0, candidate.resetForecastScore))
+      : null,
+    resetForecastWindowHours: typeof candidate.resetForecastWindowHours === "number" && Number.isFinite(candidate.resetForecastWindowHours)
+      ? Math.max(0, candidate.resetForecastWindowHours)
+      : null,
   };
 }
 
@@ -182,10 +189,16 @@ export function recordSnapshotActivity(
   now = new Date(),
   language: Language = "en",
   notificationCooldownMinutes = 120,
+  resetForecast: ResetForecast | null = null,
 ): RuntimeUpdate {
   const occurredAt = now.toISOString();
-  const resetProviders = recentReset ? new Set<string>(["codex"]) : new Set<string>();
-  const dailyPaceBaselines = refreshDailyPaceBaselines(current.dailyPaceBaselines, nextSnapshots, now, resetProviders);
+  const isNewReset = recentReset !== null
+    && !current.events.some((item) => item.kind === "reset" && item.occurredAt === recentReset.resetAt);
+  const resetProviders = isNewReset ? new Set<string>(["codex"]) : new Set<string>();
+  const dailyPaceBaselines = refreshDailyPaceBaselines(current.dailyPaceBaselines, nextSnapshots, now, resetProviders, resetForecast);
+  const lastNotifications = isNewReset
+    ? Object.fromEntries(Object.entries(current.lastNotifications).filter(([key]) => !key.split(":").includes("codex")))
+    : current.lastNotifications;
   const previousByProvider = new Map(previousSnapshots.map((snapshot) => [snapshot.provider, snapshot]));
   const latestHistory = new Map<ProviderId, QuotaHistoryPoint>();
   for (let index = current.history.length - 1; index >= 0; index -= 1) {
@@ -253,7 +266,7 @@ export function recordSnapshotActivity(
       }
     }
   }
-  if (recentReset && !current.events.some((item) => item.kind === "reset" && item.occurredAt === recentReset.resetAt)) {
+  if (recentReset && isNewReset) {
     createdEvents.push(event("reset", "codex", recentReset.resetAt, "Codex quota reset", `Detected from ${recentReset.source} data.`));
   }
 
@@ -267,6 +280,7 @@ export function recordSnapshotActivity(
       ...current,
       history: [...current.history, ...additions].slice(-1000),
       events: [...createdEvents, ...current.events].slice(0, 200),
+      lastNotifications,
       dailyPaceBaselines,
     },
     createdEvents,

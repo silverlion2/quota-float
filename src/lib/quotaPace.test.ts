@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
-import type { ProviderSnapshot } from "../types";
-import { calculateQuotaPace, mostOverPaceWindow, paceBaselineKey, refreshDailyPaceBaselines, trackedQuotaWindows } from "./quotaPace";
+import type { ProviderSnapshot, ResetForecast } from "../types";
+import { calculateQuotaPace, forecastAdjustedResetAt, mostOverPaceWindow, paceBaselineKey, refreshDailyPaceBaselines, trackedQuotaWindows } from "./quotaPace";
+
+function resetForecast(score: number, windowHours = 48): ResetForecast {
+  return {
+    score,
+    windowHours,
+    fetchedAt: "2026-07-22T00:00:00Z",
+    resetAnnounced: false,
+    sourceUrl: "https://codexresetradar.com/",
+  };
+}
 
 function codexSnapshot(remainingPercent: number, resetsAt: string): ProviderSnapshot {
   return {
@@ -94,6 +104,95 @@ describe("quota pace", () => {
     expect(refreshed.todayRemainingPercent).toBeCloseTo((initial.todayRemainingPercent ?? 0) - 5, 8);
   });
 
+  it("restarts the consumption estimate after an early Codex reset", () => {
+    const now = new Date(2026, 6, 22, 8, 0, 0);
+    const resetsAt = new Date(2026, 7, 3, 8, 0, 0).toISOString();
+    const baselines = refreshDailyPaceBaselines(
+      {},
+      [codexSnapshot(100, resetsAt)],
+      now,
+      new Set(["codex"]),
+      resetForecast(90),
+    );
+    const baseline = baselines[paceBaselineKey("codex", "weekly")];
+    const pace = calculateQuotaPace(codexSnapshot(100, resetsAt).weeklyWindow!, now, baseline);
+
+    expect(baseline.capturedAt).toBe(now.toISOString());
+    expect(pace.status).toBe("on_track");
+    expect(pace.usedPercent).toBe(0);
+    expect(pace.recommendedUsedPercent).toBeCloseTo(0, 8);
+    expect(pace.todayRemainingPercent).not.toBeNull();
+    expect(pace.averageRate).toBeGreaterThan(0);
+
+    const tracked = calculateQuotaPace(
+      codexSnapshot(95, resetsAt).weeklyWindow!,
+      new Date(2026, 6, 22, 9, 0, 0),
+      baseline,
+    );
+    expect(tracked.usedPercent).toBe(5);
+  });
+
+  it("weights the Radar reset window against the guaranteed weekly reset", () => {
+    const now = new Date(2026, 6, 22, 0, 0, 0);
+    const resetsAt = new Date(2026, 6, 27, 0, 0, 0).toISOString();
+    const adjusted = Date.parse(forecastAdjustedResetAt(resetsAt, now, resetForecast(80)));
+
+    // 80% × the 24h window midpoint + 20% × the guaranteed 120h reset = 43.2h.
+    expect((adjusted - now.getTime()) / 3_600_000).toBeCloseTo(43.2, 8);
+  });
+
+  it("falls back to the weekly reset when the Radar forecast is invalid", () => {
+    const now = new Date(2026, 6, 22, 0, 0, 0);
+    const resetsAt = new Date(2026, 6, 27, 0, 0, 0).toISOString();
+
+    expect(forecastAdjustedResetAt(resetsAt, now, { ...resetForecast(80), score: Number.NaN })).toBe(resetsAt);
+  });
+
+  it("captures Radar once per day and applies it to the daily suggestion", () => {
+    const now = new Date(2026, 6, 22, 0, 0, 0);
+    const resetsAt = new Date(2026, 6, 27, 0, 0, 0).toISOString();
+    const first = refreshDailyPaceBaselines({}, [codexSnapshot(70, resetsAt)], now, new Set(), resetForecast(80));
+    const baseline = first[paceBaselineKey("codex", "weekly")];
+    const pace = calculateQuotaPace(codexSnapshot(70, resetsAt).weeklyWindow!, now, baseline);
+    const sameDay = refreshDailyPaceBaselines(
+      first,
+      [codexSnapshot(65, resetsAt)],
+      new Date(2026, 6, 22, 12, 0, 0),
+      new Set(),
+      resetForecast(10),
+    );
+
+    expect(baseline.resetForecastScore).toBe(80);
+    expect(baseline.resetForecastWindowHours).toBe(48);
+    expect((Date.parse(baseline.planningResetsAt) - now.getTime()) / 3_600_000).toBeCloseTo(43.2, 8);
+    expect(pace.averageRate).toBeCloseTo(70 / 1.8, 8);
+    expect(sameDay[paceBaselineKey("codex", "weekly")]).toEqual(baseline);
+  });
+
+  it("uses the latest Radar probability when the next local day begins", () => {
+    const resetsAt = new Date(2026, 6, 27, 0, 0, 0).toISOString();
+    const first = refreshDailyPaceBaselines(
+      {},
+      [codexSnapshot(70, resetsAt)],
+      new Date(2026, 6, 22, 0, 0, 0),
+      new Set(),
+      resetForecast(80),
+    );
+    const nextDay = refreshDailyPaceBaselines(
+      first,
+      [codexSnapshot(65, resetsAt)],
+      new Date(2026, 6, 23, 0, 0, 0),
+      new Set(),
+      resetForecast(10),
+    );
+    const baseline = nextDay[paceBaselineKey("codex", "weekly")];
+
+    expect(baseline.localDate).not.toBe(first[paceBaselineKey("codex", "weekly")].localDate);
+    expect(baseline.resetForecastScore).toBe(10);
+    // 10% × 24h + 90% × the remaining 96h = 88.8h.
+    expect((Date.parse(baseline.planningResetsAt) - Date.parse(baseline.capturedAt)) / 3_600_000).toBeCloseTo(88.8, 8);
+  });
+
   it("recalculates next day from leftover quota and the exact projected reset time", () => {
     const resetsAt = new Date(2026, 6, 25, 12, 0, 0).toISOString();
     const firstDay = new Date(2026, 6, 22, 8, 0, 0);
@@ -120,6 +219,20 @@ describe("quota pace", () => {
     expect(baseline.resetsAt).toBe(newReset);
     expect(baseline.remainingPercent).toBe(68);
     expect(baseline.capturedAt).toBe(new Date(2026, 6, 22, 9, 0, 0).toISOString());
+  });
+
+  it("preserves the daily baseline through a transient provider failure", () => {
+    const now = new Date(2026, 6, 22, 8, 0, 0);
+    const resetsAt = new Date(2026, 6, 26, 8, 0, 0).toISOString();
+    const current = refreshDailyPaceBaselines({}, [codexSnapshot(70, resetsAt)], now);
+    const unavailable = {
+      ...codexSnapshot(0, resetsAt),
+      weeklyWindow: null,
+      status: "unavailable" as const,
+    };
+
+    expect(refreshDailyPaceBaselines(current, [unavailable], new Date(2026, 6, 22, 9, 0, 0))).toEqual(current);
+    expect(refreshDailyPaceBaselines(current, [{ ...unavailable, status: "signed_out" }], new Date(2026, 6, 22, 9, 0, 0))).toEqual({});
   });
 
   it("tracks only the weekly Codex window even when compatibility data includes 5h", () => {

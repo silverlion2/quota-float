@@ -53,8 +53,11 @@ export default function App() {
   const collapseTimer = useRef<number | null>(null);
   const hoverSequence = useRef(0);
   const updateSequence = useRef(0);
+  const refreshSequence = useRef(0);
   const runtimeStateRef = useRef<RuntimeState>(EMPTY_RUNTIME_STATE);
   const preferencesRef = useRef<WidgetPreferences>(DEFAULT_PREFS);
+  const confirmedPreferencesRef = useRef<WidgetPreferences>(DEFAULT_PREFS);
+  const preferenceSaveSequence = useRef(0);
   const language = normalizeLanguage(preferences.language);
   const t = copy[language];
 
@@ -126,11 +129,13 @@ export default function App() {
   }, [preferences.automaticUpdates, preferences.skippedUpdateVersion, preferences.updateChannel, startUpdateDownload, t.updateFailed, updateState.phase]);
 
   const refresh = useCallback(async (force = false) => {
+    const sequence = ++refreshSequence.current;
     try {
       const [values, forecast] = await Promise.all([
         fetchSnapshots(force),
         fetchCodexResetForecast().catch(() => null),
       ]);
+      if (refreshSequence.current !== sequence) return;
       setCodexResetForecast(forecast);
       const hasFailure = values.some((item) => item.status !== "ok");
       if (hasFailure) failures.current += 1;
@@ -157,11 +162,10 @@ export default function App() {
       let detectedReset: RecentCodexReset | null = null;
       const nextCodex = values.find((item) => item.provider === "codex");
       if (nextCodex) {
-        const detected = detectRecentCodexReset(nextCodex, snapshotsRef.current.find((item) => item.provider === "codex") ?? null, now);
-        detectedReset = detected;
-        setRecentCodexReset((current) => detected ?? (isRecentCodexReset(current, now) ? current : null));
+        detectedReset = detectRecentCodexReset(nextCodex, snapshotsRef.current.find((item) => item.provider === "codex") ?? null, now);
+        setRecentCodexReset((current) => detectedReset ?? (isRecentCodexReset(current, now) ? current : null));
       }
-      const activity = recordSnapshotActivity(runtimeStateRef.current, snapshotsRef.current, values, detectedReset, preferencesRef.current.alertThreshold, now, preferencesRef.current.language, preferencesRef.current.notificationCooldownMinutes);
+      const activity = recordSnapshotActivity(runtimeStateRef.current, snapshotsRef.current, values, detectedReset, preferencesRef.current.alertThreshold, now, preferencesRef.current.language, preferencesRef.current.notificationCooldownMinutes, forecast);
       let nextRuntimeState = activity.state;
       const notificationPreferences = preferencesRef.current;
       if (notificationPreferences.notificationsEnabled && !isQuietHour(now.getHours(), notificationPreferences.quietHoursStart, notificationPreferences.quietHoursEnd)) {
@@ -175,6 +179,7 @@ export default function App() {
           }
         }
       }
+      if (refreshSequence.current !== sequence) return;
       commitRuntimeState(nextRuntimeState);
       setSnapshots((current) => {
         const merged = mergeSnapshots(current, values);
@@ -182,6 +187,7 @@ export default function App() {
         return merged;
       });
     } catch {
+      if (refreshSequence.current !== sequence) return;
       failures.current += 1;
       setSnapshots((current) => {
         const next = current.length > 0
@@ -239,6 +245,7 @@ export default function App() {
       if (startup.preferences) {
         const normalized = normalizeWidgetPreferences(startup.preferences);
         preferencesRef.current = normalized;
+        confirmedPreferencesRef.current = normalized;
         setPreferences(normalized);
       }
       if (startup.runtimeState) {
@@ -260,7 +267,7 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     let cleanup: () => void = () => {};
-    void listenDesktopEvents({ onPreferences: (value) => { const normalized = normalizeWidgetPreferences(value); preferencesRef.current = normalized; setPreferences(normalized); }, onRefresh: () => void refresh(true), onUpdate: () => checkUpdate(true) }).then((value) => {
+    void listenDesktopEvents({ onPreferences: (value) => { const normalized = normalizeWidgetPreferences(value); ++preferenceSaveSequence.current; preferencesRef.current = normalized; confirmedPreferencesRef.current = normalized; setPreferences(normalized); }, onRefresh: () => void refresh(true), onUpdate: () => checkUpdate(true) }).then((value) => {
       if (cancelled) value(); else cleanup = value;
     }).catch(() => setOperationError("Desktop event listener failed to start."));
     return () => { cancelled = true; cleanup(); };
@@ -308,13 +315,21 @@ export default function App() {
     : orderedSnapshots[activeIndex % Math.max(1, orderedSnapshots.length)];
 
   const savePreferences = useCallback((next: WidgetPreferences) => {
-    const previous = preferences;
+    const sequence = ++preferenceSaveSequence.current;
     const normalized = normalizeWidgetPreferences(next);
     preferencesRef.current = normalized;
     setPreferences(normalized);
     setOperationError(null);
-    void updatePreferences(normalized).catch(() => { preferencesRef.current = previous; setPreferences(previous); setOperationError("Settings could not be saved. Previous state restored."); });
-  }, [preferences]);
+    void updatePreferences(normalized)
+      .then(() => { confirmedPreferencesRef.current = normalized; })
+      .catch(() => {
+        if (preferenceSaveSequence.current !== sequence) return;
+        const confirmed = confirmedPreferencesRef.current;
+        preferencesRef.current = confirmed;
+        setPreferences(confirmed);
+        setOperationError("Settings could not be saved. Previous state restored.");
+      });
+  }, []);
 
   const handleUpdateOpen = useCallback(() => {
     setDiagnosticsOpen(false);
@@ -373,8 +388,10 @@ export default function App() {
     if (!bundle.preferences || !bundle.runtimeState) throw new Error("Backup file is missing settings or history.");
     const nextPreferences = normalizeWidgetPreferences(bundle.preferences);
     const nextRuntime = normalizeRuntimeState(bundle.runtimeState);
+    ++preferenceSaveSequence.current;
     await Promise.all([updatePreferences(nextPreferences), updateRuntimeState(nextRuntime)]);
     preferencesRef.current = nextPreferences;
+    confirmedPreferencesRef.current = nextPreferences;
     runtimeStateRef.current = nextRuntime;
     setPreferences(nextPreferences);
     setRuntimeState(nextRuntime);
@@ -444,7 +461,7 @@ export default function App() {
   if (!current) return <div className="loading-card" aria-label={t.loadingQuota}><span /><span /><span /></div>;
 
   if (compact) {
-    return <QuotaOrb snapshot={current} language={language} onDrag={() => startDragging()} onHover={handleHover} />;
+    return <QuotaOrb snapshot={current} language={language} onDrag={() => { void startDragging().catch(() => setOperationError("Widget drag failed.")); }} onHover={handleHover} />;
   }
 
   return (
@@ -466,8 +483,8 @@ export default function App() {
         if (nextIndex >= 0) setActiveIndex(nextIndex);
         savePreferences({ ...preferences, providerOrder });
       }}
-      onLock={() => { setOperationError(null); void setAlwaysOnTop(!preferences.alwaysOnTop).then((value) => { const normalized = normalizeWidgetPreferences(value); preferencesRef.current = normalized; setPreferences(normalized); }).catch(() => setOperationError("Always-on-top toggle failed.")); }}
-      onDrag={() => startDragging()}
+      onLock={() => { setOperationError(null); void setAlwaysOnTop(!preferences.alwaysOnTop).then((value) => { const normalized = normalizeWidgetPreferences(value); ++preferenceSaveSequence.current; preferencesRef.current = normalized; confirmedPreferencesRef.current = normalized; setPreferences(normalized); }).catch(() => setOperationError("Always-on-top toggle failed.")); }}
+      onDrag={() => { void startDragging().catch(() => setOperationError("Widget drag failed.")); }}
       onHover={handleHover}
       onRefresh={() => refresh(true)}
       onDiagnostics={openVolcengineDiagnostics}

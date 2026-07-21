@@ -31,6 +31,7 @@ export interface ResetForecast {
   windowHours: number;
   fetchedAt: string;
   resetAnnounced: boolean;
+  resetAt?: string | null;
   sourceUrl: string;
 }
 
@@ -96,6 +97,9 @@ export interface DailyPaceBaseline {
   capturedAt: string;
   remainingPercent: number;
   resetsAt: string;
+  planningResetsAt: string;
+  resetForecastScore: number | null;
+  resetForecastWindowHours: number | null;
 }
 
 export interface RuntimeState {

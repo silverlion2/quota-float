@@ -11,13 +11,16 @@ const api = vi.hoisted(() => ({
     workArea: { position: { x: 0, y: 0 }, size: { width: 1920, height: 1040 } },
   })),
 }));
+const events = vi.hoisted(() => ({ listen: vi.fn() }));
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: api.invoke }));
 vi.mock("@tauri-apps/api/window", () => ({ currentMonitor: api.currentMonitor }));
+vi.mock("@tauri-apps/api/event", () => ({ listen: events.listen }));
 
 beforeEach(() => {
   vi.clearAllMocks();
   api.calls.length = 0;
+  events.listen.mockReset();
   vi.stubGlobal("window", { __TAURI_INTERNALS__: {} });
 });
 
@@ -71,5 +74,39 @@ describe("widget transitions", () => {
       "start:set_preferences",
       "end:set_preferences",
     ]);
+  });
+
+  it("serializes runtime writes so older state cannot overwrite newer state", async () => {
+    let releaseFirst: () => void = () => undefined;
+    const firstWrite = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    api.invoke.mockImplementationOnce(async (command: string) => {
+      api.calls.push(`start:${command}`);
+      await firstWrite;
+      api.calls.push(`end:${command}`);
+    });
+    const { updateRuntimeState } = await import("./bridge");
+    const { EMPTY_RUNTIME_STATE } = await import("./activity");
+    const first = updateRuntimeState({ ...EMPTY_RUNTIME_STATE, lastNotifications: { first: "2026-07-22T00:00:00Z" } });
+    const second = updateRuntimeState({ ...EMPTY_RUNTIME_STATE, lastNotifications: { second: "2026-07-22T00:00:01Z" } });
+    await vi.waitFor(() => expect(api.invoke).toHaveBeenCalledTimes(1));
+    releaseFirst();
+    await Promise.all([first, second]);
+    expect(api.calls).toEqual([
+      "start:set_runtime_state",
+      "end:set_runtime_state",
+      "start:set_runtime_state",
+      "end:set_runtime_state",
+    ]);
+  });
+
+  it("removes listeners registered before a later registration fails", async () => {
+    const unlistenPreferences = vi.fn();
+    events.listen
+      .mockResolvedValueOnce(unlistenPreferences)
+      .mockRejectedValueOnce(new Error("listener unavailable"));
+    const { listenDesktopEvents } = await import("./bridge");
+
+    await expect(listenDesktopEvents({ onPreferences: vi.fn(), onRefresh: vi.fn(), onUpdate: vi.fn() })).rejects.toThrow("listener unavailable");
+    expect(unlistenPreferences).toHaveBeenCalledOnce();
   });
 });

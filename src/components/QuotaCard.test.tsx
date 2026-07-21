@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProviderSnapshot, VolcengineDiagnostics, WidgetPreferences } from "../types";
 import { DEFAULT_WIDGET_PREFERENCES } from "../lib/preferences";
@@ -96,7 +96,10 @@ const preferences: WidgetPreferences = {
 
 const noop = () => undefined;
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 describe("QuotaCard platform ledger", () => {
   it("shows the live Codex reset forecast and opens its source", () => {
@@ -170,6 +173,17 @@ describe("QuotaCard platform ledger", () => {
   it("keeps a balance-based platform readable in the collapsed orb", () => {
     render(<QuotaOrb snapshot={qoder} language="en" onDrag={noop} onHover={noop} />);
     expect(screen.getByLabelText("1280 credits")).toBeInTheDocument();
+  });
+
+  it("returns the collapsed orb to idle after a hover ends", () => {
+    vi.useFakeTimers();
+    render(<QuotaOrb snapshot={qoder} language="en" onDrag={noop} onHover={noop} />);
+    const orb = screen.getByLabelText("1280 credits");
+    fireEvent.mouseEnter(orb);
+    fireEvent.mouseLeave(orb);
+    expect(orb).not.toHaveClass("quota-orb--idle");
+    act(() => vi.advanceTimersByTime(2000));
+    expect(orb).toHaveClass("quota-orb--idle");
   });
 
   it("keeps the Codex weekly design and adds a compact pace hint only", () => {

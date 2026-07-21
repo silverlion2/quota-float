@@ -172,7 +172,14 @@ describe("activity timeline and notification policy", () => {
 
   it("resets the Codex daily pacing anchor when the weekly quota resets", () => {
     const beforeReset = recordSnapshotActivity(
-      EMPTY_RUNTIME_STATE,
+      {
+        ...EMPTY_RUNTIME_STATE,
+        lastNotifications: {
+          "pace:codex:weekly": "2026-07-19T02:30:00Z",
+          "quota:codex": "2026-07-19T02:30:00Z",
+          "quota:volcengine": "2026-07-19T02:30:00Z",
+        },
+      },
       [],
       [snapshot(20)],
       null,
@@ -188,13 +195,63 @@ describe("activity timeline and notification policy", () => {
       { resetAt: "2026-07-19T03:00:00Z", detectedAt: "2026-07-19T03:00:00Z", source: "observed" },
       15,
       new Date("2026-07-19T03:00:00Z"),
+      "en",
+      120,
+      {
+        score: 90,
+        windowHours: 48,
+        fetchedAt: "2026-07-19T03:00:00Z",
+        resetAnnounced: false,
+        sourceUrl: "https://codexresetradar.com/",
+      },
     );
     const baseline = afterReset.state.dailyPaceBaselines["codex:weekly"];
 
     expect(baseline.remainingPercent).toBe(100);
     expect(baseline.resetsAt).toBe("2026-08-01T00:00:00Z");
     expect(baseline.capturedAt).toBe("2026-07-19T03:00:00.000Z");
+    expect(baseline.planningResetsAt).toBe("2026-08-01T00:00:00Z");
+    expect(baseline.resetForecastScore).toBeNull();
+    expect(afterReset.state.lastNotifications).toEqual({ "quota:volcengine": "2026-07-19T02:30:00Z" });
     expect(afterReset.createdEvents).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "reset" })]));
+
+    const usedSnapshot = snapshot(95);
+    usedSnapshot.weeklyWindow = { ...usedSnapshot.weeklyWindow!, resetsAt: "2026-08-01T00:00:00Z" };
+    const afterRefresh = recordSnapshotActivity(
+      afterReset.state,
+      [resetSnapshot],
+      [usedSnapshot],
+      { resetAt: "2026-07-19T03:00:00Z", detectedAt: "2026-07-19T03:00:00Z", source: "window" },
+      15,
+      new Date("2026-07-19T04:00:00Z"),
+    );
+
+    expect(afterRefresh.state.dailyPaceBaselines["codex:weekly"]).toEqual(baseline);
+    expect(afterRefresh.createdEvents).not.toEqual(expect.arrayContaining([expect.objectContaining({ kind: "reset" })]));
+    expect(afterRefresh.notificationCandidates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: "pace-zero:codex:weekly" }),
+    ]));
+  });
+
+  it("loads pre-Radar daily baselines with the weekly reset as their fallback", () => {
+    const normalized = normalizeRuntimeState({
+      dailyPaceBaselines: {
+        "codex:weekly": {
+          provider: "codex",
+          period: "weekly",
+          localDate: "2026-07-19",
+          capturedAt: "2026-07-19T01:00:00Z",
+          remainingPercent: 50,
+          resetsAt: "2026-07-25T00:00:00Z",
+        },
+      },
+    });
+
+    expect(normalized.dailyPaceBaselines["codex:weekly"]).toEqual(expect.objectContaining({
+      planningResetsAt: "2026-07-25T00:00:00Z",
+      resetForecastScore: null,
+      resetForecastWindowHours: null,
+    }));
   });
 
   it("drops malformed imported history, events, layouts, and notification dates", () => {

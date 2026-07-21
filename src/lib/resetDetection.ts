@@ -1,6 +1,7 @@
 import type { ProviderSnapshot } from "../types";
 
 export const RECENT_CODEX_RESET_MS = 6 * 60 * 60_000;
+const RESET_RECOVERY_TOLERANCE_PERCENT = 0.5;
 
 export interface RecentCodexReset {
   detectedAt: string;
@@ -28,16 +29,10 @@ export function detectRecentCodexReset(
   const currentStart = windowStartedAt(current);
   const currentRemaining = current.weeklyWindow.remainingPercent;
   const previousRemaining = previous?.provider === "codex" ? previous.weeklyWindow?.remainingPercent : undefined;
-  const currentResetAt = current.weeklyWindow.resetsAt ? Date.parse(current.weeklyWindow.resetsAt) : Number.NaN;
-  const previousResetAt = previous?.weeklyWindow?.resetsAt ? Date.parse(previous.weeklyWindow.resetsAt) : Number.NaN;
-  const recovered = previousRemaining !== undefined && currentRemaining - previousRemaining >= 15;
-  const windowAdvanced = Number.isFinite(currentResetAt) && Number.isFinite(previousResetAt) && currentResetAt - previousResetAt > 60_000;
-  const resetCreditSpent = previous?.resetCredits !== null
-    && previous?.resetCredits !== undefined
-    && current.resetCredits !== null
-    && current.resetCredits < previous.resetCredits;
+  const recovered = previousRemaining !== undefined
+    && currentRemaining - previousRemaining > RESET_RECOVERY_TOLERANCE_PERCENT;
 
-  if (recovered && (windowAdvanced || resetCreditSpent)) {
+  if (recovered) {
     const currentStartAge = currentStart === null ? Number.POSITIVE_INFINITY : nowMs - currentStart;
     const resetAt = currentStart !== null && currentStartAge >= -2 * 60_000 && currentStartAge <= RECENT_CODEX_RESET_MS
       ? currentStart
