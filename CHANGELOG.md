@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.5 - 2026-07-21
+
+- fix: make pacing test timezone independent
+
 ## 0.2.4 - 2026-07-21
 
 - feat: refine Codex reset pacing
