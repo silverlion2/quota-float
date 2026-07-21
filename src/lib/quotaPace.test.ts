@@ -30,13 +30,16 @@ describe("quota pace", () => {
   });
 
   it("reports how far usage is ahead of an even weekly pace", () => {
+    const startsAt = new Date(2026, 6, 20, 0, 0, 0);
+    const now = new Date(2026, 6, 22, 0, 0, 0);
+    const resetsAt = new Date(2026, 6, 27, 0, 0, 0);
     const pace = calculateQuotaPace(
-      { remainingPercent: 50, resetsAt: "2026-07-27T00:00:00Z", windowSeconds: 604_800 },
-      new Date("2026-07-22T00:00:00Z"),
+      { remainingPercent: 50, resetsAt: resetsAt.toISOString(), windowSeconds: (resetsAt.getTime() - startsAt.getTime()) / 1000 },
+      now,
     );
     expect(pace.status).toBe("over_pace");
     expect(pace.recommendedUsedPercent).toBeCloseTo(28.571, 2);
-    expect(pace.todayRemainingPercent).toBeCloseTo(6.667, 2);
+    expect(pace.todayRemainingPercent).toBeCloseTo(10, 2);
     expect(pace.overByPercent).toBeCloseTo(21.429, 2);
     expect(pace.averageRate).toBeCloseTo(10, 2);
     expect(pace.unit).toBe("day");
