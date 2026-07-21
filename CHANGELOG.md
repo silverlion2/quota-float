@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.4 - 2026-07-21
+
+- feat: refine Codex reset pacing
+
 ## 0.2.3 - 2026-07-20
 
 - feat: add live Codex reset forecast
