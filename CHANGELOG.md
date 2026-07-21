@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.6 - 2026-07-21
+
+- fix: harden Codex reset and state persistence
+
 ## 0.2.5 - 2026-07-21
 
 - fix: make pacing test timezone independent
