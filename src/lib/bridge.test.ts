@@ -1,4 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { EMPTY_RUNTIME_STATE } from "./activity";
+import {
+  getVolcengineDiagnostics,
+  listenDesktopEvents,
+  reconnectVolcengine,
+  setWidgetExpanded,
+  updatePreferences,
+  updateRuntimeState,
+} from "./bridge";
+import { DEFAULT_WIDGET_PREFERENCES } from "./preferences";
 
 const api = vi.hoisted(() => ({
   calls: [] as string[],
@@ -26,7 +36,6 @@ beforeEach(() => {
 
 describe("widget transitions", () => {
   it("passes the monitor work area to the Rust expansion command", async () => {
-    const { setWidgetExpanded } = await import("./bridge");
     await setWidgetExpanded(true);
     expect(api.invoke).toHaveBeenCalledWith("expand_widget", {
       workArea: { position: { x: 0, y: 0 }, size: { width: 1920, height: 1040 } },
@@ -34,7 +43,6 @@ describe("widget transitions", () => {
   });
 
   it("serializes rapid expand and collapse requests", async () => {
-    const { setWidgetExpanded } = await import("./bridge");
     await Promise.all([setWidgetExpanded(true), setWidgetExpanded(false)]);
     expect(api.calls).toEqual([
       "start:expand_widget",
@@ -45,7 +53,6 @@ describe("widget transitions", () => {
   });
 
   it("uses dedicated redacted diagnostics and reconnect commands", async () => {
-    const { getVolcengineDiagnostics, reconnectVolcengine } = await import("./bridge");
     await getVolcengineDiagnostics();
     await reconnectVolcengine();
     expect(api.invoke).toHaveBeenCalledWith("get_volcengine_diagnostics");
@@ -60,8 +67,6 @@ describe("widget transitions", () => {
       await firstWrite;
       api.calls.push(`end:${command}`);
     });
-    const { updatePreferences } = await import("./bridge");
-    const { DEFAULT_WIDGET_PREFERENCES } = await import("./preferences");
     const first = updatePreferences({ ...DEFAULT_WIDGET_PREFERENCES, alertThreshold: 20 });
     const second = updatePreferences({ ...DEFAULT_WIDGET_PREFERENCES, alertThreshold: 10 });
     await vi.waitFor(() => expect(api.invoke).toHaveBeenCalled());
@@ -84,8 +89,6 @@ describe("widget transitions", () => {
       await firstWrite;
       api.calls.push(`end:${command}`);
     });
-    const { updateRuntimeState } = await import("./bridge");
-    const { EMPTY_RUNTIME_STATE } = await import("./activity");
     const first = updateRuntimeState({ ...EMPTY_RUNTIME_STATE, lastNotifications: { first: "2026-07-22T00:00:00Z" } });
     const second = updateRuntimeState({ ...EMPTY_RUNTIME_STATE, lastNotifications: { second: "2026-07-22T00:00:01Z" } });
     await vi.waitFor(() => expect(api.invoke).toHaveBeenCalledTimes(1));
@@ -104,8 +107,6 @@ describe("widget transitions", () => {
     events.listen
       .mockResolvedValueOnce(unlistenPreferences)
       .mockRejectedValueOnce(new Error("listener unavailable"));
-    const { listenDesktopEvents } = await import("./bridge");
-
     await expect(listenDesktopEvents({ onPreferences: vi.fn(), onRefresh: vi.fn(), onUpdate: vi.fn() })).rejects.toThrow("listener unavailable");
     expect(unlistenPreferences).toHaveBeenCalledOnce();
   });
