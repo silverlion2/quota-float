@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.8 - 2026-07-22
+
+- test: stabilize bridge checks under load
+- fix: align Codex planning with reset usage
+
 ## 0.2.7 - 2026-07-21
 
 - test: make reset alert assertion timezone independent
