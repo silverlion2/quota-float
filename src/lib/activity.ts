@@ -87,6 +87,8 @@ function dailyPaceBaseline(value: unknown): DailyPaceBaseline | null {
     || typeof candidate.localDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(candidate.localDate)
     || !validDate(candidate.capturedAt) || !validDate(candidate.resetsAt)
     || typeof candidate.remainingPercent !== "number" || !Number.isFinite(candidate.remainingPercent)) return null;
+  const periodSeconds = period === "5h" ? 18_000 : period === "weekly" ? 604_800 : 2_592_000;
+  const inferredCycleStartedAt = new Date(Date.parse(candidate.resetsAt) - periodSeconds * 1000).toISOString();
   return {
     provider: candidate.provider,
     period: period as DailyPaceBaseline["period"],
@@ -94,6 +96,10 @@ function dailyPaceBaseline(value: unknown): DailyPaceBaseline | null {
     capturedAt: candidate.capturedAt,
     remainingPercent: Math.min(100, Math.max(0, candidate.remainingPercent)),
     resetsAt: candidate.resetsAt,
+    cycleStartedAt: validDate(candidate.cycleStartedAt) ? candidate.cycleStartedAt : inferredCycleStartedAt,
+    cycleStartRemainingPercent: typeof candidate.cycleStartRemainingPercent === "number" && Number.isFinite(candidate.cycleStartRemainingPercent)
+      ? Math.min(100, Math.max(0, candidate.cycleStartRemainingPercent))
+      : 100,
     planningResetsAt: validDate(candidate.planningResetsAt) ? candidate.planningResetsAt : candidate.resetsAt,
     resetForecastScore: typeof candidate.resetForecastScore === "number" && Number.isFinite(candidate.resetForecastScore)
       ? Math.min(100, Math.max(0, candidate.resetForecastScore))

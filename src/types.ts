@@ -97,6 +97,8 @@ export interface DailyPaceBaseline {
   capturedAt: string;
   remainingPercent: number;
   resetsAt: string;
+  cycleStartedAt: string;
+  cycleStartRemainingPercent: number;
   planningResetsAt: string;
   resetForecastScore: number | null;
   resetForecastWindowHours: number | null;

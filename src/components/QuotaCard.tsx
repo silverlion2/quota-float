@@ -58,7 +58,7 @@ function StatusIcon({ status, expired = false }: { status: ProviderSnapshot["sta
   return <WarningCircle weight="duotone" />;
 }
 
-function QuotaPaceHint({ pace, language }: { pace: QuotaPace; language: Language }) {
+function QuotaPaceHint({ pace, language, provider }: { pace: QuotaPace; language: Language; provider: ProviderId }) {
   const t = copy[language];
   const number = new Intl.NumberFormat(language === "en" ? "en-US" : "zh-CN", { maximumFractionDigits: 1 });
   const statusLabel = pace.status === "on_track" ? t.onTrack : pace.status === "over_pace" ? t.overPaceBy(number.format(pace.overByPercent)) : t.paceUnknown;
@@ -69,8 +69,11 @@ function QuotaPaceHint({ pace, language }: { pace: QuotaPace; language: Language
         {pace.status === "on_track" ? <CheckCircle weight="fill" /> : pace.status === "over_pace" ? <WarningCircle weight="fill" /> : <ClockCounterClockwise />}
         {statusLabel}
       </span>
-      {pace.todayRemainingPercent !== null ? <small className="quota-pace-today">{t.todayPlannedRemaining(number.format(pace.todayRemainingPercent))}</small> : null}
-      <small>{t.averageSuggested(number.format(pace.averageRate), unit)}</small>
+      <div className="quota-pace-copy">
+        {provider === "codex" ? <small className="quota-pace-used">{t.usedSinceReset(number.format(pace.todayUsedPercent))}</small> : null}
+        {pace.todayRemainingPercent !== null ? <small className="quota-pace-today">{t.todayPlannedRemaining(number.format(pace.todayRemainingPercent))}</small> : null}
+        <small>{t.averageSuggested(number.format(pace.averageRate), unit)}</small>
+      </div>
     </div>
   );
 }
@@ -553,7 +556,7 @@ export const QuotaCard = memo(function QuotaCard({
                   <span style={{ width: `${weekly}%` }} />
                 </div> : null}
                 <p className="reset-time">{weekly !== null ? formatResetTime(snapshot.weeklyWindow?.resetsAt ?? null, new Date(), language) : unlimited ? unlimitedLabel : snapshot.balanceUnit ?? ""}</p>
-                {singleWindowPace ? <QuotaPaceHint pace={singleWindowPace} language={language} /> : balance !== null && !unlimited ? (
+                {singleWindowPace ? <QuotaPaceHint pace={singleWindowPace} language={language} provider={snapshot.provider} /> : balance !== null && !unlimited ? (
                   <div className="quota-pace-hint quota-pace-hint--unknown" role="status"><span><ClockCounterClockwise />{t.paceNeedsPeriod}</span></div>
                 ) : null}
               </>

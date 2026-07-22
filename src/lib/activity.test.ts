@@ -145,7 +145,7 @@ describe("activity timeline and notification policy", () => {
     const anchored = recordSnapshotActivity(
       EMPTY_RUNTIME_STATE,
       [],
-      [snapshot(1)],
+      [snapshot(90)],
       null,
       15,
       new Date("2026-07-19T01:00:00Z"),
@@ -154,8 +154,8 @@ describe("activity timeline and notification policy", () => {
     );
     const update = recordSnapshotActivity(
       anchored.state,
-      [snapshot(1)],
-      [snapshot(0)],
+      [snapshot(90)],
+      [snapshot(70)],
       null,
       15,
       new Date("2026-07-19T02:00:00Z"),
@@ -210,6 +210,8 @@ describe("activity timeline and notification policy", () => {
     expect(baseline.remainingPercent).toBe(100);
     expect(baseline.resetsAt).toBe("2026-08-01T00:00:00Z");
     expect(baseline.capturedAt).toBe("2026-07-19T03:00:00.000Z");
+    expect(baseline.cycleStartedAt).toBe("2026-07-19T03:00:00.000Z");
+    expect(baseline.cycleStartRemainingPercent).toBe(100);
     expect(baseline.planningResetsAt).toBe("2026-08-01T00:00:00Z");
     expect(baseline.resetForecastScore).toBeNull();
     expect(afterReset.state.lastNotifications).toEqual({ "quota:volcengine": "2026-07-19T02:30:00Z" });

@@ -210,6 +210,7 @@ describe("QuotaCard platform ledger", () => {
       );
       expect(screen.getByText("Weekly remaining")).toBeInTheDocument();
       expect(screen.getByText("On track")).toBeInTheDocument();
+      expect(screen.getByText("Used since reset: 26%")).toBeInTheDocument();
       expect(screen.getByText(/Today's plan: [\d.]+% left/)).toBeInTheDocument();
       expect(screen.getByText("Daily suggestion ≤ 14.8%/day")).toBeInTheDocument();
       expect(screen.queryByText("5 hours")).not.toBeInTheDocument();

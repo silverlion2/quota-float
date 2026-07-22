@@ -104,6 +104,18 @@ describe("quota pace", () => {
     expect(refreshed.todayRemainingPercent).toBeCloseTo((initial.todayRemainingPercent ?? 0) - 5, 8);
   });
 
+  it("charges Codex usage since reset against today's plan when tracking starts late", () => {
+    const now = new Date(2026, 6, 22, 8, 0, 0);
+    const resetsAt = new Date(2026, 6, 27, 8, 0, 0).toISOString();
+    const baselines = refreshDailyPaceBaselines({}, [codexSnapshot(70, resetsAt)], now);
+    const baseline = baselines[paceBaselineKey("codex", "weekly")];
+    const pace = calculateQuotaPace(codexSnapshot(70, resetsAt).weeklyWindow!, now, baseline);
+
+    expect(pace.usedPercent).toBe(30);
+    expect(pace.todayUsedPercent).toBe(30);
+    expect(pace.todayRemainingPercent).toBeCloseTo(8.095238, 6);
+  });
+
   it("restarts the consumption estimate after an early Codex reset", () => {
     const now = new Date(2026, 6, 22, 8, 0, 0);
     const resetsAt = new Date(2026, 7, 3, 8, 0, 0).toISOString();
@@ -203,9 +215,31 @@ describe("quota pace", () => {
     const pace = calculateQuotaPace(codexSnapshot(66, resetsAt).weeklyWindow!, nextDay, baseline);
 
     expect(baseline.localDate).not.toBe(first[paceBaselineKey("codex", "weekly")].localDate);
-    // 66% is spread across exactly 2.5 days, so the new full-day allowance is 26.4%.
-    expect(pace.todayRemainingPercent).toBeCloseTo(26.4, 8);
+    // By the end of the day, 78.57% may be used. Codex reports 34% used
+    // since reset, so the conserved 44.57% remains available today.
+    expect(pace.todayUsedPercent).toBe(34);
+    expect(pace.todayRemainingPercent).toBeCloseTo(44.571428571, 8);
     expect(pace.averageRate).toBeCloseTo(26.4, 8);
+  });
+
+  it("preserves an early Codex reset anchor across local-day rebalancing", () => {
+    const resetAt = new Date(2026, 6, 22, 8, 0, 0);
+    const resetsAt = new Date(2026, 7, 3, 8, 0, 0).toISOString();
+    const first = refreshDailyPaceBaselines(
+      {},
+      [codexSnapshot(100, resetsAt)],
+      resetAt,
+      new Set(["codex"]),
+    );
+    const nextDay = new Date(2026, 6, 23, 0, 0, 0);
+    const next = refreshDailyPaceBaselines(first, [codexSnapshot(95, resetsAt)], nextDay);
+    const baseline = next[paceBaselineKey("codex", "weekly")];
+    const pace = calculateQuotaPace(codexSnapshot(95, resetsAt).weeklyWindow!, nextDay, baseline);
+
+    expect(baseline.cycleStartedAt).toBe(resetAt.toISOString());
+    expect(baseline.cycleStartRemainingPercent).toBe(100);
+    expect(pace.todayUsedPercent).toBe(5);
+    expect(pace.recommendedUsedPercent).toBeGreaterThan(0);
   });
 
   it("reanchors immediately when the projected weekly reset timestamp changes", () => {

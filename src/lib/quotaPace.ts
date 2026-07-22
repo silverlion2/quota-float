@@ -12,6 +12,7 @@ export interface NamedQuotaWindow {
 export interface QuotaPace {
   status: QuotaPaceStatus;
   usedPercent: number;
+  todayUsedPercent: number;
   recommendedUsedPercent: number | null;
   todayRemainingPercent: number | null;
   overByPercent: number;
@@ -85,6 +86,8 @@ export function refreshDailyPaceBaselines(
       const key = paceBaselineKey(snapshot.provider, period);
       const existing = current[key];
       const quotaRestored = existing && window.remainingPercent > existing.remainingPercent + SCHEDULE_TOLERANCE_PERCENT;
+      const sameCycle = existing?.resetsAt === window.resetsAt;
+      const cycleReset = resetProviders.has(snapshot.provider) || Boolean(quotaRestored);
       const canReuse = existing
         && !resetProviders.has(snapshot.provider)
         && !quotaRestored
@@ -93,13 +96,21 @@ export function refreshDailyPaceBaselines(
       const applicableForecast = snapshot.provider === "codex" && period === "weekly" && !resetProviders.has(snapshot.provider)
         ? resetForecast
         : null;
+      const inferredCycleStartedAt = new Date(Date.parse(window.resetsAt) - Math.max(1, window.windowSeconds * 1000)).toISOString();
+      const currentRemaining = clamp(window.remainingPercent, 0, 100);
       next[key] = canReuse ? existing : {
         provider: snapshot.provider,
         period,
         localDate,
         capturedAt: now.toISOString(),
-        remainingPercent: clamp(window.remainingPercent, 0, 100),
+        remainingPercent: currentRemaining,
         resetsAt: window.resetsAt,
+        cycleStartedAt: cycleReset
+          ? now.toISOString()
+          : sameCycle && existing ? existing.cycleStartedAt : inferredCycleStartedAt,
+        cycleStartRemainingPercent: cycleReset
+          ? currentRemaining
+          : sameCycle && existing ? existing.cycleStartRemainingPercent : 100,
         planningResetsAt: forecastAdjustedResetAt(window.resetsAt, now, applicableForecast),
         resetForecastScore: applicableForecast ? clamp(applicableForecast.score, 0, 100) : null,
         resetForecastWindowHours: applicableForecast ? Math.max(0, applicableForecast.windowHours) : null,
@@ -136,6 +147,7 @@ export function calculateQuotaPace(window: UsageWindow, now = new Date(), baseli
     return {
       status: usedPercent <= SCHEDULE_TOLERANCE_PERCENT ? "on_track" : "unknown",
       usedPercent,
+      todayUsedPercent: usedPercent,
       recommendedUsedPercent: null,
       todayRemainingPercent: null,
       overByPercent: 0,
@@ -146,30 +158,35 @@ export function calculateQuotaPace(window: UsageWindow, now = new Date(), baseli
 
   const startsAt = resetAt - durationMs;
   const nowMs = now.getTime();
-  const matchingBaselineAt = baseline && baseline.localDate === localDateKey(now) && baseline.resetsAt === window.resetsAt
-    ? Date.parse(baseline.capturedAt)
+  const matchingBaseline = baseline?.resetsAt === window.resetsAt ? baseline : null;
+  const matchingBaselineAt = matchingBaseline?.localDate === localDateKey(now)
+    ? Date.parse(matchingBaseline.capturedAt)
     : Number.NaN;
-  const hasEarlyResetBaseline = Number.isFinite(matchingBaselineAt)
-    && matchingBaselineAt <= nowMs
-    && matchingBaselineAt < startsAt - CLOCK_TOLERANCE_MS
+  const savedCycleStartedAt = matchingBaseline ? Date.parse(matchingBaseline.cycleStartedAt) : Number.NaN;
+  const hasTrackedCycleStart = Number.isFinite(savedCycleStartedAt)
+    && savedCycleStartedAt <= nowMs
+    && savedCycleStartedAt < resetAt
     && nowMs <= resetAt + CLOCK_TOLERANCE_MS;
-  if ((nowMs < startsAt - CLOCK_TOLERANCE_MS && !hasEarlyResetBaseline) || nowMs > resetAt + CLOCK_TOLERANCE_MS) {
-    return { status: "unknown", usedPercent, recommendedUsedPercent: null, todayRemainingPercent: null, overByPercent: 0, averageRate: baselineRate, unit };
+  if ((nowMs < startsAt - CLOCK_TOLERANCE_MS && !hasTrackedCycleStart) || nowMs > resetAt + CLOCK_TOLERANCE_MS) {
+    return { status: "unknown", usedPercent, todayUsedPercent: usedPercent, recommendedUsedPercent: null, todayRemainingPercent: null, overByPercent: 0, averageRate: baselineRate, unit };
   }
 
   const remainingPercent = clamp(window.remainingPercent, 0, 100);
   const baselineAt = Number.isFinite(matchingBaselineAt) ? matchingBaselineAt : nowMs;
   const baselineRemaining = baselineAt <= nowMs && Number.isFinite(baselineAt)
-    ? clamp(baseline?.remainingPercent ?? remainingPercent, 0, 100)
+    ? clamp(matchingBaseline?.remainingPercent ?? remainingPercent, 0, 100)
     : remainingPercent;
-  const recommendedUsedPercent = hasEarlyResetBaseline
-    ? clamp(
-      100 - baselineRemaining + baselineRemaining * ((nowMs - baselineAt) / Math.max(1, resetAt - baselineAt)),
-      0,
-      100,
-    )
-    : clamp(((nowMs - startsAt) / durationMs) * 100, 0, 100);
-  const savedPlanningResetAt = baseline ? Date.parse(baseline.planningResetsAt) : Number.NaN;
+  const cycleStartedAt = hasTrackedCycleStart ? savedCycleStartedAt : startsAt;
+  const cycleStartRemaining = hasTrackedCycleStart
+    ? clamp(matchingBaseline?.cycleStartRemainingPercent ?? 100, 0, 100)
+    : 100;
+  const cycleStartUsed = 100 - cycleStartRemaining;
+  const recommendedUsedPercent = clamp(
+    cycleStartUsed + cycleStartRemaining * ((nowMs - cycleStartedAt) / Math.max(1, resetAt - cycleStartedAt)),
+    0,
+    100,
+  );
+  const savedPlanningResetAt = matchingBaseline ? Date.parse(matchingBaseline.planningResetsAt) : Number.NaN;
   const planningResetAt = Number.isFinite(savedPlanningResetAt) && savedPlanningResetAt >= baselineAt && savedPlanningResetAt <= resetAt
     ? savedPlanningResetAt
     : resetAt;
@@ -181,11 +198,23 @@ export function calculateQuotaPace(window: UsageWindow, now = new Date(), baseli
     : 0;
   const consumedToday = Math.max(0, baselineRemaining - remainingPercent);
   const averageRate = baselineRemainingMs > 0 ? baselineRemaining / (baselineRemainingMs / unitMs) : 0;
-  const todayRemainingPercent = clamp(dailyBudget - consumedToday, 0, remainingPercent);
+  const tracksCodexResetUsage = matchingBaseline?.provider === "codex" && matchingBaseline.period === "weekly";
+  const todayUsedPercent = usedPercent;
+  const plannedUsedByEndOfDay = clamp(
+    cycleStartUsed + cycleStartRemaining * (
+      (Math.min(planningResetAt, endOfLocalDay(now)) - cycleStartedAt) / Math.max(1, planningResetAt - cycleStartedAt)
+    ),
+    cycleStartUsed,
+    100,
+  );
+  const todayRemainingPercent = tracksCodexResetUsage
+    ? clamp(plannedUsedByEndOfDay - todayUsedPercent, 0, remainingPercent)
+    : clamp(dailyBudget - consumedToday, 0, remainingPercent);
   const overByPercent = Math.max(0, usedPercent - recommendedUsedPercent);
   return {
     status: overByPercent <= SCHEDULE_TOLERANCE_PERCENT ? "on_track" : "over_pace",
     usedPercent,
+    todayUsedPercent,
     recommendedUsedPercent,
     todayRemainingPercent,
     overByPercent,
