@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.10 - 2026-07-26
+
+- fix: enable Defender on hosted runners
+
 ## 0.2.9 - 2026-07-26
 
 - feat: add provider health and release safeguards
