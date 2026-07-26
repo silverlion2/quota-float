@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.9 - 2026-07-26
+
+- feat: add provider health and release safeguards
+
 ## 0.2.8 - 2026-07-22
 
 - test: stabilize bridge checks under load
