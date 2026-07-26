@@ -3,7 +3,9 @@ param(
     [Parameter(Mandatory = $true)]
     [string[]]$Path,
 
-    [switch]$UpdateSignatures
+    [switch]$UpdateSignatures,
+
+    [switch]$EnableRealTimeProtection
 )
 
 $ErrorActionPreference = "Stop"
@@ -17,6 +19,16 @@ if ($UpdateSignatures) {
 $status = Get-MpComputerStatus
 if (-not $status.AntivirusEnabled) {
     throw "Microsoft Defender Antivirus is not enabled."
+}
+if ($EnableRealTimeProtection -and -not $status.RealTimeProtectionEnabled) {
+    Write-Host "Enabling Microsoft Defender real-time protection..."
+    Set-MpPreference -DisableRealtimeMonitoring $false
+
+    $activationDeadline = (Get-Date).AddSeconds(30)
+    do {
+        Start-Sleep -Seconds 1
+        $status = Get-MpComputerStatus
+    } while (-not $status.RealTimeProtectionEnabled -and (Get-Date) -lt $activationDeadline)
 }
 if (-not $status.RealTimeProtectionEnabled) {
     throw "Microsoft Defender real-time protection is not enabled."

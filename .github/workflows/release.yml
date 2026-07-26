@@ -48,7 +48,7 @@ jobs:
         run: |
           $installer = Get-ChildItem "src-tauri/target/release/bundle/nsis" -Filter "*x64-setup.exe" |
             Select-Object -ExpandProperty FullName -First 1
-          ./scripts/verify-windows-defender.ps1 -UpdateSignatures -Path @(
+          ./scripts/verify-windows-defender.ps1 -UpdateSignatures -EnableRealTimeProtection -Path @(
             "src-tauri/target/release/quota-float.exe",
             $installer
           )
