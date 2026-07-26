@@ -110,6 +110,26 @@
 .provider-settings button { min-height: 20px; display: inline-flex; align-items: center; gap: 3px; padding: 0 6px; border: 1px solid rgba(35,73,119,.1); border-radius: 6px; color: rgba(23,33,49,.55); background: rgba(255,255,255,.45); cursor: pointer; font-size: 6px; font-weight: 680; }
 .provider-settings button.is-active { border-color: color-mix(in srgb, var(--accent-color, #397ae0) 32%, transparent); color: var(--accent-color, #397ae0); background: color-mix(in srgb, var(--accent-color, #397ae0) 9%, white); }
 .provider-settings button svg { width: 9px; height: 9px; }
+.provider-health-summary { min-height: 42px; display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 7px; padding: 6px 8px; border: 1px solid rgba(35,73,119,.09); border-radius: 10px; background: rgba(255,255,255,.46); }
+.provider-health-summary > svg { width: 20px; height: 20px; color: #2e9b67; }
+.provider-health-summary strong { display: block; font-size: 8px; }
+.provider-health-summary p { margin: 1px 0 0; color: rgba(23,33,49,.46); font-size: 6px; }
+.provider-health-summary button { min-height: 24px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 0 8px; border: 1px solid rgba(35,73,119,.13); border-radius: 7px; color: #234977; background: rgba(255,255,255,.62); cursor: pointer; font-size: 7px; font-weight: 700; }
+.provider-health-summary button:hover { background: white; }
+.provider-health-summary button svg { width: 10px; height: 10px; }
+.provider-health-list { display: grid; gap: 4px; }
+.provider-health-item { min-width: 0; display: grid; grid-template-columns: 7px minmax(0, 1fr); gap: 7px; padding: 6px 8px; border: 1px solid rgba(35,73,119,.08); border-radius: 9px; background: rgba(255,255,255,.4); }
+.provider-health-item > i { width: 7px; height: 7px; margin-top: 2px; border-radius: 50%; background: #8b98a8; box-shadow: 0 0 0 3px rgba(139,152,168,.12); }
+.provider-health-item--ok > i { background: #2e9b67; box-shadow: 0 0 0 3px rgba(46,155,103,.12); }
+.provider-health-item--stale > i, .provider-health-item--loading > i { background: #d8943d; box-shadow: 0 0 0 3px rgba(216,148,61,.12); }
+.provider-health-item--signed_out > i, .provider-health-item--unavailable > i { background: #d06156; box-shadow: 0 0 0 3px rgba(208,97,86,.12); }
+.provider-health-copy { min-width: 0; }
+.provider-health-copy header, .provider-health-copy footer { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.provider-health-copy header strong { overflow: hidden; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.provider-health-copy header span { flex: none; color: rgba(23,33,49,.56); font-size: 6px; font-weight: 720; }
+.provider-health-copy p { margin: 2px 0 4px; overflow: hidden; color: rgba(23,33,49,.5); font-size: 6px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.provider-health-copy footer { justify-content: flex-start; color: rgba(23,33,49,.36); font-size: 5.5px; }
+.provider-health-copy footer span + span::before { content: "·"; margin-right: 6px; }
 .layout-save { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px; }
 .layout-save button, .backup-actions button, .diagnostic-summary button { min-height: 24px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 0 8px; border: 1px solid rgba(35,73,119,.13); border-radius: 7px; color: #234977; background: rgba(255,255,255,.58); cursor: pointer; font-size: 7px; font-weight: 700; }
 .layout-save button:hover, .backup-actions button:hover, .diagnostic-summary button:hover { background: white; }

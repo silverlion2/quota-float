@@ -519,9 +519,11 @@ export default function App() {
         <ControlCenter
           preferences={preferences}
           runtimeState={runtimeState}
+          snapshots={snapshots}
           diagnostics={appDiagnostics}
           language={language}
           onClose={() => setControlOpen(false)}
+          onRefresh={() => refresh(true)}
           onPreferences={savePreferences}
           onRuntimeState={commitRuntimeState}
           onExport={handleExport}

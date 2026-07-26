@@ -41,4 +41,21 @@ describe("release automation", () => {
     expect(workflow).toMatch(/prerelease:.*contains\(github\.ref_name, '-'/);
     expect(workflow).toContain("verify-windows-upgrade.ps1");
   });
+
+  it("blocks release publishing until Defender accepts the Windows artifacts", () => {
+    const releaseWorkflow = readFileSync(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
+    const ciWorkflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+    const defenderScript = readFileSync(new URL("./verify-windows-defender.ps1", import.meta.url), "utf8");
+    const ciConfig = JSON.parse(readFileSync(new URL("../src-tauri/tauri.ci.conf.json", import.meta.url), "utf8"));
+
+    expect(releaseWorkflow).toContain("defender-preflight:");
+    expect(releaseWorkflow).toMatch(/publish:\s+needs: \[verify, defender-preflight\]/);
+    expect(releaseWorkflow).toContain("--config src-tauri/tauri.ci.conf.json");
+    expect(releaseWorkflow).toContain("verify-windows-defender.ps1 -UpdateSignatures");
+    expect(ciWorkflow).toContain("--config src-tauri/tauri.ci.conf.json");
+    expect(ciWorkflow).toContain("verify-windows-defender.ps1 -Path");
+    expect(defenderScript).toContain("RealTimeProtectionEnabled");
+    expect(defenderScript).toContain("Get-MpThreatDetection");
+    expect(ciConfig.bundle.createUpdaterArtifacts).toBe(false);
+  });
 });

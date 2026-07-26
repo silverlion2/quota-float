@@ -1,16 +1,18 @@
-import { ArrowCounterClockwise, Bell, ClockCounterClockwise, DownloadSimple, Eye, EyeSlash, Heartbeat, Layout, Plus, Trash, UploadSimple, X } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowCounterClockwise, Bell, ClockCounterClockwise, DownloadSimple, Eye, EyeSlash, Heartbeat, Layout, Plus, Trash, UploadSimple, X } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
 import { DEFAULT_PROVIDER_ORDER, PROVIDER_CATALOG } from "../lib/providers";
-import type { AppDiagnostics, Language, ProviderId, RuntimeState, SavedLayout, WidgetPreferences } from "../types";
+import type { AppDiagnostics, Language, ProviderId, ProviderSnapshot, RuntimeState, SavedLayout, SnapshotStatus, WidgetPreferences } from "../types";
 
-type Tab = "display" | "alerts" | "activity" | "system";
+type Tab = "display" | "health" | "alerts" | "activity" | "system";
 
 interface Props {
   preferences: WidgetPreferences;
   runtimeState: RuntimeState;
+  snapshots: ProviderSnapshot[];
   diagnostics: AppDiagnostics | null;
   language: Language;
   onClose: () => void;
+  onRefresh: () => void;
   onPreferences: (value: WidgetPreferences) => void;
   onRuntimeState: (value: RuntimeState) => void;
   onExport: () => void;
@@ -25,7 +27,19 @@ function toggleProvider(values: ProviderId[], provider: ProviderId): ProviderId[
   return values.includes(provider) ? values.filter((item) => item !== provider) : [...values, provider];
 }
 
-export function ControlCenter({ preferences, runtimeState, diagnostics, language, onClose, onPreferences, onRuntimeState, onExport, onImport, onRestore, onCopyDiagnostics, autostartEnabled, onAutostart }: Props) {
+function formatCheckedAt(value: string | undefined, language: Language, fallback: string): string {
+  if (!value) return fallback;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return fallback;
+  return new Intl.DateTimeFormat(language === "en" ? "en" : "zh-CN", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+export function ControlCenter({ preferences, runtimeState, snapshots, diagnostics, language, onClose, onRefresh, onPreferences, onRuntimeState, onExport, onImport, onRestore, onCopyDiagnostics, autostartEnabled, onAutostart }: Props) {
   const [tab, setTab] = useState<Tab>("display");
   const [layoutName, setLayoutName] = useState("");
   const zh = language !== "en";
@@ -46,8 +60,60 @@ export function ControlCenter({ preferences, runtimeState, diagnostics, language
     update: "Update policy", channel: "Update channel", autoUpdate: "Check and download in background", autostart: "Launch after system sign-in", stable: "Stable", beta: "Beta (manual install)",
     diagnostics: "App diagnostics", copy: "Copy diagnostic report", backup: "Backup and migration", export: "Export settings and history", import: "Import backup", restore: "Restore latest automatic backup",
   };
+  const healthLabels = zh ? {
+    tab: "状态",
+    title: "平台状态",
+    summary: "个平台连接正常",
+    attention: "需要处理",
+    allHealthy: "所有已检测平台均已正常刷新。",
+    refresh: "立即刷新",
+    checked: "最近检查",
+    neverChecked: "尚未检查",
+    samples: "条采样",
+    statuses: {
+      ok: "正常",
+      stale: "数据过期",
+      loading: "检查中",
+      unavailable: "不可用",
+      signed_out: "需要登录",
+    } satisfies Record<SnapshotStatus, string>,
+    defaults: {
+      ok: "最近一次额度刷新已完成。",
+      stale: "正在显示最近一次有效数据。",
+      loading: "正在等待平台响应。",
+      unavailable: "未检测到平台，或平台暂时不可用。",
+      signed_out: "请在对应应用或 CLI 中重新登录。",
+    } satisfies Record<SnapshotStatus, string>,
+  } : {
+    tab: "Health",
+    title: "Provider health",
+    summary: "providers connected",
+    attention: "need attention",
+    allHealthy: "Every detected provider refreshed successfully.",
+    refresh: "Refresh now",
+    checked: "Last checked",
+    neverChecked: "Not checked yet",
+    samples: "samples",
+    statuses: {
+      ok: "Healthy",
+      stale: "Stale",
+      loading: "Checking",
+      unavailable: "Unavailable",
+      signed_out: "Sign-in required",
+    } satisfies Record<SnapshotStatus, string>,
+    defaults: {
+      ok: "Latest quota refresh completed.",
+      stale: "Showing the last known good data.",
+      loading: "Waiting for the provider response.",
+      unavailable: "Provider is not detected or temporarily unavailable.",
+      signed_out: "Sign in again through the provider app or CLI.",
+    } satisfies Record<SnapshotStatus, string>,
+  };
 
   const historyCounts = useMemo(() => new Map(PROVIDER_CATALOG.map((provider) => [provider.id, runtimeState.history.filter((point) => point.provider === provider.id).length])), [runtimeState.history]);
+  const snapshotsByProvider = useMemo(() => new Map(snapshots.map((snapshot) => [snapshot.provider, snapshot])), [snapshots]);
+  const healthyProviderCount = useMemo(() => snapshots.filter((snapshot) => snapshot.status === "ok").length, [snapshots]);
+  const attentionProviderCount = Math.max(0, PROVIDER_CATALOG.length - healthyProviderCount);
 
   const saveLayout = () => {
     const name = layoutName.trim() || `${zh ? "布局" : "Layout"} ${runtimeState.savedLayouts.length + 1}`;
@@ -66,7 +132,7 @@ export function ControlCenter({ preferences, runtimeState, diagnostics, language
         <button type="button" onClick={onClose} aria-label="Close"><X /></button>
       </header>
       <nav className="control-tabs" aria-label={labels.title}>
-        {([['display', Layout, labels.display], ['alerts', Bell, labels.alerts], ['activity', ClockCounterClockwise, labels.activity], ['system', Heartbeat, labels.system]] as const).map(([id, Icon, label]) => (
+        {([['display', Layout, labels.display], ['health', Heartbeat, healthLabels.tab], ['alerts', Bell, labels.alerts], ['activity', ClockCounterClockwise, labels.activity], ['system', Heartbeat, labels.system]] as const).map(([id, Icon, label]) => (
           <button key={id} type="button" className={tab === id ? "is-active" : ""} onClick={() => setTab(id)}><Icon /><span>{label}</span></button>
         ))}
       </nav>
@@ -89,6 +155,38 @@ export function ControlCenter({ preferences, runtimeState, diagnostics, language
           <div className="control-section-title"><span>{labels.savedLayouts}</span></div>
           <div className="layout-save"><input value={layoutName} onChange={(event) => setLayoutName(event.target.value)} placeholder={zh ? "方案名称" : "Profile name"} /><button type="button" onClick={saveLayout}><Plus />{labels.saveLayout}</button></div>
           <div className="saved-layouts">{runtimeState.savedLayouts.length === 0 ? <p>{labels.noLayouts}</p> : runtimeState.savedLayouts.map((layout) => <div key={layout.id}><button type="button" onClick={() => onPreferences({ ...preferences, providerOrder: layout.providerOrder, hiddenProviders: layout.hiddenProviders, collapsedProviders: layout.collapsedProviders, layoutMode: layout.layoutMode, accentColor: layout.accentColor })}><strong>{layout.name}</strong><small>{layout.layoutMode}</small></button><button type="button" aria-label="Delete" onClick={() => onRuntimeState({ ...runtimeState, savedLayouts: runtimeState.savedLayouts.filter((item) => item.id !== layout.id) })}><Trash /></button></div>)}</div>
+        </> : null}
+
+        {tab === "health" ? <>
+          <div className="provider-health-summary" role="status">
+            <Heartbeat weight="duotone" />
+            <div>
+              <strong>{healthyProviderCount}/{PROVIDER_CATALOG.length} {healthLabels.summary}</strong>
+              <p>{attentionProviderCount === 0 ? healthLabels.allHealthy : `${attentionProviderCount} ${healthLabels.attention}`}</p>
+            </div>
+            <button type="button" onClick={onRefresh}><ArrowClockwise />{healthLabels.refresh}</button>
+          </div>
+          <div className="control-section-title"><span>{healthLabels.title}</span></div>
+          <div className="provider-health-list">
+            {PROVIDER_CATALOG.map((provider) => {
+              const snapshot = snapshotsByProvider.get(provider.id);
+              const status = snapshot?.status ?? "unavailable";
+              return (
+                <article key={provider.id} className={`provider-health-item provider-health-item--${status}`}>
+                  <i aria-hidden="true" />
+                  <div className="provider-health-copy">
+                    <header><strong>{provider.label}</strong><span>{healthLabels.statuses[status]}</span></header>
+                    <p>{snapshot?.message || healthLabels.defaults[status]}</p>
+                    <footer>
+                      <span>{provider.sourceLabel[language]}</span>
+                      <span>{healthLabels.checked}: {formatCheckedAt(snapshot?.updatedAt, language, healthLabels.neverChecked)}</span>
+                      <span>{historyCounts.get(provider.id) ?? 0} {healthLabels.samples}</span>
+                    </footer>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
         </> : null}
 
         {tab === "alerts" ? <>

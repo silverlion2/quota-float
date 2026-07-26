@@ -65,6 +65,7 @@ Updater artifacts are signed with the project's Tauri update key. Windows Authen
 - Custom accent colors, hidden or condensed providers, reusable layout profiles, and system-login autostart.
 - Rotating recovery points before updates plus one-file export/import for settings, layouts, and history.
 - Redacted diagnostic reports that exclude tokens, account IDs, local auth paths, and raw provider responses.
+- A Provider Health Center showing each local source, freshness, recovery state, and bounded history count.
 - Automatic updates with Stable/Beta discovery and a convenient restart flow.
 
 ## Screenshots

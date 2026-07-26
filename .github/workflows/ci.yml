@@ -28,12 +28,12 @@ jobs:
           - os: windows-latest
             artifact-name: quota-float-windows-unsigned
             build-command: >-
-              npm run tauri -- build --config '{"bundle":{"createUpdaterArtifacts":false}}'
+              npm run tauri -- build --config src-tauri/tauri.ci.conf.json
             artifact-path: src-tauri/target/release/bundle/**
           - os: macos-latest
             artifact-name: quota-float-macos-universal-unsigned
             build-command: >-
-              npm run tauri -- build --target universal-apple-darwin --config '{"bundle":{"createUpdaterArtifacts":false}}'
+              npm run tauri -- build --target universal-apple-darwin --config src-tauri/tauri.ci.conf.json
             artifact-path: src-tauri/target/universal-apple-darwin/release/bundle/**
     runs-on: ${{ matrix.os }}
     steps:
@@ -53,6 +53,16 @@ jobs:
       - run: cargo test --manifest-path src-tauri/Cargo.toml
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
       - run: ${{ matrix.build-command }}
+      - name: Verify Windows artifacts with Microsoft Defender
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $installer = Get-ChildItem "src-tauri/target/release/bundle/nsis" -Filter "*x64-setup.exe" |
+            Select-Object -ExpandProperty FullName -First 1
+          ./scripts/verify-windows-defender.ps1 -Path @(
+            "src-tauri/target/release/quota-float.exe",
+            $installer
+          )
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact-name }}

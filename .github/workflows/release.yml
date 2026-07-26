@@ -25,8 +25,36 @@ jobs:
       - run: npm test
       - run: npm run build
 
-  publish:
+  defender-preflight:
     needs: verify
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - name: Build Windows Defender preflight artifacts
+        run: >-
+          npm run tauri -- build --bundles nsis
+          --config src-tauri/tauri.ci.conf.json
+      - name: Scan Windows release artifacts with Microsoft Defender
+        shell: powershell
+        run: |
+          $installer = Get-ChildItem "src-tauri/target/release/bundle/nsis" -Filter "*x64-setup.exe" |
+            Select-Object -ExpandProperty FullName -First 1
+          ./scripts/verify-windows-defender.ps1 -UpdateSignatures -Path @(
+            "src-tauri/target/release/quota-float.exe",
+            $installer
+          )
+
+  publish:
+    needs: [verify, defender-preflight]
     strategy:
       fail-fast: false
       matrix:
