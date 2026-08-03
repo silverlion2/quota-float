@@ -11,7 +11,7 @@ mod windows {
     use sha2::{Digest, Sha512};
     use std::{fs, path::PathBuf};
 
-    const USAGE_URL: &str = "https://api.trae.cn/trae/api/v2/pay/ide_user_ent_usage";
+    const USAGE_URL: &str = "https://api.trae.cn/trae/api/v1/pay/ide_user_ent_usage";
     const STORAGE_KEY: &str = "iCubeAuthInfo://icube.cloudide";
     const MAX_STORAGE_BYTES: u64 = 4 * 1024 * 1024;
     const MAX_RESPONSE_BYTES: u64 = 1024 * 1024;
@@ -144,7 +144,8 @@ mod windows {
 
     fn active_pack(pack: &Value) -> bool {
         let Some(end_time) = pack
-            .pointer("/entitlement_base_info/end_time")
+            .get("expire_time")
+            .or_else(|| pack.pointer("/entitlement_base_info/end_time"))
             .and_then(|value| {
                 value
                     .as_i64()
@@ -208,6 +209,7 @@ mod windows {
         let mut fast_used = 0.0;
         let mut basic_total = 0.0;
         let mut basic_used = 0.0;
+        let mut has_credit_quota = false;
         let mut best_plan = ("Free", 0u8);
         let mut active_packs = 0usize;
         for pack in packs.iter().filter(|pack| active_pack(pack)) {
@@ -233,21 +235,30 @@ mod windows {
                 .unwrap_or(0.0)
                 .max(0.0);
             }
-            for (limit_key, used_key) in [
-                ("basic_usage_limit", "basic_usage_amount"),
-                ("bonus_usage_limit", "bonus_usage_amount"),
+            let no_bonus = quota
+                .get("no_bonus_quota")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            for (limit_key, used_key, enabled) in [
+                ("basic_usage_limit", "basic_usage_amount", true),
+                ("bonus_usage_limit", "bonus_usage_amount", !no_bonus),
             ] {
-                let limit = number(quota, &[limit_key]).unwrap_or(0.0);
-                if limit > 0.0 {
+                let limit = if enabled {
+                    number(quota, &[limit_key])
+                } else {
+                    None
+                };
+                if let Some(limit) = limit.filter(|limit| *limit >= 0.0) {
+                    has_credit_quota = true;
                     basic_total += limit;
                     basic_used += number(usage, &[used_key]).unwrap_or(0.0).max(0.0);
                 }
             }
         }
-        let (remaining, unit) = if fast_total > 0.0 {
-            ((fast_total - fast_used).max(0.0), "requests")
-        } else if basic_total > 0.0 {
+        let (remaining, unit) = if has_credit_quota {
             ((basic_total - basic_used).max(0.0), "credits")
+        } else if fast_total > 0.0 {
+            ((fast_total - fast_used).max(0.0), "requests")
         } else if active_packs > 0 && best_plan.1 == 0 {
             (0.0, "unlimited")
         } else {
@@ -413,9 +424,7 @@ mod windows {
                     "entitlement_base_info": {
                         "product_type": 4,
                         "quota": {
-                            "premium_model_fast_request_limit": 1000,
-                            "basic_usage_limit": 0,
-                            "bonus_usage_limit": 0
+                            "premium_model_fast_request_limit": 1000
                         }
                     },
                     "usage": {"premium_model_fast_amount": 275}
@@ -428,7 +437,102 @@ mod windows {
         }
 
         #[test]
-        fn treats_current_free_plan_as_unlimited() {
+        fn prefers_credit_balance_over_migrated_fast_requests() {
+            let value = serde_json::json!({
+                "code": 0,
+                "user_entitlement_pack_list": [{
+                    "entitlement_base_info": {
+                        "product_type": 4,
+                        "quota": {
+                            "premium_model_fast_request_limit": 1000,
+                            "basic_usage_limit": 500,
+                            "bonus_usage_limit": 200
+                        }
+                    },
+                    "usage": {
+                        "premium_model_fast_amount": 275,
+                        "basic_usage_amount": 150,
+                        "bonus_usage_amount": 25
+                    }
+                }]
+            });
+            let snapshot = parse_snapshot(&value).unwrap();
+            assert_eq!(snapshot.plan.as_deref(), Some("Pro+"));
+            assert_eq!(snapshot.balance_remaining, Some(525.0));
+            assert_eq!(snapshot.balance_unit.as_deref(), Some("credits"));
+        }
+
+        #[test]
+        fn treats_zero_credit_allowance_as_exhausted() {
+            let value = serde_json::json!({
+                "user_entitlement_pack_list": [{
+                    "entitlement_base_info": {
+                        "product_type": 0,
+                        "quota": {
+                            "premium_model_fast_request_limit": 100,
+                            "basic_usage_limit": 0
+                        }
+                    },
+                    "usage": {
+                        "premium_model_fast_amount": 20,
+                        "basic_usage_amount": 0
+                    }
+                }]
+            });
+            let snapshot = parse_snapshot(&value).unwrap();
+            assert_eq!(snapshot.plan.as_deref(), Some("Free"));
+            assert_eq!(snapshot.balance_remaining, Some(0.0));
+            assert_eq!(snapshot.balance_unit.as_deref(), Some("credits"));
+        }
+
+        #[test]
+        fn ignores_bonus_when_plan_disables_it() {
+            let value = serde_json::json!({
+                "user_entitlement_pack_list": [{
+                    "entitlement_base_info": {
+                        "product_type": 1,
+                        "quota": {
+                            "basic_usage_limit": 500,
+                            "bonus_usage_limit": 100,
+                            "no_bonus_quota": true
+                        }
+                    },
+                    "usage": {
+                        "basic_usage_amount": 150,
+                        "bonus_usage_amount": 20
+                    }
+                }]
+            });
+            let snapshot = parse_snapshot(&value).unwrap();
+            assert_eq!(snapshot.balance_remaining, Some(350.0));
+            assert_eq!(snapshot.balance_unit.as_deref(), Some("credits"));
+        }
+
+        #[test]
+        fn ignores_expired_credit_packages() {
+            let value = serde_json::json!({
+                "user_entitlement_pack_list": [{
+                    "expire_time": 1,
+                    "entitlement_base_info": {
+                        "product_type": 2,
+                        "quota": {"basic_usage_limit": 1000}
+                    },
+                    "usage": {"basic_usage_amount": 0}
+                }, {
+                    "entitlement_base_info": {
+                        "product_type": 1,
+                        "quota": {"basic_usage_limit": 500}
+                    },
+                    "usage": {"basic_usage_amount": 150}
+                }]
+            });
+            let snapshot = parse_snapshot(&value).unwrap();
+            assert_eq!(snapshot.plan.as_deref(), Some("Pro"));
+            assert_eq!(snapshot.balance_remaining, Some(350.0));
+        }
+
+        #[test]
+        fn treats_legacy_free_plan_without_a_meter_as_unlimited() {
             let value = serde_json::json!({
                 "user_entitlement_pack_list": [{
                     "entitlement_base_info": {

@@ -31,7 +31,7 @@ The app only calls these quota-related HTTPS endpoints from the local desktop pr
 
 - `https://chatgpt.com/backend-api/wham/usage`
 - `https://chatgpt.com/backend-api/wham/rate-limit-reset-credits`
-- `https://api.trae.cn/trae/api/v2/pay/ide_user_ent_usage`
+- `https://api.trae.cn/trae/api/v1/pay/ide_user_ent_usage`
 - `https://copilot.tencent.com/v2/billing/meter/get-user-resource`
 - `https://copilot.tencent.com/v2/billing/meter/get-enterprise-user-usage`
 

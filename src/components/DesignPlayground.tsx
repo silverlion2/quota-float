@@ -22,8 +22,8 @@ const peerPreviews: ProviderSnapshot[] = [{
   provider: "qoder", displayName: "QODER", plan: "PRO", shortWindow: null, weeklyWindow: null,
   resetCredits: null, balanceRemaining: 1280, balanceUnit: "credits", updatedAt: new Date().toISOString(), status: "ok", message: null,
 }, {
-  provider: "trae", displayName: "TRAE", plan: "Free", shortWindow: null, weeklyWindow: null,
-  resetCredits: null, balanceRemaining: 0, balanceUnit: "unlimited", updatedAt: new Date().toISOString(), status: "ok", message: null,
+  provider: "trae", displayName: "TRAE", plan: "Pro", shortWindow: null, weeklyWindow: null,
+  resetCredits: null, balanceRemaining: 350, balanceUnit: "credits", updatedAt: new Date().toISOString(), status: "ok", message: null,
 }, {
   provider: "workbuddy", displayName: "WORKBUDDY", plan: null, shortWindow: null, weeklyWindow: null,
   resetCredits: null, balanceRemaining: 420, balanceUnit: "credits", updatedAt: new Date().toISOString(), status: "ok", message: null,

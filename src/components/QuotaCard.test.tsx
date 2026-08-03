@@ -36,12 +36,12 @@ const qoder: ProviderSnapshot = {
 const trae: ProviderSnapshot = {
   provider: "trae",
   displayName: "TRAE",
-  plan: "Free",
+  plan: "Pro",
   shortWindow: null,
   weeklyWindow: null,
   resetCredits: null,
-  balanceRemaining: 0,
-  balanceUnit: "unlimited",
+  balanceRemaining: 350,
+  balanceUnit: "credits",
   updatedAt: "2026-07-16T00:00:00Z",
   status: "ok",
   message: null,
@@ -236,9 +236,9 @@ describe("QuotaCard platform ledger", () => {
     expect(screen.getByText("Pace needs a quota period")).toBeInTheDocument();
   });
 
-  it("shows an unlimited free plan without inventing a numeric quota", () => {
+  it("shows TRAE's credit balance in the collapsed orb", () => {
     render(<QuotaOrb snapshot={trae} language="en" onDrag={noop} onHover={noop} />);
-    expect(screen.getByLabelText("Unlimited")).toHaveTextContent("∞");
+    expect(screen.getByLabelText("350 credits")).toBeInTheDocument();
   });
 
   it("offers an in-app reconnect action for an expired Volcengine login", () => {
