@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.12 - 2026-08-03
+
+- feat: add Antigravity quota tracking
+
 ## 0.2.11 - 2026-08-03
 
 - fix: track TRAE credits
