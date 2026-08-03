@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.11 - 2026-08-03
+
+- fix: track TRAE credits
+
 ## 0.2.10 - 2026-07-26
 
 - fix: enable Defender on hosted runners
