@@ -1,4 +1,4 @@
-export type ProviderId = "codex" | "qoder" | "trae" | "workbuddy" | "volcengine";
+export type ProviderId = "codex" | "qoder" | "trae" | "workbuddy" | "volcengine" | "antigravity";
 export type SnapshotStatus = "ok" | "stale" | "loading" | "unavailable" | "signed_out";
 export type Language = "zh-CN" | "en";
 export type LayoutMode = "compact" | "standard" | "detailed";

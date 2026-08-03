@@ -5,7 +5,7 @@
 <h1 align="center">Quota Float — Coding Assistant Quota Monitor</h1>
 
 <p align="center">
-  A lightweight, local-first desktop widget that keeps Codex, Qoder, TRAE, WorkBuddy, and Volcengine Ark Coding Plan usage limits visible at a glance.
+  A lightweight, local-first desktop widget that keeps Codex, Qoder, TRAE, WorkBuddy, Volcengine Ark Coding Plan, and Google Antigravity usage limits visible at a glance.
 </p>
 
 <p align="center">
@@ -28,7 +28,7 @@ Quota Float is an always-on-top **Codex quota monitor and coding-assistant usage
 
 ## Why Quota Float?
 
-- **All quotas in one place:** monitor Codex, Qoder, TRAE, WorkBuddy, and Volcengine Ark Coding Plan from one compact widget.
+- **All quotas in one place:** monitor Codex, Qoder, TRAE, WorkBuddy, Volcengine Ark Coding Plan, and Google Antigravity from one compact widget.
 - **Useful before a limit hits:** see healthy, caution, and critical states, quota pace guidance, reset timing, and configurable desktop alerts.
 - **Stays out of the way:** collapse to a floating orb, expand on hover, reorder providers, and choose compact, standard, or detailed layouts.
 - **Resilient by design:** transient failures are retried, while last-known-good values remain visible and clearly marked as stale.
@@ -44,6 +44,7 @@ Quota Float is an always-on-top **Codex quota monitor and coding-assistant usage
 | TRAE | Existing TRAE local sign-in state | TRAE installed and signed in |
 | WorkBuddy | Existing WorkBuddy local sign-in state | WorkBuddy installed and signed in |
 | Volcengine Ark Coding Plan | Authenticated `arkcli usage plan` output | Ark CLI installed and signed in |
+| Google Antigravity | Local CSRF-protected language-server quota status | Antigravity installed, open, and signed in |
 
 Quota Float uses these sources in read-only mode. If a provider changes its response format or a session expires, the app reports an unavailable or stale state instead of inventing a value.
 
@@ -76,7 +77,7 @@ Updater artifacts are signed with the project's Tauri update key. Windows Authen
 
 ## Privacy and Security
 
-Quota Float sends each provider's existing token only to that provider's official quota service; Volcengine access stays inside Ark CLI. The app stores only its own preferences, bounded quota samples, event summaries, layout profiles, and recovery points.
+Quota Float sends each provider's existing token only to that provider's official quota service; Volcengine access stays inside Ark CLI, and Antigravity is queried through its loopback-only local quota service. The app stores only its own preferences, bounded quota samples, event summaries, layout profiles, and recovery points.
 
 It does **not** store provider tokens, account IDs, prompts, chat history, raw quota responses, or local auth paths. It does not redeem reset credits or change provider account settings. See [Privacy](PRIVACY.md) and [Security](SECURITY.md) for the complete boundary.
 

@@ -62,6 +62,16 @@ const mockSnapshots: ProviderSnapshot[] = [{
   updatedAt: new Date().toISOString(),
   status: "ok",
   message: null,
+}, {
+  provider: "antigravity",
+  displayName: "ANTIGRAVITY",
+  plan: "Google AI Pro",
+  shortWindow: { remainingPercent: 68, resetsAt: new Date(Date.now() + 4.1 * 3_600_000).toISOString(), windowSeconds: 18_000 },
+  weeklyWindow: null,
+  resetCredits: null,
+  updatedAt: new Date().toISOString(),
+  status: "ok",
+  message: null,
 }];
 
 const mockVolcengineDiagnostics: VolcengineDiagnostics = {

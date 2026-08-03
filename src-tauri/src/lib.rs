@@ -1,3 +1,4 @@
+mod antigravity;
 mod codex;
 mod models;
 mod qoder;
@@ -29,7 +30,7 @@ use tauri_plugin_window_state::Builder as WindowStateBuilder;
 const COLLAPSED_LOGICAL_WIDTH: f64 = 92.0;
 const COLLAPSED_LOGICAL_HEIGHT: f64 = 92.0;
 const EXPANDED_LOGICAL_WIDTH: f64 = 552.0;
-const EXPANDED_LOGICAL_HEIGHT: f64 = 212.0;
+const EXPANDED_LOGICAL_HEIGHT: f64 = 248.0;
 const EDGE_SAFE_INSET_LOGICAL: f64 = 4.0;
 const SNAP_THRESHOLD_LOGICAL: f64 = 24.0;
 const POSITION_EPSILON: u32 = 2;
@@ -146,17 +147,25 @@ fn apply_short_window_test_override(
 
 async fn collect_snapshots_once(client: &reqwest::Client) -> Vec<ProviderSnapshot> {
     let qoder_snapshot = qoder::fetch_snapshot();
-    let (codex_snapshot, trae_snapshot, workbuddy_snapshot, volcengine_snapshot) = tokio::join!(
+    let (
+        codex_snapshot,
+        trae_snapshot,
+        workbuddy_snapshot,
+        volcengine_snapshot,
+        antigravity_snapshot,
+    ) = tokio::join!(
         codex::fetch_snapshot(client),
         trae::fetch_snapshot(client),
         workbuddy::fetch_snapshot(client),
         volcengine::fetch_snapshot(),
+        antigravity::fetch_snapshot(),
     );
     let mut values = vec![codex_snapshot];
     values.extend(qoder_snapshot);
     values.extend(trae_snapshot);
     values.extend(workbuddy_snapshot);
     values.extend(volcengine_snapshot);
+    values.extend(antigravity_snapshot);
     values
 }
 

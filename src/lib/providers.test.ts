@@ -9,6 +9,7 @@ describe("provider ordering", () => {
       "qoder",
       "trae",
       "workbuddy",
+      "antigravity",
     ]);
   });
 
@@ -19,6 +20,7 @@ describe("provider ordering", () => {
       "trae",
       "workbuddy",
       "volcengine",
+      "antigravity",
     ]);
   });
 });

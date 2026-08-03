@@ -5,7 +5,7 @@
 <h1 align="center">Quota Float — AI 编程助手额度监控悬浮窗</h1>
 
 <p align="center">
-  在桌面上集中查看 Codex、Qoder、TRAE、WorkBuddy 和火山方舟 Coding Plan 的剩余额度、重置时间与使用节奏。
+  在桌面上集中查看 Codex、Qoder、TRAE、WorkBuddy、火山方舟 Coding Plan 和 Google Antigravity 的剩余额度、重置时间与使用节奏。
 </p>
 
 <p align="center">
@@ -28,7 +28,7 @@ Quota Float 是一款适用于 Windows 和 macOS 的轻量、置顶、**本地�
 
 ## 为什么用 Quota Float？
 
-- **多个平台，一处查看：** 同时监控 Codex、Qoder、TRAE、WorkBuddy 和火山方舟 Coding Plan。
+- **多个平台，一处查看：** 同时监控 Codex、Qoder、TRAE、WorkBuddy、火山方舟 Coding Plan 和 Google Antigravity。
 - **提前发现额度压力：** 提供健康/提醒/紧张状态、使用节奏建议、重置时间和可配置桌面提醒。
 - **随用随看，不打扰工作：** 空闲时折叠为悬浮球，悬停展开；支持平台排序、轮播和三种信息密度。
 - **异常时信息不丢失：** 自动重试临时故障，并保留且明确标记上次成功数据。
@@ -43,6 +43,7 @@ Quota Float 是一款适用于 Windows 和 macOS 的轻量、置顶、**本地�
 | Qoder | 本地账号缓存 | Qoder 已安装并登录 |
 | TRAE | 本机已有 TRAE 登录状态 | TRAE 已安装并登录 |
 | WorkBuddy | 本机已有 WorkBuddy 登录状态 | WorkBuddy 已安装并登录 |
+| Google Antigravity | 本机受 CSRF 保护的语言服务器额度状态 | Antigravity 已安装、打开并登录 |
 | 火山方舟 Coding Plan | 已认证的 `arkcli usage plan` 输出 | Ark CLI 已安装并登录 |
 
 所有数据源都以只读方式使用。如果平台响应结构变化或登录过期，应用会显示“不可用”或“数据已过期”，不会猜测额度。

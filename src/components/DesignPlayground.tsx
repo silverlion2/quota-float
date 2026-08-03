@@ -17,7 +17,7 @@ const preview: ProviderSnapshot = {
   message: null,
 };
 const preferences: WidgetPreferences = { ...DEFAULT_WIDGET_PREFERENCES, pinnedProvider: "codex", language: "en" };
-const sortedPreferences: WidgetPreferences = { ...preferences, providerOrder: ["qoder", "codex", "trae", "workbuddy", "volcengine"] };
+const sortedPreferences: WidgetPreferences = { ...preferences, providerOrder: ["qoder", "codex", "trae", "workbuddy", "volcengine", "antigravity"] };
 const peerPreviews: ProviderSnapshot[] = [{
   provider: "qoder", displayName: "QODER", plan: "PRO", shortWindow: null, weeklyWindow: null,
   resetCredits: null, balanceRemaining: 1280, balanceUnit: "credits", updatedAt: new Date().toISOString(), status: "ok", message: null,
@@ -33,6 +33,10 @@ const peerPreviews: ProviderSnapshot[] = [{
   weeklyWindow: { remainingPercent: 86, resetsAt: new Date(Date.now() + 5.4 * 86_400_000).toISOString(), windowSeconds: 604_800 },
   monthlyWindow: { remainingPercent: 45, resetsAt: new Date(Date.now() + 20.4 * 86_400_000).toISOString(), windowSeconds: 31 * 86_400 },
   resetCredits: null, updatedAt: new Date().toISOString(), status: "ok", message: null,
+}, {
+  provider: "antigravity", displayName: "ANTIGRAVITY", plan: "Google AI Pro",
+  shortWindow: { remainingPercent: 68, resetsAt: new Date(Date.now() + 4 * 3_600_000).toISOString(), windowSeconds: 18_000 },
+  weeklyWindow: null, resetCredits: null, updatedAt: new Date().toISOString(), status: "ok", message: null,
 }];
 const noConsumingProviders = new Set<string>();
 const codexConsuming = new Set<string>(["codex"]);

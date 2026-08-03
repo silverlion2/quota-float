@@ -106,10 +106,17 @@ fn default_language() -> String {
     "zh-CN".into()
 }
 fn default_provider_order() -> Vec<String> {
-    ["codex", "qoder", "trae", "workbuddy", "volcengine"]
-        .into_iter()
-        .map(str::to_string)
-        .collect()
+    [
+        "codex",
+        "qoder",
+        "trae",
+        "workbuddy",
+        "volcengine",
+        "antigravity",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect()
 }
 fn default_layout_mode() -> String {
     "standard".into()
@@ -169,7 +176,7 @@ impl WidgetPreferences {
         self.auto_rotate_seconds = self.auto_rotate_seconds.clamp(5, 300);
         if !matches!(
             self.pinned_provider.as_deref(),
-            Some("codex" | "qoder" | "trae" | "workbuddy" | "volcengine")
+            Some("codex" | "qoder" | "trae" | "workbuddy" | "volcengine" | "antigravity")
         ) {
             self.pinned_provider = None;
         }
@@ -177,7 +184,7 @@ impl WidgetPreferences {
         for provider in self.provider_order {
             if matches!(
                 provider.as_str(),
-                "codex" | "qoder" | "trae" | "workbuddy" | "volcengine"
+                "codex" | "qoder" | "trae" | "workbuddy" | "volcengine" | "antigravity"
             ) && !provider_order.contains(&provider)
             {
                 provider_order.push(provider);
@@ -201,7 +208,7 @@ impl WidgetPreferences {
             for provider in values {
                 if matches!(
                     provider.as_str(),
-                    "codex" | "qoder" | "trae" | "workbuddy" | "volcengine"
+                    "codex" | "qoder" | "trae" | "workbuddy" | "volcengine" | "antigravity"
                 ) && !normalized.contains(&provider)
                 {
                     normalized.push(provider);
@@ -288,7 +295,14 @@ mod tests {
         };
         assert_eq!(
             preferences.normalized().provider_order,
-            vec!["qoder", "codex", "trae", "workbuddy", "volcengine"]
+            vec![
+                "qoder",
+                "codex",
+                "trae",
+                "workbuddy",
+                "volcengine",
+                "antigravity",
+            ]
         );
     }
 
@@ -301,6 +315,7 @@ mod tests {
                 "trae".into(),
                 "workbuddy".into(),
                 "volcengine".into(),
+                "antigravity".into(),
             ],
             accent_color: "red; background: url(x)".into(),
             alert_threshold: 0,

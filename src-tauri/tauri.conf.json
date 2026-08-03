@@ -40,8 +40,8 @@
     "createUpdaterArtifacts": true,
     "targets": "all",
     "category": "Utility",
-    "shortDescription": "Codex quota at a glance",
-    "longDescription": "A lightweight floating desktop card for Codex usage limits.",
+    "shortDescription": "Coding-assistant quotas at a glance",
+    "longDescription": "A lightweight floating desktop card for coding-assistant usage limits.",
     "copyright": "Copyright Quota Float contributors",
     "icon": [
       "icons/32x32.png",

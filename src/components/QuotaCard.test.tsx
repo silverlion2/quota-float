@@ -47,6 +47,18 @@ const trae: ProviderSnapshot = {
   message: null,
 };
 
+const antigravity: ProviderSnapshot = {
+  provider: "antigravity",
+  displayName: "ANTIGRAVITY",
+  plan: "Google AI Pro",
+  shortWindow: { remainingPercent: 68, resetsAt: "2026-07-19T04:00:00Z", windowSeconds: 18_000 },
+  weeklyWindow: null,
+  resetCredits: null,
+  updatedAt: "2026-07-16T00:00:00Z",
+  status: "ok",
+  message: null,
+};
+
 const signedOutVolcengine: ProviderSnapshot = {
   ...codex,
   provider: "volcengine",
@@ -241,6 +253,12 @@ describe("QuotaCard platform ledger", () => {
     expect(screen.getByLabelText("350 credits")).toBeInTheDocument();
   });
 
+  it("shows Antigravity's short-window quota in the collapsed orb", () => {
+    render(<QuotaOrb snapshot={antigravity} language="en" onDrag={noop} onHover={noop} />);
+    expect(screen.getByLabelText("5 hours quota remaining 68%")).toBeInTheDocument();
+    expect(screen.getByText("68")).toBeInTheDocument();
+  });
+
   it("offers an in-app reconnect action for an expired Volcengine login", () => {
     const onReconnect = vi.fn();
     render(
@@ -408,7 +426,7 @@ describe("QuotaCard platform ledger", () => {
     expect(traeRow).toHaveClass("is-drag-target");
     fireEvent.pointerUp(codexGrip, { pointerId: 1, clientY: 1 });
 
-    expect(onReorderProviders).toHaveBeenCalledWith(["qoder", "codex", "trae", "workbuddy", "volcengine"]);
+    expect(onReorderProviders).toHaveBeenCalledWith(["qoder", "codex", "trae", "workbuddy", "volcengine", "antigravity"]);
   });
 
   it("supports Alt plus arrow keys as a sorting alternative", () => {
@@ -429,6 +447,6 @@ describe("QuotaCard platform ledger", () => {
     );
 
     fireEvent.keyDown(screen.getByRole("listitem", { name: /Reorder CODEX/i }), { key: "ArrowDown", altKey: true });
-    expect(onReorderProviders).toHaveBeenCalledWith(["qoder", "codex", "trae", "workbuddy", "volcengine"]);
+    expect(onReorderProviders).toHaveBeenCalledWith(["qoder", "codex", "trae", "workbuddy", "volcengine", "antigravity"]);
   });
 });

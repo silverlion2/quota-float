@@ -4,13 +4,13 @@ import { normalizeWidgetPreferences } from "./preferences";
 describe("widget preference migration", () => {
   it("fills new quality-of-life settings for legacy preferences", () => {
     const value = normalizeWidgetPreferences({ language: "en", providerOrder: ["qoder", "codex"] as never });
-    expect(value.providerOrder).toEqual(["qoder", "codex", "trae", "workbuddy", "volcengine"]);
+    expect(value.providerOrder).toEqual(["qoder", "codex", "trae", "workbuddy", "volcengine", "antigravity"]);
     expect(value.layoutMode).toBe("standard");
     expect(value.notificationsEnabled).toBe(true);
   });
 
   it("rejects unsafe colors and never hides every provider", () => {
-    const value = normalizeWidgetPreferences({ accentColor: "red; background:url(x)", hiddenProviders: ["codex", "qoder", "trae", "workbuddy", "volcengine"] });
+    const value = normalizeWidgetPreferences({ accentColor: "red; background:url(x)", hiddenProviders: ["codex", "qoder", "trae", "workbuddy", "volcengine", "antigravity"] });
     expect(value.accentColor).toBe("#397ae0");
     expect(value.hiddenProviders).toEqual([]);
   });

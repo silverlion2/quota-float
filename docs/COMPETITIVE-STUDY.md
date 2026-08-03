@@ -39,7 +39,7 @@ What should Quota Float improve next while preserving its local-first, no-sideca
 - Information hierarchy: aggregate health first, then one compact row per provider.
 - State encoding: text label plus color dot; color is never the only signal.
 - Accessibility: the summary uses a status role, tabs and refresh remain native buttons, and every state has readable text.
-- Desktop constraint: the fifth tab and provider rows fit the existing 620x280 expanded widget without adopting mobile or website navigation rules.
+- Desktop constraint: the sixth provider row fits the existing 620x280 expanded-widget limit without adopting mobile or website navigation rules.
 
 ## Follow-up priorities
 

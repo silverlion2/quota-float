@@ -9,6 +9,7 @@ Quota Float is designed to be local-first and minimal.
 - TRAE: decrypts the existing local TRAE login state for the current Windows user and sends the token only to TRAE's quota endpoint.
 - WorkBuddy: decrypts the existing Electron login state for the current Windows user and sends it only to WorkBuddy's quota endpoint.
 - Volcengine: invokes the installed Ark CLI in read-only mode with `arkcli usage plan --product coding-plan --format json`; Ark CLI retains control of its authentication.
+- Antigravity: discovers the running local Antigravity language server and reads its CSRF-protected quota status over loopback. Quota Float does not read or store the Google OAuth token.
 
 ## What It Stores
 
@@ -35,7 +36,7 @@ The app only calls these quota-related HTTPS endpoints from the local desktop pr
 - `https://copilot.tencent.com/v2/billing/meter/get-user-resource`
 - `https://copilot.tencent.com/v2/billing/meter/get-enterprise-user-usage`
 
-Qoder collection is local-only. Volcengine network requests are made by the user's installed Ark CLI.
+Qoder and Antigravity collection are local-only. Volcengine network requests are made by the user's installed Ark CLI.
 
 No telemetry, analytics, crash reporting, or third-party tracking is included.
 

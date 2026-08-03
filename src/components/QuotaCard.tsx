@@ -58,6 +58,15 @@ function StatusIcon({ status, expired = false }: { status: ProviderSnapshot["sta
   return <WarningCircle weight="duotone" />;
 }
 
+function quotaAvailableLabel(period: QuotaPeriod, remaining: number, language: Language): string {
+  const t = copy[language];
+  if (period === "weekly") return t.availableLabel(remaining);
+  const label = period === "5h" ? t.fiveHourShort : t.monthlyShort;
+  return language === "en"
+    ? `${label} quota remaining ${remaining}%`
+    : `${label}剩余 ${remaining}%`;
+}
+
 function QuotaPaceHint({ pace, language, provider }: { pace: QuotaPace; language: Language; provider: ProviderId }) {
   const t = copy[language];
   const number = new Intl.NumberFormat(language === "en" ? "en-US" : "zh-CN", { maximumFractionDigits: 1 });
@@ -167,14 +176,21 @@ function ProviderLedgerRow({
   condensed: boolean;
 }) {
   const t = copy[language];
-  const weekly = snapshot?.weeklyWindow ? clampPercent(snapshot.weeklyWindow.remainingPercent) : null;
+  const quotaWindow = snapshot?.weeklyWindow
+    ? { label: t.weeklyShort, window: snapshot.weeklyWindow }
+    : snapshot?.shortWindow
+      ? { label: t.fiveHourShort, window: snapshot.shortWindow }
+      : snapshot?.monthlyWindow
+        ? { label: t.monthlyShort, window: snapshot.monthlyWindow }
+        : null;
+  const remaining = quotaWindow ? clampPercent(quotaWindow.window.remainingPercent) : null;
   const balance = snapshot?.balanceRemaining ?? null;
   const unlimited = snapshot?.balanceUnit === "unlimited";
   const unlimitedLabel = language === "en" ? "Unlimited" : "不限量";
   const value = unlimited
     ? "∞"
-    : weekly !== null
-    ? `${weekly}%`
+    : remaining !== null
+    ? `${remaining}%`
     : balance !== null
       ? new Intl.NumberFormat(language === "en" ? "en-US" : "zh-CN", { maximumFractionDigits: 1 }).format(balance)
       : "--";
@@ -190,8 +206,8 @@ function ProviderLedgerRow({
               ? t.temporarilyUnavailable
             : unlimited
               ? unlimitedLabel
-            : weekly !== null
-              ? `${t.weeklyShort} · ${formatResetDate(snapshot.weeklyWindow?.resetsAt ?? null, language)}`
+            : quotaWindow
+              ? `${quotaWindow.label} · ${formatResetDate(quotaWindow.window.resetsAt, language)}`
               : snapshot.balanceUnit ?? t.balanceRemaining;
 
   return (
@@ -372,9 +388,12 @@ export const QuotaCard = memo(function QuotaCard({
   const providerPointerDrag = useRef<{ source: ProviderId; target: ProviderId; after: boolean; pointerId: number } | null>(null);
   const language = normalizeLanguage(preferences.language);
   const t = copy[language];
-  const weekly = snapshot.weeklyWindow ? clampPercent(snapshot.weeklyWindow.remainingPercent) : null;
   const quotaWindows = trackedQuotaWindows(snapshot);
   const showQuotaWindowList = quotaWindows.length > 1;
+  const singleQuotaWindow = quotaWindows.length === 1 ? quotaWindows[0] : null;
+  const singleRemaining = singleQuotaWindow
+    ? clampPercent(singleQuotaWindow.window.remainingPercent)
+    : null;
   const singleWindowPace = quotaWindows.length === 1
     ? calculateQuotaPace(quotaWindows[0].window, new Date(), paceBaselines[paceBaselineKey(snapshot.provider, quotaWindows[0].period)] ?? null)
     : null;
@@ -386,11 +405,18 @@ export const QuotaCard = memo(function QuotaCard({
     : balance !== null
     ? new Intl.NumberFormat(language === "en" ? "en-US" : "zh-CN", { maximumFractionDigits: 1 }).format(balance)
     : null;
-  const metricTitle = showQuotaWindowList ? t.quotaWindows : unlimited ? unlimitedLabel : weekly !== null ? t.weeklyRemaining : balance !== null ? t.balanceRemaining : t.unavailableStatus;
+  const singleWindowTitle = singleQuotaWindow?.period === "weekly"
+    ? t.weeklyRemaining
+    : singleQuotaWindow?.period === "5h"
+      ? t.fiveHourShort
+      : singleQuotaWindow?.period === "monthly"
+        ? t.monthlyShort
+        : null;
+  const metricTitle = showQuotaWindowList ? t.quotaWindows : unlimited ? unlimitedLabel : singleWindowTitle ?? (balance !== null ? t.balanceRemaining : t.unavailableStatus);
   const metricLabel = showQuotaWindowList
     ? t.quotaWindows
-    : weekly !== null
-    ? t.availableLabel(weekly)
+    : singleRemaining !== null && singleQuotaWindow
+    ? quotaAvailableLabel(singleQuotaWindow.period, singleRemaining, language)
     : unlimited
       ? unlimitedLabel
     : balance !== null
@@ -399,7 +425,7 @@ export const QuotaCard = memo(function QuotaCard({
   const staleAge = Date.now() - new Date(snapshot.updatedAt).getTime();
   const staleExpired = snapshot.status === "stale" && staleAge > 30 * 60_000;
   const available = snapshot.status === "ok" || (snapshot.status === "stale" && !staleExpired);
-  const tier = quotaTier(showQuotaWindowList ? Math.min(...quotaWindows.map(({ window }) => clampPercent(window.remainingPercent))) : weekly);
+  const tier = quotaTier(quotaWindows.length > 0 ? Math.min(...quotaWindows.map(({ window }) => clampPercent(window.remainingPercent))) : null);
   const indicatorState = isConsuming ? "active" : snapshot.status === "ok" ? "ok" : snapshot.status === "stale" ? "stale" : "error";
   const indicatorLabel = isConsuming
     ? t.active
@@ -550,20 +576,20 @@ export const QuotaCard = memo(function QuotaCard({
             ) : (
               <>
                 <section className="primary-metric" aria-label={metricLabel ?? undefined}>
-                  <span>{weekly ?? formattedBalance}</span><small>{weekly !== null ? "%" : unlimited ? "" : ` ${snapshot.balanceUnit ?? ""}`}</small>
+                  <span>{singleRemaining ?? formattedBalance}</span><small>{singleRemaining !== null ? "%" : unlimited ? "" : ` ${snapshot.balanceUnit ?? ""}`}</small>
                 </section>
-                {weekly !== null ? <div className="progress" role="progressbar" aria-label={t.availableLabel(weekly)} aria-valuemin={0} aria-valuemax={100} aria-valuenow={weekly}>
-                  <span style={{ width: `${weekly}%` }} />
+                {singleRemaining !== null && singleQuotaWindow ? <div className="progress" role="progressbar" aria-label={quotaAvailableLabel(singleQuotaWindow.period, singleRemaining, language)} aria-valuemin={0} aria-valuemax={100} aria-valuenow={singleRemaining}>
+                  <span style={{ width: `${singleRemaining}%` }} />
                 </div> : null}
-                <p className="reset-time">{weekly !== null ? formatResetTime(snapshot.weeklyWindow?.resetsAt ?? null, new Date(), language) : unlimited ? unlimitedLabel : snapshot.balanceUnit ?? ""}</p>
+                <p className="reset-time">{singleQuotaWindow ? formatResetTime(singleQuotaWindow.window.resetsAt, new Date(), language) : unlimited ? unlimitedLabel : snapshot.balanceUnit ?? ""}</p>
                 {singleWindowPace ? <QuotaPaceHint pace={singleWindowPace} language={language} provider={snapshot.provider} /> : balance !== null && !unlimited ? (
                   <div className="quota-pace-hint quota-pace-hint--unknown" role="status"><span><ClockCounterClockwise />{t.paceNeedsPeriod}</span></div>
                 ) : null}
               </>
             )}
             <footer className={`primary-footer${showQuotaWindowList ? " primary-footer--windows" : ""}`}>
-              {!showQuotaWindowList && (weekly !== null || snapshot.resetCredits !== null) ? <div className="quota-meta">
-                {weekly !== null ? <p>{t.weeklyResetDate(formatResetDate(snapshot.weeklyWindow?.resetsAt ?? null, language))}</p> : null}
+              {!showQuotaWindowList && (singleQuotaWindow?.period === "weekly" || snapshot.resetCredits !== null) ? <div className="quota-meta">
+                {singleQuotaWindow?.period === "weekly" ? <p>{t.weeklyResetDate(formatResetDate(singleQuotaWindow.window.resetsAt, language))}</p> : null}
                 <div className="reset-credit-row" onMouseDown={(event) => event.stopPropagation()}>
                   <span>{snapshot.resetCredits === null ? t.resetCreditUnknown : t.resetCredits(snapshot.resetCredits)}</span>
                   {snapshot.resetCredits !== null && snapshot.resetCredits > 0 ? (
@@ -670,7 +696,9 @@ export const QuotaOrb = memo(function QuotaOrb({ snapshot, onDrag, onHover, lang
   const idleTimer = useRef<number | null>(null);
   const activeLanguage = normalizeLanguage(language);
   const t = copy[activeLanguage];
-  const weekly = snapshot.weeklyWindow ? clampPercent(snapshot.weeklyWindow.remainingPercent) : null;
+  const quotaWindows = trackedQuotaWindows(snapshot);
+  const orbQuota = quotaWindows.find(({ period }) => period === "weekly") ?? quotaWindows[0] ?? null;
+  const remaining = orbQuota ? clampPercent(orbQuota.window.remainingPercent) : null;
   const balance = snapshot.balanceRemaining ?? null;
   const unlimited = snapshot.balanceUnit === "unlimited";
   const compactBalance = unlimited
@@ -678,10 +706,10 @@ export const QuotaOrb = memo(function QuotaOrb({ snapshot, onDrag, onHover, lang
     : balance !== null
     ? new Intl.NumberFormat(activeLanguage === "en" ? "en-US" : "zh-CN", { notation: "compact", maximumFractionDigits: 1 }).format(balance)
     : null;
-  const tier = quotaTier(weekly);
-  const available = snapshot.status === "ok" && (weekly !== null || balance !== null);
-  const accessibleLabel = weekly !== null
-    ? t.availableLabel(weekly)
+  const tier = quotaTier(remaining);
+  const available = snapshot.status === "ok" && (remaining !== null || balance !== null);
+  const accessibleLabel = remaining !== null && orbQuota
+    ? quotaAvailableLabel(orbQuota.period, remaining, activeLanguage)
     : unlimited
       ? (activeLanguage === "en" ? "Unlimited" : "不限量")
     : `${balance} ${snapshot.balanceUnit ?? ""}`.trim();
@@ -715,8 +743,8 @@ export const QuotaOrb = memo(function QuotaOrb({ snapshot, onDrag, onHover, lang
       <div className="aurora" aria-hidden="true" />
       {available ? (
         <section className="orb-metric">
-          <span>{weekly ?? compactBalance}</span>
-          <small>{weekly !== null ? "%" : !unlimited && snapshot.balanceUnit === "credits" ? "cr" : ""}</small>
+          <span>{remaining ?? compactBalance}</span>
+          <small>{remaining !== null ? "%" : !unlimited && snapshot.balanceUnit === "credits" ? "cr" : ""}</small>
         </section>
       ) : (
         <section className="orb-unavailable">

@@ -329,6 +329,14 @@ button { font: inherit; }
 .provider-row:disabled { opacity: .46; cursor: default; }
 .provider-row .provider-mark { width: 20px; height: 20px; margin: 0; padding: 3px; border-radius: 6px; background: rgba(255,255,255,.3); }
 .provider-row .provider-mark > strong { font-size: 9px; }
+.provider-mark[data-provider="codex"] { background: #101214; }
+.provider-row .provider-mark[data-provider="codex"] { background: #101214; }
+.provider-mark[data-provider="qoder"],
+.provider-mark[data-provider="trae"],
+.provider-mark[data-provider="workbuddy"] { padding: 2px; background: transparent; }
+.provider-row .provider-mark[data-provider="qoder"],
+.provider-row .provider-mark[data-provider="trae"],
+.provider-row .provider-mark[data-provider="workbuddy"] { padding: 1px; background: transparent; }
 .provider-identity, .provider-value { min-width: 0; display: flex; align-items: baseline; gap: 5px; }
 .provider-identity strong { overflow: hidden; font-size: 9px; font-weight: 760; letter-spacing: .06em; text-overflow: ellipsis; white-space: nowrap; }
 .provider-identity small { overflow: hidden; color: rgba(23,25,31,.42); font-size: 7px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
@@ -415,7 +423,7 @@ button { font: inherit; }
 .screenshot-stage { width: 100vw; height: 100vh; display: grid; place-content: center; background: #f6f7fb; overflow: hidden; }
 .screenshot-stage--states { grid-template-columns: repeat(3, 560px); gap: 24px; align-content: center; justify-content: center; }
 .design-stage { min-height: 100vh; display: grid; place-content: center; justify-items: center; gap: 18px; padding: 60px; background-image: linear-gradient(45deg, #e6e8ec 25%, transparent 25%), linear-gradient(-45deg, #e6e8ec 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e6e8ec 75%), linear-gradient(-45deg, transparent 75%, #e6e8ec 75%); background-size: 24px 24px; background-position: 0 0, 0 12px, 12px -12px, -12px 0; }
-.design-card-frame { width: 560px; height: 220px; box-shadow: none; border-radius: var(--card-radius); }
+.design-card-frame { width: 560px; height: 256px; box-shadow: none; border-radius: var(--card-radius); }
 .design-orb-frame { width: 100px; height: 100px; box-shadow: none; border-radius: 38px; }
 .design-preview-switch { max-width: 520px; display: flex; flex-wrap: wrap; justify-content: center; gap: 7px; padding: 5px; border: 1px solid rgba(99,108,128,.16); border-radius: 14px; background: rgba(255,255,255,.84); box-shadow: 0 8px 24px rgba(36,42,60,.08); }
 .design-preview-switch button { min-height: 34px; padding: 0 13px; border: 0; border-radius: 10px; color: #626a78; background: transparent; cursor: pointer; font-size: 12px; font-weight: 650; }

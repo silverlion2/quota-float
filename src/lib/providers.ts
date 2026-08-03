@@ -15,6 +15,7 @@ export const PROVIDER_CATALOG: readonly ProviderDefinition[] = [
   { id: "trae", label: "TRAE", sourceLabel: { en: "TRAE local session", "zh-CN": "TRAE 本地登录态" } },
   { id: "workbuddy", label: "WORKBUDDY", sourceLabel: { en: "WorkBuddy local session", "zh-CN": "WorkBuddy 本地登录态" } },
   { id: "volcengine", label: "VOLCENGINE", sourceLabel: { en: "Ark CLI profile", "zh-CN": "Ark CLI 本地配置" } },
+  { id: "antigravity", label: "ANTIGRAVITY", sourceLabel: { en: "Antigravity local quota service", "zh-CN": "Antigravity 本地额度服务" } },
 ];
 
 export const DEFAULT_PROVIDER_ORDER: ProviderId[] = PROVIDER_CATALOG.map((provider) => provider.id);
