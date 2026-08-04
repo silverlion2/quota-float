@@ -4,6 +4,7 @@ import {
   getVolcengineDiagnostics,
   listenDesktopEvents,
   reconnectVolcengine,
+  resizeWidgetToContent,
   setWidgetExpanded,
   updatePreferences,
   updateRuntimeState,
@@ -50,6 +51,20 @@ describe("widget transitions", () => {
       "start:collapse_widget",
       "end:collapse_widget",
     ]);
+  });
+
+  it("passes measured content height and monitor bounds to the resize command", async () => {
+    await resizeWidgetToContent(213.4);
+    expect(api.invoke).toHaveBeenCalledWith("resize_expanded_widget", {
+      contentHeight: 213.4,
+      workArea: { position: { x: 0, y: 0 }, size: { width: 1920, height: 1040 } },
+    });
+  });
+
+  it("ignores invalid content heights", async () => {
+    await resizeWidgetToContent(Number.NaN);
+    await resizeWidgetToContent(0);
+    expect(api.invoke).not.toHaveBeenCalled();
   });
 
   it("uses dedicated redacted diagnostics and reconnect commands", async () => {

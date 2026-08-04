@@ -305,6 +305,20 @@ export function setWidgetExpanded(expanded: boolean): Promise<void> {
   });
 }
 
+export function resizeWidgetToContent(contentHeight: number): Promise<void> {
+  if (!isTauri() || !Number.isFinite(contentHeight) || contentHeight <= 0) return Promise.resolve();
+  return enqueueWidgetTransition(async () => {
+    const { invoke } = await import("@tauri-apps/api/core");
+    const { currentMonitor } = await import("@tauri-apps/api/window");
+    const monitor = await currentMonitor().catch(() => null);
+    const workArea = monitor ? {
+      position: { x: monitor.workArea.position.x, y: monitor.workArea.position.y },
+      size: { width: monitor.workArea.size.width, height: monitor.workArea.size.height },
+    } : null;
+    await invoke("resize_expanded_widget", { contentHeight, workArea });
+  });
+}
+
 export async function listenDesktopEvents(handlers: {
   onPreferences: (value: WidgetPreferences) => void;
   onRefresh: () => void;

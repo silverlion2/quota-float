@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import codexLogo from "../../codex.svg";
 import antigravityLogo from "../assets/providers/antigravity.svg";
 import qoderLogo from "../assets/providers/qoder.svg";
@@ -18,7 +19,13 @@ export function ProviderMark({ provider = "codex", label = "Codex" }: { provider
   const logo = providerLogos[provider];
   return (
     <div className="provider-mark" data-provider={provider} aria-label={label}>
-      {logo ? <img src={logo} alt="" /> : <strong aria-hidden="true">{label.slice(0, 1)}</strong>}
+      {logo ? (
+        <span
+          className="provider-mark-glyph"
+          style={{ "--provider-logo": `url("${logo}")` } as CSSProperties}
+          aria-hidden="true"
+        />
+      ) : <strong aria-hidden="true">{label.slice(0, 1)}</strong>}
     </div>
   );
 }

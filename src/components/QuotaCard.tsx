@@ -511,7 +511,7 @@ export const QuotaCard = memo(function QuotaCard({
 
   return (
     <main
-      className={`quota-card quota-card--${snapshot.status} quota-card--${tier} quota-card--layout-${preferences.layoutMode}`}
+      className={`quota-card quota-card--${snapshot.status} quota-card--${tier} quota-card--layout-${preferences.layoutMode}${overlayOpen ? " quota-card--overlay-open" : ""}`}
       style={{ "--accent-color": preferences.accentColor } as CSSProperties}
       onMouseEnter={() => onHover(true)}
       onMouseLeave={() => onHover(false)}

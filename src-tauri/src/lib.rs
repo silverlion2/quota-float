@@ -31,6 +31,8 @@ const COLLAPSED_LOGICAL_WIDTH: f64 = 92.0;
 const COLLAPSED_LOGICAL_HEIGHT: f64 = 92.0;
 const EXPANDED_LOGICAL_WIDTH: f64 = 552.0;
 const EXPANDED_LOGICAL_HEIGHT: f64 = 248.0;
+const MIN_EXPANDED_LOGICAL_HEIGHT: f64 = 160.0;
+const MAX_EXPANDED_LOGICAL_HEIGHT: f64 = 1_200.0;
 const EDGE_SAFE_INSET_LOGICAL: f64 = 4.0;
 const SNAP_THRESHOLD_LOGICAL: f64 = 24.0;
 const POSITION_EPSILON: u32 = 2;
@@ -492,6 +494,46 @@ fn widget_window_size(logical_visual_size: f64, scale_factor: f64, safe_inset: u
     )
 }
 
+fn bounded_expanded_height(
+    content_height: f64,
+    scale_factor: f64,
+    safe_inset: u32,
+    bounds_height: Option<u32>,
+) -> u32 {
+    let logical_height = if content_height.is_finite() {
+        content_height.clamp(MIN_EXPANDED_LOGICAL_HEIGHT, MAX_EXPANDED_LOGICAL_HEIGHT)
+    } else {
+        EXPANDED_LOGICAL_HEIGHT
+    };
+    let requested = widget_window_size(logical_height, scale_factor, safe_inset);
+    let Some(bounds_height) = bounds_height else {
+        return requested;
+    };
+    let maximum = bounds_height.saturating_add(safe_inset.saturating_mul(2));
+    let minimum =
+        widget_window_size(MIN_EXPANDED_LOGICAL_HEIGHT, scale_factor, safe_inset).min(maximum);
+    requested.min(maximum).max(minimum)
+}
+
+fn clamp_position_to_bounds(
+    position: PhysicalPosition<i32>,
+    size: PhysicalSize<u32>,
+    bounds_position: PhysicalPosition<i32>,
+    bounds_size: PhysicalSize<u32>,
+    safe_inset: i32,
+) -> PhysicalPosition<i32> {
+    let right = bounds_position.x + bounds_size.width as i32;
+    let bottom = bounds_position.y + bounds_size.height as i32;
+    let min_x = bounds_position.x - safe_inset;
+    let min_y = bounds_position.y - safe_inset;
+    let max_x = (right - size.width as i32 + safe_inset).max(min_x);
+    let max_y = (bottom - size.height as i32 + safe_inset).max(min_y);
+    PhysicalPosition::new(
+        position.x.clamp(min_x, max_x),
+        position.y.clamp(min_y, max_y),
+    )
+}
+
 fn detect_dock(
     position: PhysicalPosition<i32>,
     size: PhysicalSize<u32>,
@@ -793,6 +835,90 @@ fn expand_widget(
         .map_err(|_| "failed to resize widget".to_string())
 }
 
+#[tauri::command]
+fn resize_expanded_widget(
+    content_height: f64,
+    work_area: Option<WorkAreaPayload>,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let window = app
+        .get_webview_window("widget")
+        .ok_or_else(|| "widget window missing".to_string())?;
+    let current = current_widget_rect(&window)?;
+    let (monitor, scale_factor) = monitor_and_scale(&window)?;
+    let safe_inset = logical_to_physical(EDGE_SAFE_INSET_LOGICAL, scale_factor);
+    let expanded_width = widget_window_size(EXPANDED_LOGICAL_WIDTH, scale_factor, safe_inset);
+    let bounds = work_area.map(|area| {
+        (
+            PhysicalPosition::new(area.position.x, area.position.y),
+            PhysicalSize::new(area.size.width, area.size.height),
+        )
+    });
+    let fallback_bounds = monitor
+        .as_ref()
+        .map(|item| (*item.position(), *item.size()));
+    let active_bounds = bounds.or(fallback_bounds);
+    let expanded_height = bounded_expanded_height(
+        content_height,
+        scale_factor,
+        safe_inset,
+        active_bounds.map(|(_, size)| size.height),
+    );
+    let expanded_size = PhysicalSize::new(expanded_width, expanded_height);
+    let previous = state.geometry.lock().ok().and_then(|value| *value);
+
+    let next_position = match (previous, active_bounds) {
+        (Some(geometry), Some((bounds_position, bounds_size))) if geometry.user_moved_expanded => {
+            clamp_position_to_bounds(
+                current.position,
+                expanded_size,
+                bounds_position,
+                bounds_size,
+                safe_inset as i32,
+            )
+        }
+        (Some(geometry), Some(_)) => {
+            let monitor = monitor
+                .as_ref()
+                .ok_or_else(|| "widget monitor missing".to_string())?;
+            expanded_position(
+                geometry.collapsed_rect,
+                expanded_size,
+                geometry.dock,
+                monitor,
+                work_area,
+                safe_inset as i32,
+            )
+        }
+        (_, Some((bounds_position, bounds_size))) => clamp_position_to_bounds(
+            current.position,
+            expanded_size,
+            bounds_position,
+            bounds_size,
+            safe_inset as i32,
+        ),
+        (_, None) => current.position,
+    };
+
+    window
+        .set_position(next_position)
+        .map_err(|_| "failed to position widget".to_string())?;
+    window
+        .set_size(expanded_size)
+        .map_err(|_| "failed to resize widget".to_string())?;
+
+    if let (Ok(mut value), Some(mut geometry)) = (state.geometry.lock(), previous) {
+        geometry.mode = WidgetMode::Expanded;
+        geometry.expanded_rect = Some(WidgetRect {
+            position: next_position,
+            size: expanded_size,
+        });
+        *value = Some(geometry);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod geometry_tests {
     use super::*;
@@ -808,6 +934,18 @@ mod geometry_tests {
     fn window_size_includes_the_transparent_safe_inset() {
         assert_eq!(window_size_for_visual_size(80, 4), 88);
         assert_eq!(widget_window_size(320.0, 1.5, 6), 492);
+    }
+
+    #[test]
+    fn expanded_height_tracks_content_and_respects_work_area() {
+        assert_eq!(bounded_expanded_height(213.4, 1.0, 4, Some(1040)), 221);
+        assert_eq!(bounded_expanded_height(40.0, 1.0, 4, Some(1040)), 168);
+        assert_eq!(bounded_expanded_height(2_000.0, 1.0, 4, Some(700)), 708);
+    }
+
+    #[test]
+    fn invalid_expanded_height_falls_back_to_the_default() {
+        assert_eq!(bounded_expanded_height(f64::NAN, 1.0, 4, Some(1040)), 256);
     }
 
     #[test]
@@ -960,10 +1098,6 @@ fn finish_widget_drag(app: AppHandle, state: State<'_, AppState>) -> Result<(), 
         widget_window_size(COLLAPSED_LOGICAL_WIDTH, scale_factor, safe_inset),
         widget_window_size(COLLAPSED_LOGICAL_HEIGHT, scale_factor, safe_inset),
     );
-    let expanded_size = PhysicalSize::new(
-        widget_window_size(EXPANDED_LOGICAL_WIDTH, scale_factor, safe_inset),
-        widget_window_size(EXPANDED_LOGICAL_HEIGHT, scale_factor, safe_inset),
-    );
     let mode = state
         .drag_mode
         .lock()
@@ -1024,13 +1158,13 @@ fn finish_widget_drag(app: AppHandle, state: State<'_, AppState>) -> Result<(), 
         WidgetMode::Expanded => {
             let current_position = clamp_position_to_monitor(
                 current.position,
-                expanded_size,
+                current.size,
                 &monitor,
                 safe_inset as i32,
             );
             let updated_rect = WidgetRect {
                 position: current_position,
-                size: expanded_size,
+                size: current.size,
             };
             window
                 .set_position(current_position)
@@ -1433,6 +1567,7 @@ pub fn run() {
             get_volcengine_diagnostics,
             reconnect_volcengine,
             expand_widget,
+            resize_expanded_widget,
             collapse_widget,
             begin_widget_drag,
             finish_widget_drag,

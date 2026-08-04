@@ -3,7 +3,7 @@ import { QuotaCard, QuotaOrb } from "./components/QuotaCard";
 import { ControlCenter } from "./components/ControlCenter";
 import { EMPTY_UPDATE_STATE } from "./components/UpdatePanel";
 import type { UpdateViewState } from "./components/UpdatePanel";
-import { createAutomaticBackup, exportAppData, fetchCodexResetForecast, fetchSnapshots, getAppDiagnostics, getAutostartEnabled, getPreferences, getRuntimeState, getVolcengineDiagnostics, importAppData, listenDesktopEvents, openExternalUrl, reconnectVolcengine, restoreLatestBackup, sendDesktopNotification, setAlwaysOnTop, setAutostartEnabled, setWidgetExpanded, startDragging, updatePreferences, updateRuntimeState } from "./lib/bridge";
+import { createAutomaticBackup, exportAppData, fetchCodexResetForecast, fetchSnapshots, getAppDiagnostics, getAutostartEnabled, getPreferences, getRuntimeState, getVolcengineDiagnostics, importAppData, listenDesktopEvents, openExternalUrl, reconnectVolcengine, resizeWidgetToContent, restoreLatestBackup, sendDesktopNotification, setAlwaysOnTop, setAutostartEnabled, setWidgetExpanded, startDragging, updatePreferences, updateRuntimeState } from "./lib/bridge";
 import { needsFastRefresh } from "./lib/format";
 import { checkForAppUpdate, discardAppUpdate, downloadAppUpdate, installAppUpdate, openReleasePage } from "./lib/appUpdate";
 import type { AppUpdateInfo } from "./lib/appUpdate";
@@ -457,6 +457,32 @@ export default function App() {
     setCompact(false);
     void setWidgetExpanded(true).catch(() => setOperationError("Widget expand failed."));
   }, [preferences.stayExpanded]);
+
+  useEffect(() => {
+    if (compact) return;
+    const card = document.querySelector<HTMLElement>(".quota-card");
+    if (!card) return;
+    let animationFrame: number | null = null;
+    let lastHeight = 0;
+    const syncHeight = () => {
+      animationFrame = null;
+      const contentHeight = Math.ceil(card.getBoundingClientRect().height);
+      if (contentHeight <= 0 || Math.abs(contentHeight - lastHeight) < 1) return;
+      lastHeight = contentHeight;
+      void resizeWidgetToContent(contentHeight).catch(() => setOperationError("Widget resize failed."));
+    };
+    const scheduleSync = () => {
+      if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);
+      animationFrame = window.requestAnimationFrame(syncHeight);
+    };
+    scheduleSync();
+    const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(scheduleSync);
+    resizeObserver?.observe(card);
+    return () => {
+      resizeObserver?.disconnect();
+      if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);
+    };
+  }, [compact]);
 
   if (!current) return <div className="loading-card" aria-label={t.loadingQuota}><span /><span /><span /></div>;
 

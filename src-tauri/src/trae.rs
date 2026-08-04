@@ -11,7 +11,7 @@ mod windows {
     use sha2::{Digest, Sha512};
     use std::{fs, path::PathBuf};
 
-    const USAGE_URL: &str = "https://api.trae.cn/trae/api/v1/pay/ide_user_ent_usage";
+    const USAGE_URL: &str = "https://api.trae.cn/trae/api/v2/pay/ide_user_ent_usage";
     const STORAGE_KEY: &str = "iCubeAuthInfo://icube.cloudide";
     const MAX_STORAGE_BYTES: u64 = 4 * 1024 * 1024;
     const MAX_RESPONSE_BYTES: u64 = 1024 * 1024;
@@ -210,6 +210,9 @@ mod windows {
         let mut basic_total = 0.0;
         let mut basic_used = 0.0;
         let mut has_credit_quota = false;
+        let mut current_credit_remaining = 0.0;
+        let mut has_current_credit_quota = false;
+        let mut unlimited_current_credits = false;
         let mut best_plan = ("Free", 0u8);
         let mut active_packs = 0usize;
         for pack in packs.iter().filter(|pack| active_pack(pack)) {
@@ -221,6 +224,18 @@ mod windows {
             let plan = plan_name(product_type);
             if plan.1 > best_plan.1 {
                 best_plan = plan;
+            }
+            match number(quota, &["credits_limit"]) {
+                Some(limit) if (limit + 1.0).abs() < f64::EPSILON => {
+                    has_current_credit_quota = true;
+                    unlimited_current_credits = true;
+                }
+                Some(limit) if limit > 0.0 => {
+                    has_current_credit_quota = true;
+                    let used = number(usage, &["credits_amount"]).unwrap_or(0.0).max(0.0);
+                    current_credit_remaining += (limit - used).max(0.0);
+                }
+                _ => {}
             }
             let fast_limit = number(quota, &["premium_model_fast_request_limit"]).unwrap_or(0.0);
             if fast_limit > 0.0 {
@@ -255,7 +270,11 @@ mod windows {
                 }
             }
         }
-        let (remaining, unit) = if has_credit_quota {
+        let (remaining, unit) = if unlimited_current_credits {
+            (0.0, "unlimited")
+        } else if has_current_credit_quota {
+            (current_credit_remaining, "credits")
+        } else if has_credit_quota {
             ((basic_total - basic_used).max(0.0), "credits")
         } else if fast_total > 0.0 {
             ((fast_total - fast_used).max(0.0), "requests")
@@ -544,6 +563,78 @@ mod windows {
             });
             let snapshot = parse_snapshot(&value).unwrap();
             assert_eq!(snapshot.plan.as_deref(), Some("Free"));
+            assert_eq!(snapshot.balance_remaining, Some(0.0));
+            assert_eq!(snapshot.balance_unit.as_deref(), Some("unlimited"));
+        }
+
+        #[test]
+        fn counts_current_credits_across_entitlement_packs() {
+            let value = serde_json::json!({
+                "code": 0,
+                "is_credits_billing": true,
+                "user_entitlement_pack_list": [{
+                    "entitlement_base_info": {
+                        "product_type": 2,
+                        "quota": {"credits_limit": 2000}
+                    },
+                    "usage": {}
+                }, {
+                    "entitlement_base_info": {
+                        "product_type": 2,
+                        "quota": {"credits_limit": 500}
+                    },
+                    "usage": {"credits_amount": 217.93}
+                }, {
+                    "entitlement_base_info": {
+                        "product_type": 2,
+                        "quota": {"credits_limit": 200}
+                    },
+                    "usage": {}
+                }]
+            });
+            let snapshot = parse_snapshot(&value).unwrap();
+            assert_eq!(snapshot.plan.as_deref(), Some("Package"));
+            assert!(
+                (snapshot.balance_remaining.unwrap() - 2482.07).abs() < f64::EPSILON,
+                "remaining credits should match TRAE's per-pack aggregation"
+            );
+            assert_eq!(snapshot.balance_unit.as_deref(), Some("credits"));
+        }
+
+        #[test]
+        fn does_not_let_an_overused_credit_pack_consume_another_pack() {
+            let value = serde_json::json!({
+                "user_entitlement_pack_list": [{
+                    "entitlement_base_info": {
+                        "product_type": 2,
+                        "quota": {"credits_limit": 100}
+                    },
+                    "usage": {"credits_amount": 150}
+                }, {
+                    "entitlement_base_info": {
+                        "product_type": 2,
+                        "quota": {"credits_limit": 100}
+                    },
+                    "usage": {}
+                }]
+            });
+            let snapshot = parse_snapshot(&value).unwrap();
+            assert_eq!(snapshot.balance_remaining, Some(100.0));
+            assert_eq!(snapshot.balance_unit.as_deref(), Some("credits"));
+        }
+
+        #[test]
+        fn treats_negative_one_credit_limit_as_unlimited() {
+            let value = serde_json::json!({
+                "user_entitlement_pack_list": [{
+                    "entitlement_base_info": {
+                        "product_type": 1,
+                        "quota": {"credits_limit": -1}
+                    },
+                    "usage": {"credits_amount": 250}
+                }]
+            });
+            let snapshot = parse_snapshot(&value).unwrap();
             assert_eq!(snapshot.balance_remaining, Some(0.0));
             assert_eq!(snapshot.balance_unit.as_deref(), Some("unlimited"));
         }
