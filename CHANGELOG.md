@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.14 - 2026-08-06
+
+- feat: add adaptive island widget and themes
+
 ## 0.2.13 - 2026-08-04
 
 - feat: refine widget and TRAE credit tracking
