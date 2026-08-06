@@ -3,16 +3,19 @@ import { memo, type CSSProperties, type PointerEvent as ReactPointerEvent, type 
 import { clampPercent, formatDateTime, formatResetDate, formatResetTime, quotaTier } from "../lib/format";
 import { copy, normalizeLanguage, resetForecastLabel, resetForecastTitle } from "../lib/i18n";
 import { normalizeProviderOrder, PROVIDER_CATALOG, type ProviderDefinition } from "../lib/providers";
+import { recentPercentageHistory, sortProviderIdsByRisk } from "../lib/providerPresentation";
 import { calculateQuotaPace, paceBaselineKey, trackedQuotaWindows, type NamedQuotaWindow, type QuotaPace, type QuotaPeriod } from "../lib/quotaPace";
 import type { RecentCodexReset } from "../lib/resetDetection";
-import type { DailyPaceBaseline, Language, ProviderId, ProviderSnapshot, ResetForecast, VolcengineDiagnostics, WidgetPreferences } from "../types";
+import type { DailyPaceBaseline, Language, ProviderId, ProviderSnapshot, QuotaHistoryPoint, ResetForecast, ResolvedAppearance, VisualStyle, VolcengineDiagnostics, WidgetPreferences } from "../types";
 import { ProviderMark } from "./ProviderMark";
+import { ProviderLogoSlider } from "./ProviderLogoSlider";
 import { EMPTY_UPDATE_STATE, UpdatePanel, type UpdateViewState } from "./UpdatePanel";
 
 interface Props {
   snapshot: ProviderSnapshot;
   snapshots: ProviderSnapshot[];
   preferences: WidgetPreferences;
+  resolvedAppearance?: ResolvedAppearance;
   onSelectProvider: (provider: ProviderId) => void;
   onReorderProviders?: (order: ProviderId[]) => void;
   onLock: () => void;
@@ -32,6 +35,7 @@ interface Props {
   resetForecast?: ResetForecast | null;
   onOpenResetForecast?: (url: string) => void;
   paceBaselines?: Record<string, DailyPaceBaseline>;
+  history?: QuotaHistoryPoint[];
   updateState?: UpdateViewState;
   updateOpen?: boolean;
   onUpdateOpen?: () => void;
@@ -84,6 +88,22 @@ function QuotaPaceHint({ pace, language, provider }: { pace: QuotaPace; language
         <small>{t.averageSuggested(number.format(pace.averageRate), unit)}</small>
       </div>
     </div>
+  );
+}
+
+function ProviderHistorySparkline({ values }: { values: number[] }) {
+  if (values.length < 2) return <span className="provider-history provider-history--empty" aria-hidden="true" />;
+  const points = values.map((value, index) => {
+    const x = (index / (values.length - 1)) * 44;
+    const y = 15 - (value / 100) * 14;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+  const area = `M 0 16 L ${points.replaceAll(" ", " L ")} L 44 16 Z`;
+  return (
+    <svg className="provider-history" viewBox="0 0 44 16" preserveAspectRatio="none" aria-hidden="true">
+      <path d={area} />
+      <polyline points={points} />
+    </svg>
   );
 }
 
@@ -157,6 +177,9 @@ function ProviderLedgerRow({
   onReorderPointerCancel,
   onMove,
   condensed,
+  history,
+  showHistory,
+  preferRisk,
 }: {
   definition: ProviderDefinition;
   snapshot?: ProviderSnapshot;
@@ -174,9 +197,17 @@ function ProviderLedgerRow({
   onReorderPointerCancel: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onMove: (provider: ProviderId, offset: -1 | 1) => void;
   condensed: boolean;
+  history: number[];
+  showHistory: boolean;
+  preferRisk: boolean;
 }) {
   const t = copy[language];
-  const quotaWindow = snapshot?.weeklyWindow
+  const riskWindow = snapshot
+    ? trackedQuotaWindows(snapshot).sort((left, right) => left.window.remainingPercent - right.window.remainingPercent)[0] ?? null
+    : null;
+  const quotaWindow = preferRisk && riskWindow
+    ? { label: riskWindow.period === "weekly" ? t.weeklyShort : riskWindow.period === "5h" ? t.fiveHourShort : t.monthlyShort, window: riskWindow.window }
+    : snapshot?.weeklyWindow
     ? { label: t.weeklyShort, window: snapshot.weeklyWindow }
     : snapshot?.shortWindow
       ? { label: t.fiveHourShort, window: snapshot.shortWindow }
@@ -212,7 +243,7 @@ function ProviderLedgerRow({
 
   return (
     <div
-      className={`provider-row-shell${dragging ? " is-dragging" : ""}${dragTarget ? ` is-drag-target ${dragAfter ? "is-drag-after" : "is-drag-before"}` : ""}${condensed ? " is-condensed" : ""}`}
+      className={`provider-row-shell${dragging ? " is-dragging" : ""}${dragTarget ? ` is-drag-target ${dragAfter ? "is-drag-after" : "is-drag-before"}` : ""}${condensed ? " is-condensed" : ""}${sortable ? "" : " is-fixed"}`}
       data-provider-id={definition.id}
       role="listitem"
       tabIndex={sortable ? 0 : -1}
@@ -228,7 +259,7 @@ function ProviderLedgerRow({
     >
       <button
         type="button"
-        className={`provider-row${selected ? " is-selected" : ""}${consuming ? " is-consuming" : ""}`}
+        className={`provider-row${selected ? " is-selected" : ""}${consuming ? " is-consuming" : ""}${showHistory ? " has-history" : ""}`}
         onClick={() => onSelect(definition.id)}
         disabled={!snapshot}
         aria-pressed={selected}
@@ -238,6 +269,7 @@ function ProviderLedgerRow({
           <strong>{definition.label}</strong>
           <small>{snapshot?.plan ?? ""}</small>
         </span>
+        {showHistory ? <ProviderHistorySparkline values={history} /> : null}
         <span className="provider-value">
           <strong>{value}</strong>
           <small>{detail}</small>
@@ -343,6 +375,7 @@ export const QuotaCard = memo(function QuotaCard({
   snapshot,
   snapshots,
   preferences,
+  resolvedAppearance = "light",
   onSelectProvider,
   onReorderProviders = () => undefined,
   onLock,
@@ -362,6 +395,7 @@ export const QuotaCard = memo(function QuotaCard({
   resetForecast = null,
   onOpenResetForecast = () => undefined,
   paceBaselines = {},
+  history = [],
   updateState = EMPTY_UPDATE_STATE,
   updateOpen = false,
   onUpdateOpen = () => undefined,
@@ -443,10 +477,15 @@ export const QuotaCard = memo(function QuotaCard({
     return t.creditItem(index, formatDateTime(value, language));
   }), [language, snapshot.resetCreditExpiresAt, t]);
   const snapshotsByProvider = useMemo(() => new Map(snapshots.map((item) => [item.provider, item])), [snapshots]);
+  const percentageHistoryByProvider = useMemo(() => new Map(
+    PROVIDER_CATALOG.map((definition) => [definition.id, recentPercentageHistory(history, definition.id)]),
+  ), [history]);
   const providerDefinitions = useMemo(() => {
     const byProvider = new Map(PROVIDER_CATALOG.map((definition) => [definition.id, definition]));
-    return normalizeProviderOrder(preferences.providerOrder).filter((provider) => !preferences.hiddenProviders.includes(provider)).map((provider) => byProvider.get(provider)!);
-  }, [preferences.hiddenProviders, preferences.providerOrder]);
+    const visibleOrder = normalizeProviderOrder(preferences.providerOrder).filter((provider) => !preferences.hiddenProviders.includes(provider));
+    const displayedOrder = preferences.riskFirst ? sortProviderIdsByRisk(visibleOrder, snapshots) : visibleOrder;
+    return displayedOrder.map((provider) => byProvider.get(provider)!);
+  }, [preferences.hiddenProviders, preferences.providerOrder, preferences.riskFirst, snapshots]);
   const resetMarker = snapshot.provider === "codex" && snapshot.status === "ok" ? recentCodexReset : null;
   const visibleResetForecast = snapshot.provider === "codex" ? resetForecast : null;
 
@@ -511,7 +550,7 @@ export const QuotaCard = memo(function QuotaCard({
 
   return (
     <main
-      className={`quota-card quota-card--${snapshot.status} quota-card--${tier} quota-card--layout-${preferences.layoutMode}${overlayOpen ? " quota-card--overlay-open" : ""}`}
+      className={`quota-card quota-card--${snapshot.status} quota-card--${tier} quota-card--layout-${preferences.layoutMode} quota-card--style-${preferences.visualStyle} quota-card--theme-${resolvedAppearance}${overlayOpen ? " quota-card--overlay-open" : ""}`}
       style={{ "--accent-color": preferences.accentColor } as CSSProperties}
       onMouseEnter={() => onHover(true)}
       onMouseLeave={() => onHover(false)}
@@ -635,8 +674,16 @@ export const QuotaCard = memo(function QuotaCard({
       </section>
 
       <aside className="provider-ledger" aria-hidden={overlayOpen || undefined} inert={overlayOpen || undefined}>
+        {preferences.visualStyle === "island" ? (
+          <ProviderLogoSlider
+            providers={providerDefinitions}
+            selected={snapshot.provider}
+            onSelect={onSelectProvider}
+            ariaLabel={language === "en" ? "Choose provider" : "选择平台"}
+          />
+        ) : null}
         <header className="ledger-header">
-          <p>{t.allServices}<span>{providerDefinitions.length}/{PROVIDER_CATALOG.length}</span></p>
+          <p>{t.allServices}<span>{providerDefinitions.length}/{PROVIDER_CATALOG.length}</span>{preferences.riskFirst ? <b>{language === "en" ? "RISK FIRST" : "风险优先"}</b> : null}</p>
           {!preferences.locked ? (
             <nav className="card-actions" aria-label={t.controls} onMouseDown={(event) => event.stopPropagation()}>
               <span className={`usage-indicator usage-indicator--${indicatorState}`} role="status" aria-label={indicatorLabel} title={indicatorLabel}><i /></span>
@@ -663,7 +710,7 @@ export const QuotaCard = memo(function QuotaCard({
               consuming={consumingProviders.has(definition.id)}
               language={language}
               onSelect={onSelectProvider}
-              sortable={!preferences.locked}
+              sortable={!preferences.locked && !preferences.riskFirst}
               dragging={draggedProvider === definition.id}
               dragTarget={dragTargetProvider === definition.id && draggedProvider !== definition.id}
               dragAfter={dragTargetAfter}
@@ -683,6 +730,9 @@ export const QuotaCard = memo(function QuotaCard({
               onReorderPointerCancel={(event) => finishProviderPointerDrag(event, true)}
               onMove={moveProvider}
               condensed={preferences.collapsedProviders.includes(definition.id)}
+              history={percentageHistoryByProvider.get(definition.id) ?? []}
+              showHistory={preferences.showHistorySparklines}
+              preferRisk={preferences.riskFirst}
             />
           ))}
         </div>
@@ -691,7 +741,7 @@ export const QuotaCard = memo(function QuotaCard({
   );
 });
 
-export const QuotaOrb = memo(function QuotaOrb({ snapshot, onDrag, onHover, language = "zh-CN" }: Pick<Props, "snapshot" | "onDrag" | "onHover"> & { language?: Language }) {
+export const QuotaOrb = memo(function QuotaOrb({ snapshot, onDrag, onHover, language = "zh-CN", visualStyle = "aurora", accentColor = "#397ae0", resolvedAppearance = "light" }: Pick<Props, "snapshot" | "onDrag" | "onHover"> & { language?: Language; visualStyle?: VisualStyle; accentColor?: string; resolvedAppearance?: ResolvedAppearance }) {
   const [idle, setIdle] = useState(false);
   const idleTimer = useRef<number | null>(null);
   const activeLanguage = normalizeLanguage(language);
@@ -734,7 +784,8 @@ export const QuotaOrb = memo(function QuotaOrb({ snapshot, onDrag, onHover, lang
 
   return (
     <main
-      className={`quota-orb quota-card--${snapshot.status} quota-card--${tier}${idle ? " quota-orb--idle" : ""}`}
+      className={`quota-orb quota-card--${snapshot.status} quota-card--${tier} quota-card--style-${visualStyle} quota-card--theme-${resolvedAppearance}${idle ? " quota-orb--idle" : ""}`}
+      style={{ "--accent-color": accentColor } as CSSProperties}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={() => { onHover(false); scheduleIdle(); }}
       onMouseDown={(event) => { if (event.button === 0) void onDrag(); }}
@@ -751,6 +802,120 @@ export const QuotaOrb = memo(function QuotaOrb({ snapshot, onDrag, onHover, lang
           <StatusIcon status={snapshot.status} />
         </section>
       )}
+    </main>
+  );
+});
+
+function compactResetTime(value: string | null, now = new Date()): string {
+  if (!value) return "—";
+  const remaining = Math.max(0, new Date(value).getTime() - now.getTime());
+  if (!Number.isFinite(remaining)) return "—";
+  const minutes = Math.max(1, Math.ceil(remaining / 60_000));
+  const hours = Math.floor(minutes / 60);
+  if (hours >= 24) return `${Math.floor(hours / 24)}d ${hours % 24}h`;
+  if (hours > 0) return `${hours}h ${minutes % 60}m`;
+  return `${minutes}m`;
+}
+
+function compactFreshness(value: string, now = new Date()): string {
+  const elapsed = Math.max(0, now.getTime() - new Date(value).getTime());
+  if (!Number.isFinite(elapsed)) return "—";
+  const minutes = Math.floor(elapsed / 60_000);
+  if (minutes < 1) return "now";
+  if (minutes < 60) return `${minutes}m`;
+  return `${Math.floor(minutes / 60)}h`;
+}
+
+interface QuotaIslandProps {
+  snapshot: ProviderSnapshot;
+  snapshots: ProviderSnapshot[];
+  language?: Language;
+  accentColor?: string;
+  resolvedAppearance?: ResolvedAppearance;
+  onSelectProvider: (provider: ProviderId) => void;
+  onDrag: () => void;
+  onHover: (hovered: boolean) => void;
+}
+
+export const QuotaIsland = memo(function QuotaIsland({
+  snapshot,
+  snapshots,
+  language = "zh-CN",
+  accentColor = "#397ae0",
+  resolvedAppearance = "dark",
+  onSelectProvider,
+  onDrag,
+  onHover,
+}: QuotaIslandProps) {
+  const hoverTimer = useRef<number | null>(null);
+  const activeLanguage = normalizeLanguage(language);
+  const quotaWindows = trackedQuotaWindows(snapshot);
+  const quota = quotaWindows.find(({ period }) => period === "weekly") ?? quotaWindows[0] ?? null;
+  const remaining = quota ? clampPercent(quota.window.remainingPercent) : null;
+  const balance = snapshot.balanceRemaining ?? null;
+  const unlimited = snapshot.balanceUnit === "unlimited";
+  const compactBalance = balance === null
+    ? null
+    : new Intl.NumberFormat(activeLanguage === "en" ? "en-US" : "zh-CN", { notation: "compact", maximumFractionDigits: 1 }).format(balance);
+  const value = remaining !== null ? `${remaining}%` : unlimited ? "∞" : compactBalance ?? "—";
+  const suffix = remaining !== null
+    ? (activeLanguage === "en" ? "left" : "剩余")
+    : snapshot.balanceUnit === "credits"
+      ? "cr"
+      : "";
+  const healthy = snapshot.status === "ok";
+  const status = healthy
+    ? (activeLanguage === "en" ? "On track" : "正常")
+    : snapshot.status === "stale"
+      ? (activeLanguage === "en" ? "Stale" : "过期")
+      : activeLanguage === "en" ? "Attention" : "需处理";
+  const providers = snapshots.map((item) => ({ id: item.provider, label: item.displayName }));
+  const progress = remaining ?? (unlimited ? 100 : 0);
+
+  const cancelHover = () => {
+    if (hoverTimer.current !== null) {
+      window.clearTimeout(hoverTimer.current);
+      hoverTimer.current = null;
+    }
+  };
+
+  useEffect(() => () => cancelHover(), []);
+
+  return (
+    <main
+      className={`quota-island quota-card--${snapshot.status} quota-card--${quotaTier(remaining)} quota-card--theme-${resolvedAppearance}`}
+      style={{ "--accent-color": accentColor } as CSSProperties}
+      onMouseEnter={() => {
+        cancelHover();
+        hoverTimer.current = window.setTimeout(() => onHover(true), 650);
+      }}
+      onMouseLeave={() => {
+        cancelHover();
+        onHover(false);
+      }}
+      onMouseDown={(event) => { if (event.button === 0) void onDrag(); }}
+      aria-label={`${snapshot.displayName} ${value} ${suffix} ${status}`.trim()}
+    >
+      <ProviderLogoSlider
+        providers={providers}
+        selected={snapshot.provider}
+        onSelect={(provider) => {
+          cancelHover();
+          onSelectProvider(provider);
+        }}
+        ariaLabel={activeLanguage === "en" ? "Choose provider" : "选择平台"}
+        compact
+      />
+      <span className="island-divider" aria-hidden="true" />
+      <section className="island-metric">
+        <strong>{snapshot.displayName}</strong>
+        <b>{value}</b>
+        {suffix ? <small>{suffix}</small> : null}
+      </section>
+      <span className="island-reset">{quota ? compactResetTime(quota.window.resetsAt) : snapshot.balanceUnit ?? "—"}</span>
+      <span className={`island-status island-status--${healthy ? "ok" : "attention"}`}><i />{status}</span>
+      <span className="island-freshness">{compactFreshness(snapshot.updatedAt)}</span>
+      <span className="island-progress" aria-hidden="true"><i style={{ width: `${progress}%` }} /></span>
     </main>
   );
 });

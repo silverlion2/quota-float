@@ -77,6 +77,14 @@ pub struct WidgetPreferences {
     pub collapsed_providers: Vec<String>,
     #[serde(default = "default_layout_mode")]
     pub layout_mode: String,
+    #[serde(default = "default_visual_style")]
+    pub visual_style: String,
+    #[serde(default = "default_appearance_mode")]
+    pub appearance_mode: String,
+    #[serde(default)]
+    pub risk_first: bool,
+    #[serde(default = "default_true")]
+    pub show_history_sparklines: bool,
     #[serde(default = "default_accent_color")]
     pub accent_color: String,
     #[serde(default = "default_alert_threshold")]
@@ -121,6 +129,12 @@ fn default_provider_order() -> Vec<String> {
 fn default_layout_mode() -> String {
     "standard".into()
 }
+fn default_visual_style() -> String {
+    "aurora".into()
+}
+fn default_appearance_mode() -> String {
+    "system".into()
+}
 fn default_accent_color() -> String {
     "#397ae0".into()
 }
@@ -157,6 +171,10 @@ impl Default for WidgetPreferences {
             hidden_providers: Vec::new(),
             collapsed_providers: Vec::new(),
             layout_mode: default_layout_mode(),
+            visual_style: default_visual_style(),
+            appearance_mode: default_appearance_mode(),
+            risk_first: false,
+            show_history_sparklines: true,
             accent_color: default_accent_color(),
             alert_threshold: default_alert_threshold(),
             notifications_enabled: true,
@@ -226,6 +244,15 @@ impl WidgetPreferences {
             "compact" | "standard" | "detailed"
         ) {
             self.layout_mode = default_layout_mode();
+        }
+        if !matches!(
+            self.visual_style.as_str(),
+            "float" | "aurora" | "graphite" | "paper" | "island"
+        ) {
+            self.visual_style = default_visual_style();
+        }
+        if !matches!(self.appearance_mode.as_str(), "system" | "light" | "dark") {
+            self.appearance_mode = default_appearance_mode();
         }
         if !is_safe_hex_color(&self.accent_color) {
             self.accent_color = default_accent_color();
@@ -325,5 +352,37 @@ mod tests {
         assert!(normalized.hidden_providers.is_empty());
         assert_eq!(normalized.accent_color, "#397ae0");
         assert_eq!(normalized.alert_threshold, 1);
+    }
+
+    #[test]
+    fn visual_style_is_backward_compatible_and_bounded() {
+        let legacy: WidgetPreferences = serde_json::from_str(
+            r#"{"locked":false,"pinnedProvider":null,"autoRotateSeconds":12}"#,
+        )
+        .expect("legacy preferences should remain readable");
+        assert_eq!(legacy.visual_style, "aurora");
+        assert_eq!(legacy.appearance_mode, "system");
+        assert!(legacy.show_history_sparklines);
+
+        let preferences = WidgetPreferences {
+            visual_style: "neon".into(),
+            ..Default::default()
+        };
+        assert_eq!(preferences.normalized().visual_style, "aurora");
+
+        let preferences = WidgetPreferences {
+            visual_style: "island".into(),
+            appearance_mode: "dark".into(),
+            ..Default::default()
+        };
+        let normalized = preferences.normalized();
+        assert_eq!(normalized.visual_style, "island");
+        assert_eq!(normalized.appearance_mode, "dark");
+
+        let preferences = WidgetPreferences {
+            appearance_mode: "sepia".into(),
+            ..Default::default()
+        };
+        assert_eq!(preferences.normalized().appearance_mode, "system");
     }
 }

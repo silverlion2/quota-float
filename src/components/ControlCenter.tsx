@@ -1,7 +1,8 @@
-import { ArrowClockwise, ArrowCounterClockwise, Bell, ClockCounterClockwise, DownloadSimple, Eye, EyeSlash, Heartbeat, Layout, Plus, Trash, UploadSimple, X } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowCounterClockwise, Bell, ChartLineUp, ClockCounterClockwise, DownloadSimple, Eye, EyeSlash, Heartbeat, Layout, ListStar, Monitor, Moon, Plus, Sun, Trash, UploadSimple, X } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
 import { DEFAULT_PROVIDER_ORDER, PROVIDER_CATALOG } from "../lib/providers";
 import type { AppDiagnostics, Language, ProviderId, ProviderSnapshot, RuntimeState, SavedLayout, SnapshotStatus, WidgetPreferences } from "../types";
+import { ProviderMark } from "./ProviderMark";
 
 type Tab = "display" | "health" | "alerts" | "activity" | "system";
 
@@ -109,6 +110,49 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
       signed_out: "Sign in again through the provider app or CLI.",
     } satisfies Record<SnapshotStatus, string>,
   };
+  const appearanceLabels = zh ? {
+    appearance: "全局外观",
+    appearanceHint: "适用于所有悬浮窗风格，切换风格后保持当前选择",
+    system: "跟随系统",
+    light: "浅色",
+    dark: "深色",
+    style: "视觉风格",
+    float: "Float",
+    floatHint: "紧凑方块与即时状态",
+    aurora: "极光",
+    auroraHint: "柔和玻璃与动态色彩",
+    graphite: "石墨",
+    graphiteHint: "深色高对比工作台",
+    paper: "纸面",
+    paperHint: "温暖、克制、低干扰",
+    island: "Island",
+    islandHint: "顶部吸附与平台滑动",
+    riskFirst: "优先显示需要关注的平台",
+    riskFirstHint: "按状态与最低剩余额度排序；关闭后恢复自定义顺序",
+    history: "显示最近额度轨迹",
+    historyHint: "在平台行中显示本地历史微型图",
+  } : {
+    appearance: "Global appearance",
+    appearanceHint: "Applies to every widget style and stays selected when styles change",
+    system: "System",
+    light: "Light",
+    dark: "Dark",
+    style: "Visual style",
+    float: "Float",
+    floatHint: "Compact tile with instant status",
+    aurora: "Aurora",
+    auroraHint: "Soft glass with ambient color",
+    graphite: "Graphite",
+    graphiteHint: "Dark, high-contrast workstation",
+    paper: "Paper",
+    paperHint: "Warm, restrained, low-distraction",
+    island: "Island",
+    islandHint: "Top edge with provider slider",
+    riskFirst: "Put attention-needed providers first",
+    riskFirstHint: "Sort by status and lowest quota; disable to restore custom order",
+    history: "Show recent quota trails",
+    historyHint: "Draw local-history sparklines inside provider rows",
+  };
 
   const historyCounts = useMemo(() => new Map(PROVIDER_CATALOG.map((provider) => [provider.id, runtimeState.history.filter((point) => point.provider === provider.id).length])), [runtimeState.history]);
   const snapshotsByProvider = useMemo(() => new Map(snapshots.map((snapshot) => [snapshot.provider, snapshot])), [snapshots]);
@@ -120,6 +164,7 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
     const saved: SavedLayout = {
       id: crypto.randomUUID(), name, createdAt: new Date().toISOString(), providerOrder: preferences.providerOrder ?? DEFAULT_PROVIDER_ORDER,
       hiddenProviders: preferences.hiddenProviders, collapsedProviders: preferences.collapsedProviders, layoutMode: preferences.layoutMode, accentColor: preferences.accentColor,
+      visualStyle: preferences.visualStyle, appearanceMode: preferences.appearanceMode, riskFirst: preferences.riskFirst, showHistorySparklines: preferences.showHistorySparklines,
     };
     onRuntimeState({ ...runtimeState, savedLayouts: [...runtimeState.savedLayouts, saved].slice(-12) });
     setLayoutName("");
@@ -144,6 +189,57 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
             <label className="control-field"><span>{labels.accent}</span><input type="color" value={preferences.accentColor} onChange={(event) => onPreferences({ ...preferences, accentColor: event.target.value })} /></label>
             <label className="control-field"><span>{labels.rotate} · {preferences.autoRotateSeconds}s</span><input type="range" min="5" max="60" step="1" value={preferences.autoRotateSeconds} onChange={(event) => onPreferences({ ...preferences, autoRotateSeconds: Number(event.target.value) })} /></label>
           </div>
+          <div className="control-section-title control-section-title--appearance"><span>{appearanceLabels.appearance}</span><small>{appearanceLabels.appearanceHint}</small></div>
+          <div className="appearance-options" role="radiogroup" aria-label={appearanceLabels.appearance}>
+            {([
+              ["system", Monitor, appearanceLabels.system],
+              ["light", Sun, appearanceLabels.light],
+              ["dark", Moon, appearanceLabels.dark],
+            ] as const).map(([id, Icon, label]) => (
+              <button
+                key={id}
+                type="button"
+                role="radio"
+                aria-checked={preferences.appearanceMode === id}
+                className={preferences.appearanceMode === id ? "is-active" : ""}
+                onClick={() => onPreferences({ ...preferences, appearanceMode: id })}
+              >
+                <Icon />
+                <span>{label}</span>
+              </button>
+            ))}
+          </div>
+          <div className="control-section-title"><span>{appearanceLabels.style}</span></div>
+          <div className="visual-style-options" role="radiogroup" aria-label={appearanceLabels.style}>
+            {([
+              ["float", appearanceLabels.float, appearanceLabels.floatHint],
+              ["aurora", appearanceLabels.aurora, appearanceLabels.auroraHint],
+              ["graphite", appearanceLabels.graphite, appearanceLabels.graphiteHint],
+              ["paper", appearanceLabels.paper, appearanceLabels.paperHint],
+              ["island", appearanceLabels.island, appearanceLabels.islandHint],
+            ] as const).map(([id, label, hint]) => (
+              <button
+                key={id}
+                type="button"
+                role="radio"
+                aria-checked={preferences.visualStyle === id}
+                className={`visual-style-option visual-style-option--${id}${preferences.visualStyle === id ? " is-active" : ""}`}
+                onClick={() => onPreferences({ ...preferences, visualStyle: id })}
+              >
+                <i aria-hidden="true">
+                  {id === "float" ? <><span className="style-float-value">67<small>%</small></span><b /></> : null}
+                  {id === "island" ? <><ProviderMark provider="codex" label="Codex" /><span className="style-island-value">74%</span></> : null}
+                  {id !== "float" && id !== "island" ? <><span /><span /><span /></> : null}
+                </i>
+                <strong>{label}</strong>
+                <small>{hint}</small>
+              </button>
+            ))}
+          </div>
+          <div className="display-feature-options">
+            <label className="display-feature-option"><ListStar /><span><strong>{appearanceLabels.riskFirst}</strong><small>{appearanceLabels.riskFirstHint}</small></span><span className="switch"><input type="checkbox" checked={preferences.riskFirst} onChange={(event) => onPreferences({ ...preferences, riskFirst: event.target.checked })} /><i /></span></label>
+            <label className="display-feature-option"><ChartLineUp /><span><strong>{appearanceLabels.history}</strong><small>{appearanceLabels.historyHint}</small></span><span className="switch"><input type="checkbox" checked={preferences.showHistorySparklines} onChange={(event) => onPreferences({ ...preferences, showHistorySparklines: event.target.checked })} /><i /></span></label>
+          </div>
           <div className="control-section-title"><span>{labels.providers}</span><button type="button" onClick={() => onPreferences({ ...preferences, providerOrder: DEFAULT_PROVIDER_ORDER, hiddenProviders: [], collapsedProviders: [] })}><ArrowCounterClockwise />{labels.resetOrder}</button></div>
           <div className="provider-settings">
             {PROVIDER_CATALOG.map((provider) => {
@@ -154,7 +250,7 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
           </div>
           <div className="control-section-title"><span>{labels.savedLayouts}</span></div>
           <div className="layout-save"><input value={layoutName} onChange={(event) => setLayoutName(event.target.value)} placeholder={zh ? "方案名称" : "Profile name"} /><button type="button" onClick={saveLayout}><Plus />{labels.saveLayout}</button></div>
-          <div className="saved-layouts">{runtimeState.savedLayouts.length === 0 ? <p>{labels.noLayouts}</p> : runtimeState.savedLayouts.map((layout) => <div key={layout.id}><button type="button" onClick={() => onPreferences({ ...preferences, providerOrder: layout.providerOrder, hiddenProviders: layout.hiddenProviders, collapsedProviders: layout.collapsedProviders, layoutMode: layout.layoutMode, accentColor: layout.accentColor })}><strong>{layout.name}</strong><small>{layout.layoutMode}</small></button><button type="button" aria-label="Delete" onClick={() => onRuntimeState({ ...runtimeState, savedLayouts: runtimeState.savedLayouts.filter((item) => item.id !== layout.id) })}><Trash /></button></div>)}</div>
+          <div className="saved-layouts">{runtimeState.savedLayouts.length === 0 ? <p>{labels.noLayouts}</p> : runtimeState.savedLayouts.map((layout) => <div key={layout.id}><button type="button" onClick={() => onPreferences({ ...preferences, providerOrder: layout.providerOrder, hiddenProviders: layout.hiddenProviders, collapsedProviders: layout.collapsedProviders, layoutMode: layout.layoutMode, visualStyle: layout.visualStyle, appearanceMode: layout.appearanceMode, riskFirst: layout.riskFirst, showHistorySparklines: layout.showHistorySparklines, accentColor: layout.accentColor })}><strong>{layout.name}</strong><small>{layout.visualStyle} · {layout.appearanceMode} · {layout.layoutMode}</small></button><button type="button" aria-label="Delete" onClick={() => onRuntimeState({ ...runtimeState, savedLayouts: runtimeState.savedLayouts.filter((item) => item.id !== layout.id) })}><Trash /></button></div>)}</div>
         </> : null}
 
         {tab === "health" ? <>

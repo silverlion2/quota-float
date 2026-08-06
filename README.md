@@ -64,6 +64,7 @@ Updater artifacts are signed with the project's Tauri update key. Windows Authen
 - Floating orb, persistent expansion, always-on-top control, provider rotation, drag-to-reorder, and localized tray actions.
 - Local quota timeline for resets, low-quota crossings, provider failures, recoveries, and updates.
 - Custom accent colors, hidden or condensed providers, reusable layout profiles, and system-login autostart.
+- Float, Aurora, Graphite, Paper, and top-docked Island visual styles, with a shared System/Light/Dark appearance, optional risk-first ordering, and local-history sparklines.
 - Rotating recovery points before updates plus one-file export/import for settings, layouts, and history.
 - Redacted diagnostic reports that exclude tokens, account IDs, local auth paths, and raw provider responses.
 - A Provider Health Center showing each local source, freshness, recovery state, and bounded history count.

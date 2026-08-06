@@ -2,6 +2,9 @@ export type ProviderId = "codex" | "qoder" | "trae" | "workbuddy" | "volcengine"
 export type SnapshotStatus = "ok" | "stale" | "loading" | "unavailable" | "signed_out";
 export type Language = "zh-CN" | "en";
 export type LayoutMode = "compact" | "standard" | "detailed";
+export type VisualStyle = "float" | "aurora" | "graphite" | "paper" | "island";
+export type AppearanceMode = "system" | "light" | "dark";
+export type ResolvedAppearance = Exclude<AppearanceMode, "system">;
 export type UpdateChannel = "stable" | "beta";
 
 export interface UsageWindow {
@@ -47,6 +50,10 @@ export interface WidgetPreferences {
   hiddenProviders: ProviderId[];
   collapsedProviders: ProviderId[];
   layoutMode: LayoutMode;
+  visualStyle: VisualStyle;
+  appearanceMode: AppearanceMode;
+  riskFirst: boolean;
+  showHistorySparklines: boolean;
   accentColor: string;
   alertThreshold: number;
   notificationsEnabled: boolean;
@@ -87,6 +94,10 @@ export interface SavedLayout {
   hiddenProviders: ProviderId[];
   collapsedProviders: ProviderId[];
   layoutMode: LayoutMode;
+  visualStyle: VisualStyle;
+  appearanceMode: AppearanceMode;
+  riskFirst: boolean;
+  showHistorySparklines: boolean;
   accentColor: string;
 }
 

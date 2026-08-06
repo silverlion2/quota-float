@@ -13,6 +13,10 @@ export const DEFAULT_WIDGET_PREFERENCES: WidgetPreferences = {
   hiddenProviders: [],
   collapsedProviders: [],
   layoutMode: "standard",
+  visualStyle: "aurora",
+  appearanceMode: "system",
+  riskFirst: false,
+  showHistorySparklines: true,
   accentColor: "#397ae0",
   alertThreshold: 15,
   notificationsEnabled: true,
@@ -53,6 +57,15 @@ export function normalizeWidgetPreferences(value: Partial<WidgetPreferences> | n
   const hiddenProviders = providerList(candidate.hiddenProviders);
   const pinnedProvider = providerSet.has(candidate.pinnedProvider as ProviderId) ? candidate.pinnedProvider as ProviderId : null;
   const layoutMode = candidate.layoutMode === "compact" || candidate.layoutMode === "detailed" ? candidate.layoutMode : "standard";
+  const visualStyle = candidate.visualStyle === "float"
+    || candidate.visualStyle === "graphite"
+    || candidate.visualStyle === "paper"
+    || candidate.visualStyle === "island"
+    ? candidate.visualStyle
+    : "aurora";
+  const appearanceMode = candidate.appearanceMode === "light" || candidate.appearanceMode === "dark"
+    ? candidate.appearanceMode
+    : "system";
   const accentColor = typeof candidate.accentColor === "string" && /^#[0-9a-f]{6}$/i.test(candidate.accentColor)
     ? candidate.accentColor
     : DEFAULT_WIDGET_PREFERENCES.accentColor;
@@ -68,6 +81,10 @@ export function normalizeWidgetPreferences(value: Partial<WidgetPreferences> | n
     hiddenProviders: hiddenProviders.length >= DEFAULT_PROVIDER_ORDER.length ? [] : hiddenProviders,
     collapsedProviders: providerList(candidate.collapsedProviders),
     layoutMode,
+    visualStyle,
+    appearanceMode,
+    riskFirst: booleanValue(candidate.riskFirst, DEFAULT_WIDGET_PREFERENCES.riskFirst),
+    showHistorySparklines: booleanValue(candidate.showHistorySparklines, DEFAULT_WIDGET_PREFERENCES.showHistorySparklines),
     accentColor,
     alertThreshold: boundedInteger(candidate.alertThreshold, DEFAULT_WIDGET_PREFERENCES.alertThreshold, 1, 99),
     notificationsEnabled: booleanValue(candidate.notificationsEnabled, DEFAULT_WIDGET_PREFERENCES.notificationsEnabled),

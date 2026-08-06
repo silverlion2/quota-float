@@ -5,7 +5,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProviderSnapshot, VolcengineDiagnostics, WidgetPreferences } from "../types";
 import { DEFAULT_WIDGET_PREFERENCES } from "../lib/preferences";
-import { QuotaCard, QuotaOrb } from "./QuotaCard";
+import { QuotaCard, QuotaIsland, QuotaOrb } from "./QuotaCard";
 
 const codex: ProviderSnapshot = {
   provider: "codex",
@@ -164,6 +164,30 @@ describe("QuotaCard platform ledger", () => {
     expect(screen.getByText("Weekly remaining")).toBeInTheDocument();
   });
 
+  it("shows risk-first values and local history trails", () => {
+    const { container } = render(
+      <QuotaCard
+        snapshot={codex}
+        snapshots={[codex, volcengine, antigravity]}
+        preferences={{ ...preferences, riskFirst: true, showHistorySparklines: true }}
+        history={[
+          { provider: "codex", capturedAt: "2026-07-15T00:00:00Z", metric: 91, metricKind: "percent", status: "ok", resetsAt: null },
+          { provider: "codex", capturedAt: "2026-07-16T00:00:00Z", metric: 74, metricKind: "percent", status: "ok", resetsAt: null },
+        ]}
+        onSelectProvider={noop}
+        onLock={noop}
+        onLanguage={noop}
+        onDrag={noop}
+        onHover={noop}
+        consumingProviders={new Set()}
+      />,
+    );
+
+    expect(screen.getByText("RISK FIRST")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /VOLCENGINE.*45%.*Monthly/i })).toBeInTheDocument();
+    expect(container.querySelector(".provider-history polyline")).toBeInTheDocument();
+  });
+
   it("marks platforms without a collector as not detected", () => {
     render(
       <QuotaCard
@@ -185,6 +209,51 @@ describe("QuotaCard platform ledger", () => {
   it("keeps a balance-based platform readable in the collapsed orb", () => {
     render(<QuotaOrb snapshot={qoder} language="en" onDrag={noop} onHover={noop} />);
     expect(screen.getByLabelText("1280 credits")).toBeInTheDocument();
+  });
+
+  it("preserves the legacy Float tile as a distinct compact style", () => {
+    render(<QuotaOrb snapshot={codex} language="en" visualStyle="float" resolvedAppearance="light" onDrag={noop} onHover={noop} />);
+    expect(screen.getByLabelText("Weekly quota remaining 74%")).toHaveClass("quota-card--style-float", "quota-card--theme-light");
+  });
+
+  it("switches providers from the compact Island slider without expanding", () => {
+    const onSelectProvider = vi.fn();
+    render(
+      <QuotaIsland
+        snapshot={codex}
+        snapshots={[codex, qoder, trae, antigravity]}
+        language="en"
+        onSelectProvider={onSelectProvider}
+        onDrag={noop}
+        onHover={noop}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("radio", { name: "QODER" }));
+    expect(onSelectProvider).toHaveBeenCalledWith("qoder");
+    expect(screen.getByText("74%")).toBeInTheDocument();
+    expect(screen.getByText("On track")).toBeInTheDocument();
+  });
+
+  it("delays Island expansion so the provider slider remains usable", () => {
+    vi.useFakeTimers();
+    const onHover = vi.fn();
+    render(
+      <QuotaIsland
+        snapshot={codex}
+        snapshots={[codex, qoder]}
+        language="en"
+        onSelectProvider={noop}
+        onDrag={noop}
+        onHover={onHover}
+      />,
+    );
+    const island = screen.getByLabelText(/CODEX 74% left On track/i);
+    fireEvent.mouseEnter(island);
+    act(() => vi.advanceTimersByTime(649));
+    expect(onHover).not.toHaveBeenCalledWith(true);
+    act(() => vi.advanceTimersByTime(1));
+    expect(onHover).toHaveBeenCalledWith(true);
   });
 
   it("returns the collapsed orb to idle after a hover ends", () => {

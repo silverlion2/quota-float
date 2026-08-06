@@ -53,7 +53,7 @@ const snapshots: ProviderSnapshot[] = [
   },
 ];
 
-function renderControlCenter(onRefresh = vi.fn()) {
+function renderControlCenter(onRefresh = vi.fn(), onPreferences = vi.fn()) {
   render(
     <ControlCenter
       preferences={{ ...DEFAULT_WIDGET_PREFERENCES, language: "en" }}
@@ -63,7 +63,7 @@ function renderControlCenter(onRefresh = vi.fn()) {
       language="en"
       onClose={vi.fn()}
       onRefresh={onRefresh}
-      onPreferences={vi.fn()}
+      onPreferences={onPreferences}
       onRuntimeState={vi.fn()}
       onExport={vi.fn()}
       onImport={vi.fn()}
@@ -73,6 +73,7 @@ function renderControlCenter(onRefresh = vi.fn()) {
       onAutostart={vi.fn()}
     />,
   );
+  return { onPreferences };
 }
 
 describe("ControlCenter provider health", () => {
@@ -96,5 +97,22 @@ describe("ControlCenter provider health", () => {
     fireEvent.click(screen.getByRole("button", { name: "Refresh now" }));
 
     expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("applies visual presets and risk-first ordering as preferences", () => {
+    const onPreferences = vi.fn();
+    renderControlCenter(vi.fn(), onPreferences);
+
+    fireEvent.click(screen.getByRole("radio", { name: /Graphite/i }));
+    expect(onPreferences).toHaveBeenCalledWith(expect.objectContaining({ visualStyle: "graphite" }));
+
+    fireEvent.click(screen.getByRole("radio", { name: /^Dark$/i }));
+    expect(onPreferences).toHaveBeenCalledWith(expect.objectContaining({ appearanceMode: "dark" }));
+
+    fireEvent.click(screen.getByRole("radio", { name: /Island/i }));
+    expect(onPreferences).toHaveBeenCalledWith(expect.objectContaining({ visualStyle: "island" }));
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /Put attention-needed providers first/i }));
+    expect(onPreferences).toHaveBeenCalledWith(expect.objectContaining({ riskFirst: true }));
   });
 });

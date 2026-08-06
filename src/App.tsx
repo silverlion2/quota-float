@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { QuotaCard, QuotaOrb } from "./components/QuotaCard";
+import { QuotaCard, QuotaIsland, QuotaOrb } from "./components/QuotaCard";
 import { ControlCenter } from "./components/ControlCenter";
 import { EMPTY_UPDATE_STATE } from "./components/UpdatePanel";
 import type { UpdateViewState } from "./components/UpdatePanel";
@@ -15,6 +15,7 @@ import { trackedQuotaWindows } from "./lib/quotaPace";
 import { mergeSnapshots } from "./lib/snapshots";
 import { canSendNotification, EMPTY_RUNTIME_STATE, isQuietHour, normalizeRuntimeState, recordSnapshotActivity } from "./lib/activity";
 import { DEFAULT_WIDGET_PREFERENCES, normalizeWidgetPreferences } from "./lib/preferences";
+import { resolveAppearanceMode, systemPrefersDark } from "./lib/appearance";
 import { loadStartupState } from "./lib/startup";
 import type { AppDiagnostics, ProviderId, ProviderSnapshot, ResetForecast, RuntimeState, VolcengineDiagnostics, WidgetPreferences } from "./types";
 
@@ -46,6 +47,7 @@ export default function App() {
   const [runtimeState, setRuntimeState] = useState<RuntimeState>(EMPTY_RUNTIME_STATE);
   const [appDiagnostics, setAppDiagnostics] = useState<AppDiagnostics | null>(null);
   const [autostartEnabled, setAutostartState] = useState(false);
+  const [systemDark, setSystemDark] = useState(systemPrefersDark);
   const failures = useRef(0);
   const snapshotsRef = useRef<ProviderSnapshot[]>([]);
   const previousMetric = useRef(new Map<string, number>());
@@ -60,6 +62,19 @@ export default function App() {
   const preferenceSaveSequence = useRef(0);
   const language = normalizeLanguage(preferences.language);
   const t = copy[language];
+  const resolvedAppearance = resolveAppearanceMode(preferences.appearanceMode, systemDark);
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const query = window.matchMedia("(prefers-color-scheme: dark)");
+    const update = () => setSystemDark(query.matches);
+    query.addEventListener?.("change", update);
+    return () => query.removeEventListener?.("change", update);
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.appearance = resolvedAppearance;
+  }, [resolvedAppearance]);
 
   const commitRuntimeState = useCallback((next: RuntimeState) => {
     runtimeStateRef.current = next;
@@ -435,7 +450,7 @@ export default function App() {
     if (value) void refresh(true);
     if (value) {
       const sequence = ++hoverSequence.current;
-      void setWidgetExpanded(true)
+      void setWidgetExpanded(true, preferences.visualStyle)
         .then(() => { if (hoverSequence.current === sequence) setCompact(false); })
         .catch(() => {
           setCompact(false);
@@ -447,16 +462,21 @@ export default function App() {
     collapseTimer.current = window.setTimeout(() => {
       if (hoverSequence.current !== sequence) return;
       setCompact(true);
-      void setWidgetExpanded(false).catch(() => setOperationError("Widget collapse failed."));
+      void setWidgetExpanded(false, preferences.visualStyle).catch(() => setOperationError("Widget collapse failed."));
     }, 180);
-  }, [preferences.stayExpanded, refresh]);
+  }, [preferences.stayExpanded, preferences.visualStyle, refresh]);
 
   useEffect(() => {
     if (!preferences.stayExpanded) return;
     if (collapseTimer.current !== null) window.clearTimeout(collapseTimer.current);
     setCompact(false);
-    void setWidgetExpanded(true).catch(() => setOperationError("Widget expand failed."));
-  }, [preferences.stayExpanded]);
+    void setWidgetExpanded(true, preferences.visualStyle).catch(() => setOperationError("Widget expand failed."));
+  }, [preferences.stayExpanded, preferences.visualStyle]);
+
+  useEffect(() => {
+    if (!compact || preferences.stayExpanded) return;
+    void setWidgetExpanded(false, preferences.visualStyle).catch(() => setOperationError("Widget style resize failed."));
+  }, [compact, preferences.stayExpanded, preferences.visualStyle]);
 
   useEffect(() => {
     if (compact) return;
@@ -487,7 +507,32 @@ export default function App() {
   if (!current) return <div className="loading-card" aria-label={t.loadingQuota}><span /><span /><span /></div>;
 
   if (compact) {
-    return <QuotaOrb snapshot={current} language={language} onDrag={() => { void startDragging().catch(() => setOperationError("Widget drag failed.")); }} onHover={handleHover} />;
+    const selectCompactProvider = (provider: ProviderId) => {
+      const index = orderedSnapshots.findIndex((item) => item.provider === provider);
+      if (index >= 0) setActiveIndex(index);
+    };
+    return preferences.visualStyle === "island" ? (
+      <QuotaIsland
+        snapshot={current}
+        snapshots={orderedSnapshots}
+        language={language}
+        accentColor={preferences.accentColor}
+        resolvedAppearance={resolvedAppearance}
+        onSelectProvider={selectCompactProvider}
+        onDrag={() => { void startDragging().catch(() => setOperationError("Widget drag failed.")); }}
+        onHover={handleHover}
+      />
+    ) : (
+      <QuotaOrb
+        snapshot={current}
+        language={language}
+        visualStyle={preferences.visualStyle}
+        accentColor={preferences.accentColor}
+        resolvedAppearance={resolvedAppearance}
+        onDrag={() => { void startDragging().catch(() => setOperationError("Widget drag failed.")); }}
+        onHover={handleHover}
+      />
+    );
   }
 
   return (
@@ -495,6 +540,7 @@ export default function App() {
       snapshot={current}
       snapshots={orderedSnapshots}
       preferences={preferences}
+      resolvedAppearance={resolvedAppearance}
       onSelectProvider={(provider: ProviderId) => {
         const index = orderedSnapshots.findIndex((item) => item.provider === provider);
         if (index < 0) return;
@@ -524,6 +570,7 @@ export default function App() {
       resetForecast={codexResetForecast}
       onOpenResetForecast={(url) => void openExternalUrl(url).catch(() => setOperationError("Reset forecast could not be opened."))}
       paceBaselines={runtimeState.dailyPaceBaselines}
+      history={runtimeState.history}
       updateState={updateState}
       updateOpen={updateOpen}
       onUpdateOpen={handleUpdateOpen}

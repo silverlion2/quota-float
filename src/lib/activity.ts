@@ -66,6 +66,15 @@ function savedLayout(value: unknown): RuntimeState["savedLayouts"][number] | nul
   if (!candidate || typeof candidate.id !== "string" || candidate.id.length === 0 || candidate.id.length > 160
     || typeof candidate.name !== "string" || candidate.name.trim().length === 0 || !validDate(candidate.createdAt)) return null;
   const layoutMode = candidate.layoutMode === "compact" || candidate.layoutMode === "detailed" ? candidate.layoutMode : candidate.layoutMode === "standard" ? "standard" : null;
+  const visualStyle = candidate.visualStyle === "float"
+    || candidate.visualStyle === "graphite"
+    || candidate.visualStyle === "paper"
+    || candidate.visualStyle === "island"
+    ? candidate.visualStyle
+    : "aurora";
+  const appearanceMode = candidate.appearanceMode === "light" || candidate.appearanceMode === "dark"
+    ? candidate.appearanceMode
+    : "system";
   const accentColor = typeof candidate.accentColor === "string" && /^#[0-9a-f]{6}$/i.test(candidate.accentColor) ? candidate.accentColor : null;
   if (!layoutMode || !accentColor) return null;
   return {
@@ -76,6 +85,10 @@ function savedLayout(value: unknown): RuntimeState["savedLayouts"][number] | nul
     hiddenProviders: providerList(candidate.hiddenProviders),
     collapsedProviders: providerList(candidate.collapsedProviders),
     layoutMode,
+    visualStyle,
+    appearanceMode,
+    riskFirst: candidate.riskFirst === true,
+    showHistorySparklines: candidate.showHistorySparklines !== false,
     accentColor,
   };
 }

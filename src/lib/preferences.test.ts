@@ -6,7 +6,20 @@ describe("widget preference migration", () => {
     const value = normalizeWidgetPreferences({ language: "en", providerOrder: ["qoder", "codex"] as never });
     expect(value.providerOrder).toEqual(["qoder", "codex", "trae", "workbuddy", "volcengine", "antigravity"]);
     expect(value.layoutMode).toBe("standard");
+    expect(value.visualStyle).toBe("aurora");
+    expect(value.appearanceMode).toBe("system");
+    expect(value.riskFirst).toBe(false);
+    expect(value.showHistorySparklines).toBe(true);
     expect(value.notificationsEnabled).toBe(true);
+  });
+
+  it("normalizes visual styles and optional ledger features", () => {
+    expect(normalizeWidgetPreferences({ visualStyle: "graphite", riskFirst: true, showHistorySparklines: false }).visualStyle).toBe("graphite");
+    expect(normalizeWidgetPreferences({ visualStyle: "float" }).visualStyle).toBe("float");
+    expect(normalizeWidgetPreferences({ visualStyle: "island" }).visualStyle).toBe("island");
+    expect(normalizeWidgetPreferences({ appearanceMode: "dark" }).appearanceMode).toBe("dark");
+    expect(normalizeWidgetPreferences({ appearanceMode: "sepia" as never }).appearanceMode).toBe("system");
+    expect(normalizeWidgetPreferences({ visualStyle: "neon" as never }).visualStyle).toBe("aurora");
   });
 
   it("rejects unsafe colors and never hides every provider", () => {

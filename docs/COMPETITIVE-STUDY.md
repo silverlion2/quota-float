@@ -47,3 +47,29 @@ What should Quota Float improve next while preserving its local-first, no-sideca
 2. Opt-in Claude adapter with explicit source diagnostics and fixture-based parser tests.
 3. Windows WSL credential discovery where it can remain read-only.
 4. Provider status-page integration, only for providers with stable official endpoints.
+
+## Follow-up study: presentation and at-a-glance scanning
+
+Study date: 2026-08-06
+
+### Sources reviewed
+
+- [CodexBar](https://github.com/steipete/CodexBar): tiny usage meters, history charts, and highest-usage auto-selection make a large provider set scannable.
+- [TokenTracker](https://github.com/xiufengsun/TokenTracker): local history widgets and provider-limit summaries demonstrate the value of small, persistent visual traces.
+- [OpenCode Quotas](https://github.com/PhilippPolterauer/opencode-quotas): most-critical aggregation and context-aware ordering keep attention on the quota that can stop work first.
+- [TokenUsageMonitor](https://apps.apple.com/app/tokenusagemonitor/id6761013095): system/light/dark appearances show that desktop quota utilities benefit from more than an accent-color picker.
+- [Tokscale](https://github.com/junhoyeo/tokscale): named card templates separate information hierarchy from visual expression.
+
+### Adapted product slice
+
+- Add five first-party visual systems: Float (legacy compact square), Aurora (existing glass), Graphite (dark workstation), Paper (warm low-distraction), and Island (top-docked multi-provider strip).
+- Apply one System/Light/Dark appearance choice across every visual system, and preserve it in saved layouts.
+- Let Island switch providers through a compact monochrome-logo slider while keeping the selected provider's quota, reset, status, and freshness visible.
+- Add optional risk-first ordering. It is presentation-only, uses the most constrained reported window, and disables drag ordering while active.
+- Add optional percentage-history sparklines from Quota Float's existing bounded local history. No new provider calls or data collection are introduced.
+- Save these choices inside layout profiles and normalize legacy preferences to Aurora, custom order, and visible history trails.
+
+### Deliberate exclusions
+
+- No competitor source code, assets, telemetry, proxy sidecar, cloud account, model-cost estimation, gamification, or credential source was copied or added.
+- No linear exhaustion forecast is shown until the local history cadence and reset segmentation can support a trustworthy confidence model.

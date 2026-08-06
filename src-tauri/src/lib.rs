@@ -29,6 +29,8 @@ use tauri_plugin_window_state::Builder as WindowStateBuilder;
 
 const COLLAPSED_LOGICAL_WIDTH: f64 = 92.0;
 const COLLAPSED_LOGICAL_HEIGHT: f64 = 92.0;
+const ISLAND_LOGICAL_WIDTH: f64 = 400.0;
+const ISLAND_LOGICAL_HEIGHT: f64 = 38.0;
 const EXPANDED_LOGICAL_WIDTH: f64 = 552.0;
 const EXPANDED_LOGICAL_HEIGHT: f64 = 248.0;
 const MIN_EXPANDED_LOGICAL_HEIGHT: f64 = 160.0;
@@ -85,19 +87,49 @@ struct WorkAreaPayload {
     size: WorkAreaSize,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum WidgetMode {
     Collapsed,
     Expanded,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CompactMode {
+    Float,
+    Island,
+}
+
 #[derive(Clone, Copy)]
 struct WidgetGeometryState {
     mode: WidgetMode,
+    compact_mode: CompactMode,
     dock: DockState,
     collapsed_rect: WidgetRect,
     expanded_rect: Option<WidgetRect>,
     user_moved_expanded: bool,
+}
+
+fn compact_mode(visual_style: Option<&str>) -> CompactMode {
+    if visual_style == Some("island") {
+        CompactMode::Island
+    } else {
+        CompactMode::Float
+    }
+}
+
+fn collapsed_physical_size(
+    compact_mode: CompactMode,
+    scale_factor: f64,
+    safe_inset: u32,
+) -> PhysicalSize<u32> {
+    let (width, height) = match compact_mode {
+        CompactMode::Float => (COLLAPSED_LOGICAL_WIDTH, COLLAPSED_LOGICAL_HEIGHT),
+        CompactMode::Island => (ISLAND_LOGICAL_WIDTH, ISLAND_LOGICAL_HEIGHT),
+    };
+    PhysicalSize::new(
+        widget_window_size(width, scale_factor, safe_inset),
+        widget_window_size(height, scale_factor, safe_inset),
+    )
 }
 
 struct AppState {
@@ -644,6 +676,7 @@ fn expanded_position(
     collapsed: WidgetRect,
     expanded_size: PhysicalSize<u32>,
     dock: DockState,
+    compact_mode: CompactMode,
     monitor: &tauri::Monitor,
     work_area: Option<WorkAreaPayload>,
     safe_inset: i32,
@@ -656,6 +689,15 @@ fn expanded_position(
             )
         })
         .unwrap_or_else(|| (*monitor.position(), *monitor.size()));
+    if compact_mode == CompactMode::Island {
+        return island_expanded_position_in_bounds(
+            collapsed,
+            expanded_size,
+            bounds_position,
+            bounds_size,
+            safe_inset,
+        );
+    }
     expanded_position_in_bounds(
         collapsed,
         expanded_size,
@@ -663,6 +705,66 @@ fn expanded_position(
         bounds_position,
         bounds_size,
         safe_inset,
+    )
+}
+
+fn island_expanded_position_in_bounds(
+    collapsed: WidgetRect,
+    expanded_size: PhysicalSize<u32>,
+    bounds_position: PhysicalPosition<i32>,
+    bounds_size: PhysicalSize<u32>,
+    safe_inset: i32,
+) -> PhysicalPosition<i32> {
+    let centered = PhysicalPosition::new(
+        collapsed.position.x + (collapsed.size.width as i32 - expanded_size.width as i32) / 2,
+        bounds_position.y - safe_inset,
+    );
+    clamp_position_to_bounds(
+        centered,
+        expanded_size,
+        bounds_position,
+        bounds_size,
+        safe_inset,
+    )
+}
+
+fn island_collapsed_geometry(
+    current: WidgetRect,
+    collapsed_size: PhysicalSize<u32>,
+    monitor: &tauri::Monitor,
+    safe_inset: i32,
+    previous: Option<WidgetGeometryState>,
+) -> (WidgetRect, DockState) {
+    let monitor_position = monitor.position();
+    let monitor_size = monitor.size();
+    let previous_island = previous.filter(|value| value.compact_mode == CompactMode::Island);
+    let x = previous_island
+        .map(|value| {
+            if value.user_moved_expanded {
+                current.position.x + (current.size.width as i32 - collapsed_size.width as i32) / 2
+            } else {
+                value.collapsed_rect.position.x
+            }
+        })
+        .unwrap_or_else(|| {
+            monitor_position.x + (monitor_size.width as i32 - collapsed_size.width as i32) / 2
+        });
+    let position = clamp_position_to_monitor(
+        PhysicalPosition::new(x, monitor_position.y - safe_inset),
+        collapsed_size,
+        monitor,
+        safe_inset,
+    );
+    let dock = DockState {
+        horizontal: None,
+        vertical: Some(VerticalDock::Top),
+    };
+    (
+        WidgetRect {
+            position: snap_position(position, collapsed_size, dock, monitor, safe_inset),
+            size: collapsed_size,
+        },
+        dock,
     )
 }
 
@@ -769,9 +871,18 @@ fn infer_mode(rect: WidgetRect, collapsed_size: PhysicalSize<u32>) -> WidgetMode
     }
 }
 
+fn infer_compact_mode(rect: WidgetRect) -> CompactMode {
+    if rect.size.width > rect.size.height.saturating_mul(3) {
+        CompactMode::Island
+    } else {
+        CompactMode::Float
+    }
+}
+
 #[tauri::command]
 fn expand_widget(
     work_area: Option<WorkAreaPayload>,
+    visual_style: Option<String>,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
@@ -781,10 +892,8 @@ fn expand_widget(
     let current = current_widget_rect(&window)?;
     let (monitor, scale_factor) = monitor_and_scale(&window)?;
     let safe_inset = logical_to_physical(EDGE_SAFE_INSET_LOGICAL, scale_factor);
-    let collapsed_size = PhysicalSize::new(
-        widget_window_size(COLLAPSED_LOGICAL_WIDTH, scale_factor, safe_inset),
-        widget_window_size(COLLAPSED_LOGICAL_HEIGHT, scale_factor, safe_inset),
-    );
+    let compact_mode = compact_mode(visual_style.as_deref());
+    let collapsed_size = collapsed_physical_size(compact_mode, scale_factor, safe_inset);
     let expanded_size = PhysicalSize::new(
         widget_window_size(EXPANDED_LOGICAL_WIDTH, scale_factor, safe_inset),
         widget_window_size(EXPANDED_LOGICAL_HEIGHT, scale_factor, safe_inset),
@@ -797,19 +906,30 @@ fn expand_widget(
     };
     let threshold = logical_to_physical(SNAP_THRESHOLD_LOGICAL, scale_factor) as i32;
     let previous = state.geometry.lock().ok().and_then(|value| *value);
-    let (collapsed_rect, dock) = collapsed_geometry_for_expand(
-        current.position,
-        collapsed_size,
-        &monitor,
-        threshold,
-        safe_inset as i32,
-        previous,
-    );
+    let (collapsed_rect, dock) = if compact_mode == CompactMode::Island {
+        island_collapsed_geometry(
+            current,
+            collapsed_size,
+            &monitor,
+            safe_inset as i32,
+            previous,
+        )
+    } else {
+        collapsed_geometry_for_expand(
+            current.position,
+            collapsed_size,
+            &monitor,
+            threshold,
+            safe_inset as i32,
+            previous.filter(|value| value.compact_mode == compact_mode),
+        )
+    };
     let expanded_rect = WidgetRect {
         position: expanded_position(
             collapsed_rect,
             expanded_size,
             dock,
+            compact_mode,
             &monitor,
             work_area,
             safe_inset as i32,
@@ -820,6 +940,7 @@ fn expand_widget(
     if let Ok(mut geometry) = state.geometry.lock() {
         *geometry = Some(WidgetGeometryState {
             mode: WidgetMode::Expanded,
+            compact_mode,
             dock,
             collapsed_rect,
             expanded_rect: Some(expanded_rect),
@@ -886,6 +1007,7 @@ fn resize_expanded_widget(
                 geometry.collapsed_rect,
                 expanded_size,
                 geometry.dock,
+                geometry.compact_mode,
                 monitor,
                 work_area,
                 safe_inset as i32,
@@ -934,6 +1056,40 @@ mod geometry_tests {
     fn window_size_includes_the_transparent_safe_inset() {
         assert_eq!(window_size_for_visual_size(80, 4), 88);
         assert_eq!(widget_window_size(320.0, 1.5, 6), 492);
+    }
+
+    #[test]
+    fn compact_modes_use_distinct_window_sizes() {
+        assert_eq!(
+            collapsed_physical_size(CompactMode::Float, 1.0, 4),
+            PhysicalSize::new(100, 100)
+        );
+        assert_eq!(
+            collapsed_physical_size(CompactMode::Island, 1.0, 4),
+            PhysicalSize::new(408, 46)
+        );
+        assert_eq!(
+            infer_compact_mode(WidgetRect {
+                position: PhysicalPosition::new(0, 0),
+                size: PhysicalSize::new(408, 46),
+            }),
+            CompactMode::Island
+        );
+    }
+
+    #[test]
+    fn island_expansion_stays_top_attached_and_centered() {
+        let position = island_expanded_position_in_bounds(
+            WidgetRect {
+                position: PhysicalPosition::new(756, -4),
+                size: PhysicalSize::new(408, 46),
+            },
+            PhysicalSize::new(560, 280),
+            PhysicalPosition::new(0, 0),
+            PhysicalSize::new(1920, 1040),
+            4,
+        );
+        assert_eq!(position, PhysicalPosition::new(680, -4));
     }
 
     #[test]
@@ -995,17 +1151,19 @@ mod geometry_tests {
 }
 
 #[tauri::command]
-fn collapse_widget(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+fn collapse_widget(
+    visual_style: Option<String>,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
     let window = app
         .get_webview_window("widget")
         .ok_or_else(|| "widget window missing".to_string())?;
     let current = current_widget_rect(&window)?;
     let (monitor, scale_factor) = monitor_and_scale(&window)?;
     let safe_inset = logical_to_physical(EDGE_SAFE_INSET_LOGICAL, scale_factor);
-    let collapsed_size = PhysicalSize::new(
-        widget_window_size(COLLAPSED_LOGICAL_WIDTH, scale_factor, safe_inset),
-        widget_window_size(COLLAPSED_LOGICAL_HEIGHT, scale_factor, safe_inset),
-    );
+    let compact_mode = compact_mode(visual_style.as_deref());
+    let collapsed_size = collapsed_physical_size(compact_mode, scale_factor, safe_inset);
     let Some(monitor) = monitor else {
         window
             .set_size(collapsed_size)
@@ -1014,35 +1172,50 @@ fn collapse_widget(app: AppHandle, state: State<'_, AppState>) -> Result<(), Str
     };
     let threshold = logical_to_physical(SNAP_THRESHOLD_LOGICAL, scale_factor) as i32;
     let previous = state.geometry.lock().ok().and_then(|value| *value);
-    let user_moved_expanded = previous
-        .map(|value| value.user_moved_expanded)
-        .unwrap_or(false);
-    let candidate = if user_moved_expanded {
-        current.position
+    let (collapsed_rect, dock) = if compact_mode == CompactMode::Island {
+        island_collapsed_geometry(
+            current,
+            collapsed_size,
+            &monitor,
+            safe_inset as i32,
+            previous,
+        )
     } else {
-        previous
-            .map(|value| value.collapsed_rect.position)
-            .unwrap_or(current.position)
-    };
-    let dock = detect_dock(
-        candidate,
-        collapsed_size,
-        &monitor,
-        threshold,
-        safe_inset as i32,
-    );
-    let next_position = if dock.is_docked() {
-        snap_position(candidate, collapsed_size, dock, &monitor, safe_inset as i32)
-    } else {
-        clamp_position_to_monitor(candidate, collapsed_size, &monitor, safe_inset as i32)
-    };
-    let collapsed_rect = WidgetRect {
-        position: next_position,
-        size: collapsed_size,
+        let compatible_previous = previous.filter(|value| value.compact_mode == compact_mode);
+        let user_moved_expanded = compatible_previous
+            .map(|value| value.user_moved_expanded)
+            .unwrap_or(false);
+        let candidate = if user_moved_expanded {
+            current.position
+        } else {
+            compatible_previous
+                .map(|value| value.collapsed_rect.position)
+                .unwrap_or(current.position)
+        };
+        let dock = detect_dock(
+            candidate,
+            collapsed_size,
+            &monitor,
+            threshold,
+            safe_inset as i32,
+        );
+        let next_position = if dock.is_docked() {
+            snap_position(candidate, collapsed_size, dock, &monitor, safe_inset as i32)
+        } else {
+            clamp_position_to_monitor(candidate, collapsed_size, &monitor, safe_inset as i32)
+        };
+        (
+            WidgetRect {
+                position: next_position,
+                size: collapsed_size,
+            },
+            dock,
+        )
     };
     if let Ok(mut geometry) = state.geometry.lock() {
         *geometry = Some(WidgetGeometryState {
             mode: WidgetMode::Collapsed,
+            compact_mode,
             dock,
             collapsed_rect,
             expanded_rect: None,
@@ -1053,7 +1226,7 @@ fn collapse_widget(app: AppHandle, state: State<'_, AppState>) -> Result<(), Str
         .set_size(collapsed_size)
         .map_err(|_| "failed to resize widget".to_string())?;
     window
-        .set_position(next_position)
+        .set_position(collapsed_rect.position)
         .map_err(|_| "failed to position widget".to_string())
 }
 
@@ -1065,10 +1238,14 @@ fn begin_widget_drag(app: AppHandle, state: State<'_, AppState>) -> Result<(), S
     let current = current_widget_rect(&window)?;
     let (_, scale_factor) = monitor_and_scale(&window)?;
     let safe_inset = logical_to_physical(EDGE_SAFE_INSET_LOGICAL, scale_factor);
-    let collapsed_size = PhysicalSize::new(
-        widget_window_size(COLLAPSED_LOGICAL_WIDTH, scale_factor, safe_inset),
-        widget_window_size(COLLAPSED_LOGICAL_HEIGHT, scale_factor, safe_inset),
-    );
+    let compact_mode = state
+        .geometry
+        .lock()
+        .ok()
+        .and_then(|value| *value)
+        .map(|value| value.compact_mode)
+        .unwrap_or_else(|| infer_compact_mode(current));
+    let collapsed_size = collapsed_physical_size(compact_mode, scale_factor, safe_inset);
     let mode = state
         .geometry
         .lock()
@@ -1094,60 +1271,68 @@ fn finish_widget_drag(app: AppHandle, state: State<'_, AppState>) -> Result<(), 
     };
     let threshold = logical_to_physical(SNAP_THRESHOLD_LOGICAL, scale_factor) as i32;
     let safe_inset = logical_to_physical(EDGE_SAFE_INSET_LOGICAL, scale_factor);
-    let collapsed_size = PhysicalSize::new(
-        widget_window_size(COLLAPSED_LOGICAL_WIDTH, scale_factor, safe_inset),
-        widget_window_size(COLLAPSED_LOGICAL_HEIGHT, scale_factor, safe_inset),
-    );
+    let previous_geometry = state.geometry.lock().ok().and_then(|value| *value);
+    let compact_mode = previous_geometry
+        .map(|value| value.compact_mode)
+        .unwrap_or_else(|| infer_compact_mode(current));
+    let collapsed_size = collapsed_physical_size(compact_mode, scale_factor, safe_inset);
     let mode = state
         .drag_mode
         .lock()
         .ok()
         .and_then(|mut value| value.take())
-        .or_else(|| {
-            state
-                .geometry
-                .lock()
-                .ok()
-                .and_then(|value| *value)
-                .map(|value| value.mode)
-        })
+        .or_else(|| previous_geometry.map(|value| value.mode))
         .unwrap_or_else(|| infer_mode(current, collapsed_size));
 
     match mode {
         WidgetMode::Collapsed => {
-            let dock = detect_dock(
-                current.position,
-                collapsed_size,
-                &monitor,
-                threshold,
-                safe_inset as i32,
-            );
-            let next_position = if dock.is_docked() {
-                snap_position(
-                    current.position,
+            let (collapsed_rect, dock) = if compact_mode == CompactMode::Island {
+                island_collapsed_geometry(
+                    current,
                     collapsed_size,
-                    dock,
                     &monitor,
                     safe_inset as i32,
+                    previous_geometry,
                 )
             } else {
-                clamp_position_to_monitor(
+                let dock = detect_dock(
                     current.position,
                     collapsed_size,
                     &monitor,
+                    threshold,
                     safe_inset as i32,
+                );
+                let position = if dock.is_docked() {
+                    snap_position(
+                        current.position,
+                        collapsed_size,
+                        dock,
+                        &monitor,
+                        safe_inset as i32,
+                    )
+                } else {
+                    clamp_position_to_monitor(
+                        current.position,
+                        collapsed_size,
+                        &monitor,
+                        safe_inset as i32,
+                    )
+                };
+                (
+                    WidgetRect {
+                        position,
+                        size: collapsed_size,
+                    },
+                    dock,
                 )
             };
-            let collapsed_rect = WidgetRect {
-                position: next_position,
-                size: collapsed_size,
-            };
             window
-                .set_position(next_position)
+                .set_position(collapsed_rect.position)
                 .map_err(|_| "failed to position widget".to_string())?;
             if let Ok(mut geometry) = state.geometry.lock() {
                 *geometry = Some(WidgetGeometryState {
                     mode: WidgetMode::Collapsed,
+                    compact_mode,
                     dock,
                     collapsed_rect,
                     expanded_rect: None,
