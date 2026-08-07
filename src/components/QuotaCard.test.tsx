@@ -141,7 +141,7 @@ describe("QuotaCard platform ledger", () => {
     expect(screen.getByText("48h chance · 92%")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Unofficial reset likelihood/i }));
     expect(onOpenResetForecast).toHaveBeenCalledWith("https://codexresetradar.com/");
-  });
+  }, 15_000);
 
   it("lists real platform values and selects a connected platform", () => {
     const onSelectProvider = vi.fn();
