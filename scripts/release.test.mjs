@@ -51,7 +51,8 @@ describe("release automation", () => {
     expect(releaseWorkflow).toContain("defender-preflight:");
     expect(releaseWorkflow).toMatch(/publish:\s+needs: \[verify, defender-preflight\]/);
     expect(releaseWorkflow).toContain("--config src-tauri/tauri.ci.conf.json");
-    expect(releaseWorkflow).toContain("verify-windows-defender.ps1 -UpdateSignatures -EnableRealTimeProtection");
+    expect(releaseWorkflow).toContain("verify-windows-defender.ps1 -EnableRealTimeProtection -Path");
+    expect(releaseWorkflow).not.toContain("verify-windows-defender.ps1 -UpdateSignatures");
     expect(ciWorkflow).toContain("--config src-tauri/tauri.ci.conf.json");
     expect(ciWorkflow).toContain("verify-windows-defender.ps1 -EnableRealTimeProtection -Path");
     expect(defenderScript).toContain("RealTimeProtectionEnabled");
