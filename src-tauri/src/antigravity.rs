@@ -1,6 +1,7 @@
 use crate::models::{ProviderSnapshot, UsageWindow};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
+#[cfg(windows)]
 use serde_json::Value;
 use std::{collections::BTreeSet, io::ErrorKind, path::PathBuf, process::Stdio, time::Duration};
 use tokio::{process::Command, time::timeout};
