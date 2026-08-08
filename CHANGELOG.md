@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.16 - 2026-08-08
+
+- feat: add flexible layouts and usage insights
+
 ## 0.2.15 - 2026-08-07
 
 - test: allow slower UI test environments
