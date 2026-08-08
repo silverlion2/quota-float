@@ -14,6 +14,7 @@ const runtimeState: RuntimeState = {
   history: [
     { provider: "codex", capturedAt: "2026-07-26T00:00:00Z", metric: 72, metricKind: "percent", status: "ok", resetsAt: null },
   ],
+  dailyUsage: [],
   events: [],
   savedLayouts: [],
   lastNotifications: {},
@@ -99,18 +100,27 @@ describe("ControlCenter provider health", () => {
     expect(onRefresh).toHaveBeenCalledTimes(1);
   });
 
-  it("applies visual presets and risk-first ordering as preferences", () => {
+  it("applies layout and color choices as independent preferences", () => {
     const onPreferences = vi.fn();
     renderControlCenter(vi.fn(), onPreferences);
 
     fireEvent.click(screen.getByRole("radio", { name: /Graphite/i }));
-    expect(onPreferences).toHaveBeenCalledWith(expect.objectContaining({ visualStyle: "graphite" }));
+    expect(onPreferences).toHaveBeenCalledWith(expect.objectContaining({ colorTheme: "graphite", compactLayout: "float" }));
 
     fireEvent.click(screen.getByRole("radio", { name: /^Dark$/i }));
     expect(onPreferences).toHaveBeenCalledWith(expect.objectContaining({ appearanceMode: "dark" }));
 
-    fireEvent.click(screen.getByRole("radio", { name: /Island/i }));
-    expect(onPreferences).toHaveBeenCalledWith(expect.objectContaining({ visualStyle: "island" }));
+    fireEvent.click(screen.getByRole("radio", { name: /^Bar/i }));
+    expect(onPreferences).toHaveBeenCalledWith(expect.objectContaining({ compactLayout: "bar", colorTheme: "aurora" }));
+
+    fireEvent.click(screen.getByRole("radio", { name: /^Provider bar/i }));
+    expect(onPreferences).toHaveBeenCalledWith(expect.objectContaining({ expandedLayout: "provider-bar", colorTheme: "aurora" }));
+
+    fireEvent.click(screen.getByRole("radio", { name: /^Ring/i }));
+    expect(onPreferences).toHaveBeenCalledWith(expect.objectContaining({ compactLayout: "ring", colorTheme: "aurora" }));
+
+    fireEvent.click(screen.getByRole("radio", { name: /^Stacked/i }));
+    expect(onPreferences).toHaveBeenCalledWith(expect.objectContaining({ expandedLayout: "stacked", colorTheme: "aurora" }));
 
     fireEvent.click(screen.getByRole("checkbox", { name: /Put attention-needed providers first/i }));
     expect(onPreferences).toHaveBeenCalledWith(expect.objectContaining({ riskFirst: true }));

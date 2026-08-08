@@ -1,4 +1,4 @@
-import type { ActivityEvent, DailyPaceBaseline, Language, ProviderId, ProviderSnapshot, QuotaHistoryPoint, ResetForecast, RuntimeState } from "../types";
+import type { ActivityEvent, DailyPaceBaseline, DailyUsageSummary, Language, ProviderId, ProviderSnapshot, QuotaHistoryPoint, ResetForecast, RuntimeState } from "../types";
 import type { RecentCodexReset } from "./resetDetection";
 import { DEFAULT_PROVIDER_ORDER, normalizeProviderOrder } from "./providers";
 import { calculateQuotaPace, mostOverPaceWindow, paceBaselineKey, refreshDailyPaceBaselines, trackedQuotaWindows, type NamedQuotaWindow, type QuotaPace } from "./quotaPace";
@@ -6,6 +6,7 @@ import { calculateQuotaPace, mostOverPaceWindow, paceBaselineKey, refreshDailyPa
 export const EMPTY_RUNTIME_STATE: RuntimeState = {
   schemaVersion: 1,
   history: [],
+  dailyUsage: [],
   events: [],
   savedLayouts: [],
   lastNotifications: {},
@@ -46,6 +47,22 @@ function historyPoint(value: unknown): QuotaHistoryPoint | null {
   return { provider: candidate.provider, capturedAt: candidate.capturedAt, metric, metricKind: candidate.metricKind as QuotaHistoryPoint["metricKind"], status: candidate.status as QuotaHistoryPoint["status"], resetsAt };
 }
 
+function dailyUsageSummary(value: unknown): DailyUsageSummary | null {
+  const candidate = record(value);
+  if (!candidate || !validProvider(candidate.provider)
+    || typeof candidate.localDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(candidate.localDate)
+    || typeof candidate.observedUsedPercent !== "number" || !Number.isFinite(candidate.observedUsedPercent)
+    || typeof candidate.sampleCount !== "number" || !Number.isInteger(candidate.sampleCount)
+    || !validDate(candidate.updatedAt)) return null;
+  return {
+    provider: candidate.provider,
+    localDate: candidate.localDate,
+    observedUsedPercent: Math.min(100, Math.max(0, candidate.observedUsedPercent)),
+    sampleCount: Math.min(10_000, Math.max(1, candidate.sampleCount)),
+    updatedAt: candidate.updatedAt,
+  };
+}
+
 function activityEvent(value: unknown): ActivityEvent | null {
   const candidate = record(value);
   if (!candidate || typeof candidate.id !== "string" || candidate.id.length === 0 || candidate.id.length > 160
@@ -66,12 +83,17 @@ function savedLayout(value: unknown): RuntimeState["savedLayouts"][number] | nul
   if (!candidate || typeof candidate.id !== "string" || candidate.id.length === 0 || candidate.id.length > 160
     || typeof candidate.name !== "string" || candidate.name.trim().length === 0 || !validDate(candidate.createdAt)) return null;
   const layoutMode = candidate.layoutMode === "compact" || candidate.layoutMode === "detailed" ? candidate.layoutMode : candidate.layoutMode === "standard" ? "standard" : null;
-  const visualStyle = candidate.visualStyle === "float"
-    || candidate.visualStyle === "graphite"
-    || candidate.visualStyle === "paper"
-    || candidate.visualStyle === "island"
-    ? candidate.visualStyle
-    : "aurora";
+  const compactLayout = candidate.compactLayout === "bar" || candidate.compactLayout === "ring" || candidate.compactLayout === "float"
+    ? candidate.compactLayout
+    : candidate.visualStyle === "island" ? "bar" : "float";
+  const expandedLayout = candidate.expandedLayout === "provider-bar" || candidate.expandedLayout === "stacked" || candidate.expandedLayout === "dashboard"
+    ? candidate.expandedLayout
+    : candidate.visualStyle === "island" ? "provider-bar" : "dashboard";
+  const colorTheme = candidate.colorTheme === "graphite" || candidate.colorTheme === "paper" || candidate.colorTheme === "aurora"
+    ? candidate.colorTheme
+    : candidate.visualStyle === "graphite" || candidate.visualStyle === "paper"
+      ? candidate.visualStyle
+      : "aurora";
   const appearanceMode = candidate.appearanceMode === "light" || candidate.appearanceMode === "dark"
     ? candidate.appearanceMode
     : "system";
@@ -85,7 +107,9 @@ function savedLayout(value: unknown): RuntimeState["savedLayouts"][number] | nul
     hiddenProviders: providerList(candidate.hiddenProviders),
     collapsedProviders: providerList(candidate.collapsedProviders),
     layoutMode,
-    visualStyle,
+    compactLayout,
+    expandedLayout,
+    colorTheme,
     appearanceMode,
     riskFirst: candidate.riskFirst === true,
     showHistorySparklines: candidate.showHistorySparklines !== false,
@@ -138,11 +162,55 @@ export function normalizeRuntimeState(value: unknown): RuntimeState {
   return {
     schemaVersion: 1,
     history: Array.isArray(candidate.history) ? candidate.history.map(historyPoint).filter((item): item is QuotaHistoryPoint => item !== null).slice(-1000) : [],
+    dailyUsage: Array.isArray(candidate.dailyUsage) ? candidate.dailyUsage.map(dailyUsageSummary).filter((item): item is DailyUsageSummary => item !== null).slice(-600) : [],
     events: Array.isArray(candidate.events) ? candidate.events.map(activityEvent).filter((item): item is ActivityEvent => item !== null).slice(0, 200) : [],
     savedLayouts: Array.isArray(candidate.savedLayouts) ? candidate.savedLayouts.map(savedLayout).filter((item): item is RuntimeState["savedLayouts"][number] => item !== null).slice(0, 12) : [],
     lastNotifications,
     dailyPaceBaselines,
   };
+}
+
+function localDateKey(value: string): string {
+  const date = new Date(value);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function recordDailyUsage(
+  current: DailyUsageSummary[],
+  previous: QuotaHistoryPoint | undefined,
+  point: QuotaHistoryPoint,
+): DailyUsageSummary[] {
+  if (point.metricKind !== "percent" || point.metric === null) return current;
+  const sameCycle = previous?.metricKind === "percent"
+    && previous.metric !== null
+    && previous.resetsAt === point.resetsAt;
+  const observedDelta = sameCycle ? Math.max(0, previous.metric! - point.metric) : 0;
+  const day = localDateKey(point.capturedAt);
+  const index = current.findIndex((item) => item.provider === point.provider && item.localDate === day);
+  const next = [...current];
+  if (index >= 0) {
+    const existing = next[index];
+    next[index] = {
+      ...existing,
+      observedUsedPercent: Math.min(100, existing.observedUsedPercent + observedDelta),
+      sampleCount: Math.min(10_000, existing.sampleCount + 1),
+      updatedAt: point.capturedAt,
+    };
+  } else {
+    next.push({
+      provider: point.provider,
+      localDate: day,
+      observedUsedPercent: Math.min(100, observedDelta),
+      sampleCount: 1,
+      updatedAt: point.capturedAt,
+    });
+  }
+  return next
+    .sort((left, right) => left.localDate.localeCompare(right.localDate) || left.provider.localeCompare(right.provider))
+    .slice(-600);
 }
 
 function metric(snapshot: ProviderSnapshot): Pick<QuotaHistoryPoint, "metric" | "metricKind" | "resetsAt"> {
@@ -226,6 +294,7 @@ export function recordSnapshotActivity(
   }
 
   const additions: QuotaHistoryPoint[] = [];
+  let dailyUsage = current.dailyUsage;
   const createdEvents: ActivityEvent[] = [];
   const notificationKeyOverrides = new Map<ActivityEvent, string>();
   const repeatedNotifications: Array<{ key: string; event: ActivityEvent }> = [];
@@ -239,7 +308,10 @@ export function recordSnapshotActivity(
       && latest.status === point.status
       && latest.resetsAt === point.resetsAt;
     const recentEnough = latest && now.getTime() - new Date(latest.capturedAt).getTime() < 30 * 60_000;
-    if (!unchanged || !recentEnough) additions.push(point);
+    if (!unchanged || !recentEnough) {
+      additions.push(point);
+      dailyUsage = recordDailyUsage(dailyUsage, latest, point);
+    }
 
     const previous = previousByProvider.get(snapshot.provider);
     if (!previous) continue;
@@ -298,6 +370,7 @@ export function recordSnapshotActivity(
     state: {
       ...current,
       history: [...current.history, ...additions].slice(-1000),
+      dailyUsage,
       events: [...createdEvents, ...current.events].slice(0, 200),
       lastNotifications,
       dailyPaceBaselines,

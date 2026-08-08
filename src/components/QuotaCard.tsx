@@ -1,15 +1,16 @@
 import { ArrowClockwise, ArrowsInSimple, ArrowsOutSimple, CheckCircle, ClockCounterClockwise, CloudArrowDown, CloudSlash, DotsSixVertical, Gauge, GearSix, Pulse, PushPin, PushPinSlash, SignIn, SpinnerGap, WarningCircle, X } from "@phosphor-icons/react";
-import { memo, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { memo, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { clampPercent, formatDateTime, formatResetDate, formatResetTime, quotaTier } from "../lib/format";
 import { copy, normalizeLanguage, resetForecastLabel, resetForecastTitle } from "../lib/i18n";
 import { normalizeProviderOrder, PROVIDER_CATALOG, type ProviderDefinition } from "../lib/providers";
 import { recentPercentageHistory, sortProviderIdsByRisk } from "../lib/providerPresentation";
 import { calculateQuotaPace, paceBaselineKey, trackedQuotaWindows, type NamedQuotaWindow, type QuotaPace, type QuotaPeriod } from "../lib/quotaPace";
 import type { RecentCodexReset } from "../lib/resetDetection";
-import type { DailyPaceBaseline, Language, ProviderId, ProviderSnapshot, QuotaHistoryPoint, ResetForecast, ResolvedAppearance, VisualStyle, VolcengineDiagnostics, WidgetPreferences } from "../types";
+import type { ColorTheme, CompactLayout, DailyPaceBaseline, DailyUsageSummary, Language, ProviderId, ProviderSnapshot, QuotaHistoryPoint, ResetForecast, ResolvedAppearance, VolcengineDiagnostics, WidgetPreferences } from "../types";
 import { ProviderMark } from "./ProviderMark";
 import { ProviderLogoSlider } from "./ProviderLogoSlider";
 import { EMPTY_UPDATE_STATE, UpdatePanel, type UpdateViewState } from "./UpdatePanel";
+import { UsageInsightsPanel } from "./UsageInsightsPanel";
 
 interface Props {
   snapshot: ProviderSnapshot;
@@ -36,6 +37,7 @@ interface Props {
   onOpenResetForecast?: (url: string) => void;
   paceBaselines?: Record<string, DailyPaceBaseline>;
   history?: QuotaHistoryPoint[];
+  dailyUsage?: DailyUsageSummary[];
   updateState?: UpdateViewState;
   updateOpen?: boolean;
   onUpdateOpen?: () => void;
@@ -53,6 +55,7 @@ interface Props {
   controlOpen?: boolean;
   onControlOpen?: () => void;
   initialShowCreditTip?: boolean;
+  initialInsightsOpen?: boolean;
 }
 
 function StatusIcon({ status, expired = false }: { status: ProviderSnapshot["status"]; expired?: boolean }) {
@@ -396,6 +399,7 @@ export const QuotaCard = memo(function QuotaCard({
   onOpenResetForecast = () => undefined,
   paceBaselines = {},
   history = [],
+  dailyUsage = [],
   updateState = EMPTY_UPDATE_STATE,
   updateOpen = false,
   onUpdateOpen = () => undefined,
@@ -413,15 +417,24 @@ export const QuotaCard = memo(function QuotaCard({
   controlOpen = false,
   onControlOpen = () => undefined,
   initialShowCreditTip = false,
+  initialInsightsOpen = false,
 }: Props) {
   const [showCreditTip, setShowCreditTip] = useState(initialShowCreditTip);
+  const [insightsOpen, setInsightsOpen] = useState(initialInsightsOpen);
   const [draggedProvider, setDraggedProvider] = useState<ProviderId | null>(null);
   const [dragTargetProvider, setDragTargetProvider] = useState<ProviderId | null>(null);
   const [dragTargetAfter, setDragTargetAfter] = useState(false);
   const [reorderAnnouncement, setReorderAnnouncement] = useState("");
   const providerPointerDrag = useRef<{ source: ProviderId; target: ProviderId; after: boolean; pointerId: number } | null>(null);
+  const quotaTabRef = useRef<HTMLButtonElement>(null);
+  const insightsTabRef = useRef<HTMLButtonElement>(null);
   const language = normalizeLanguage(preferences.language);
   const t = copy[language];
+  const tabId = useId();
+  const quotaTabId = `${tabId}-quota-tab`;
+  const insightsTabId = `${tabId}-insights-tab`;
+  const quotaPanelId = `${tabId}-quota-panel`;
+  const insightsPanelId = `${tabId}-insights-panel`;
   const quotaWindows = trackedQuotaWindows(snapshot);
   const showQuotaWindowList = quotaWindows.length > 1;
   const singleQuotaWindow = quotaWindows.length === 1 ? quotaWindows[0] : null;
@@ -472,6 +485,8 @@ export const QuotaCard = memo(function QuotaCard({
           : t.unavailableStatus;
   const message = localizedBackendMessage(snapshot.message, language, snapshot.displayName);
   const overlayOpen = diagnosticsOpen || updateOpen || controlOpen;
+  const quotaTabLabel = language === "en" ? "Quota" : "\u989d\u5ea6";
+  const insightsTabLabel = language === "en" ? "Insights" : "\u6d1e\u5bdf";
   const updateAttention = !["idle", "current"].includes(updateState.phase);
   const creditExpirations = useMemo(() => (snapshot.resetCreditExpiresAt ?? []).map((value, index) => {
     return t.creditItem(index, formatDateTime(value, language));
@@ -550,7 +565,7 @@ export const QuotaCard = memo(function QuotaCard({
 
   return (
     <main
-      className={`quota-card quota-card--${snapshot.status} quota-card--${tier} quota-card--layout-${preferences.layoutMode} quota-card--style-${preferences.visualStyle} quota-card--theme-${resolvedAppearance}${overlayOpen ? " quota-card--overlay-open" : ""}`}
+      className={`quota-card quota-card--${snapshot.status} quota-card--${tier} quota-card--layout-${preferences.layoutMode} quota-card--expanded-${preferences.expandedLayout} quota-card--style-${preferences.colorTheme} quota-card--theme-${resolvedAppearance}${overlayOpen ? " quota-card--overlay-open" : ""}${insightsOpen ? " quota-card--insights-open" : ""}`}
       style={{ "--accent-color": preferences.accentColor } as CSSProperties}
       onMouseEnter={() => onHover(true)}
       onMouseLeave={() => onHover(false)}
@@ -584,7 +599,79 @@ export const QuotaCard = memo(function QuotaCard({
           onOpenRelease={onUpdateRelease}
         />
       ) : null}
-      <section className="primary-pane" aria-hidden={overlayOpen || undefined} inert={overlayOpen || undefined}>
+      <header className="quota-panel-header" aria-hidden={overlayOpen || undefined} inert={overlayOpen || undefined}>
+        <div className="quota-panel-navigation">
+          <p className="quota-panel-brand">QUOTA FLOAT <span>· LOCAL FIRST</span></p>
+          <div className="quota-panel-tabs" role="tablist" aria-label={language === "en" ? "Widget views" : "\u5c0f\u7ec4\u4ef6\u89c6\u56fe"} onMouseDown={(event) => event.stopPropagation()}>
+            <button
+              type="button"
+              ref={quotaTabRef}
+              id={quotaTabId}
+              className={insightsOpen ? "" : "is-active"}
+              role="tab"
+              aria-selected={!insightsOpen}
+              aria-controls={quotaPanelId}
+              tabIndex={insightsOpen ? -1 : 0}
+              onClick={() => setInsightsOpen(false)}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowRight" || event.key === "ArrowLeft" || event.key === "End") {
+                  event.preventDefault();
+                  setInsightsOpen(true);
+                  requestAnimationFrame(() => insightsTabRef.current?.focus());
+                }
+              }}
+            >
+              {quotaTabLabel}
+            </button>
+            <button
+              type="button"
+              ref={insightsTabRef}
+              id={insightsTabId}
+              className={insightsOpen ? "is-active" : ""}
+              role="tab"
+              aria-selected={insightsOpen}
+              aria-controls={insightsPanelId}
+              tabIndex={insightsOpen ? 0 : -1}
+              onClick={() => setInsightsOpen(true)}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowLeft" || event.key === "ArrowRight" || event.key === "Home") {
+                  event.preventDefault();
+                  setInsightsOpen(false);
+                  requestAnimationFrame(() => quotaTabRef.current?.focus());
+                }
+              }}
+            >
+              {insightsTabLabel}
+            </button>
+          </div>
+        </div>
+        {!preferences.locked ? (
+          <nav className="card-actions quota-panel-actions" aria-label={t.controls} onMouseDown={(event) => event.stopPropagation()}>
+            <span className={`usage-indicator usage-indicator--${indicatorState}`} role="status" aria-label={indicatorLabel} title={indicatorLabel}><i /></span>
+            <button className={updateAttention ? "update-action update-action--active" : "update-action"} onClick={onUpdateOpen} aria-label={t.appUpdate} title={t.appUpdate}><CloudArrowDown /></button>
+            <button className={controlOpen ? "control-action control-action--active" : "control-action"} onClick={onControlOpen} aria-label={language === "en" ? "Control center" : "\u63a7\u5236\u4e2d\u5fc3"} title={language === "en" ? "Control center" : "\u63a7\u5236\u4e2d\u5fc3"}><GearSix /></button>
+            <button onClick={onDiagnostics} aria-label={t.diagnostics} title={t.diagnostics}><Pulse /></button>
+            <button className="language-button" onClick={onLanguage} aria-label={t.switchLanguage} title={t.switchLanguage}>{language === "en" ? "\u4e2d" : "EN"}</button>
+            <button className={preferences.stayExpanded ? "expand-button expand-button--active" : "expand-button"} onClick={onToggleStayExpanded} aria-pressed={preferences.stayExpanded} aria-label={preferences.stayExpanded ? t.keepExpandedOff : t.keepExpandedOn} title={preferences.stayExpanded ? t.keepExpandedOff : t.keepExpandedOn}>
+              {preferences.stayExpanded ? <ArrowsInSimple weight="bold" /> : <ArrowsOutSimple />}
+            </button>
+            <button onClick={onLock} aria-label={preferences.alwaysOnTop ? t.pinOff : t.pinOn} title={preferences.alwaysOnTop ? t.pinOff : t.pinOn}>
+              {preferences.alwaysOnTop ? <PushPin /> : <PushPinSlash />}
+            </button>
+          </nav>
+        ) : null}
+      </header>
+
+      <div
+        className="quota-tab-panel quota-tab-panel--quota"
+        id={quotaPanelId}
+        role="tabpanel"
+        aria-labelledby={quotaTabId}
+        hidden={insightsOpen}
+        aria-hidden={overlayOpen || undefined}
+        inert={overlayOpen || undefined}
+      >
+      <section className="primary-pane">
         <header className="card-header">
           <div>
             <p className="eyebrow">{snapshot.displayName} · {snapshot.plan ?? t.accountFallback}</p>
@@ -674,7 +761,7 @@ export const QuotaCard = memo(function QuotaCard({
       </section>
 
       <aside className="provider-ledger" aria-hidden={overlayOpen || undefined} inert={overlayOpen || undefined}>
-        {preferences.visualStyle === "island" ? (
+        {preferences.expandedLayout === "provider-bar" ? (
           <ProviderLogoSlider
             providers={providerDefinitions}
             selected={snapshot.provider}
@@ -684,21 +771,6 @@ export const QuotaCard = memo(function QuotaCard({
         ) : null}
         <header className="ledger-header">
           <p>{t.allServices}<span>{providerDefinitions.length}/{PROVIDER_CATALOG.length}</span>{preferences.riskFirst ? <b>{language === "en" ? "RISK FIRST" : "风险优先"}</b> : null}</p>
-          {!preferences.locked ? (
-            <nav className="card-actions" aria-label={t.controls} onMouseDown={(event) => event.stopPropagation()}>
-              <span className={`usage-indicator usage-indicator--${indicatorState}`} role="status" aria-label={indicatorLabel} title={indicatorLabel}><i /></span>
-              <button className={updateAttention ? "update-action update-action--active" : "update-action"} onClick={onUpdateOpen} aria-label={t.appUpdate} title={t.appUpdate}><CloudArrowDown /></button>
-              <button className={controlOpen ? "control-action control-action--active" : "control-action"} onClick={onControlOpen} aria-label={language === "en" ? "Control center" : "控制中心"} title={language === "en" ? "Control center" : "控制中心"}><GearSix /></button>
-              <button onClick={onDiagnostics} aria-label={t.diagnostics} title={t.diagnostics}><Pulse /></button>
-              <button className="language-button" onClick={onLanguage} aria-label={t.switchLanguage} title={t.switchLanguage}>{language === "en" ? "中" : "EN"}</button>
-              <button className={preferences.stayExpanded ? "expand-button expand-button--active" : "expand-button"} onClick={onToggleStayExpanded} aria-pressed={preferences.stayExpanded} aria-label={preferences.stayExpanded ? t.keepExpandedOff : t.keepExpandedOn} title={preferences.stayExpanded ? t.keepExpandedOff : t.keepExpandedOn}>
-                {preferences.stayExpanded ? <ArrowsInSimple weight="bold" /> : <ArrowsOutSimple />}
-              </button>
-              <button onClick={onLock} aria-label={preferences.alwaysOnTop ? t.pinOff : t.pinOn} title={preferences.alwaysOnTop ? t.pinOff : t.pinOn}>
-                {preferences.alwaysOnTop ? <PushPin /> : <PushPinSlash />}
-              </button>
-            </nav>
-          ) : null}
         </header>
         <div className="provider-list" role="list">
           {providerDefinitions.map((definition) => (
@@ -737,11 +809,30 @@ export const QuotaCard = memo(function QuotaCard({
           ))}
         </div>
       </aside>
+      </div>
+
+      <div
+        className="quota-tab-panel quota-tab-panel--insights"
+        id={insightsPanelId}
+        role="tabpanel"
+        aria-labelledby={insightsTabId}
+        hidden={!insightsOpen}
+        aria-hidden={overlayOpen || undefined}
+        inert={overlayOpen || undefined}
+      >
+        <UsageInsightsPanel
+          snapshot={snapshot}
+          history={history}
+          dailyUsage={dailyUsage}
+          paceBaselines={paceBaselines}
+          language={language}
+        />
+      </div>
     </main>
   );
 });
 
-export const QuotaOrb = memo(function QuotaOrb({ snapshot, onDrag, onHover, language = "zh-CN", visualStyle = "aurora", accentColor = "#397ae0", resolvedAppearance = "light" }: Pick<Props, "snapshot" | "onDrag" | "onHover"> & { language?: Language; visualStyle?: VisualStyle; accentColor?: string; resolvedAppearance?: ResolvedAppearance }) {
+export const QuotaOrb = memo(function QuotaOrb({ snapshot, onDrag, onHover, language = "zh-CN", compactLayout = "float", colorTheme = "aurora", accentColor = "#397ae0", resolvedAppearance = "light" }: Pick<Props, "snapshot" | "onDrag" | "onHover"> & { language?: Language; compactLayout?: CompactLayout; colorTheme?: ColorTheme; accentColor?: string; resolvedAppearance?: ResolvedAppearance }) {
   const [idle, setIdle] = useState(false);
   const idleTimer = useRef<number | null>(null);
   const activeLanguage = normalizeLanguage(language);
@@ -758,6 +849,7 @@ export const QuotaOrb = memo(function QuotaOrb({ snapshot, onDrag, onHover, lang
     : null;
   const tier = quotaTier(remaining);
   const available = snapshot.status === "ok" && (remaining !== null || balance !== null);
+  const compactProgress = remaining ?? (available ? 100 : 0);
   const accessibleLabel = remaining !== null && orbQuota
     ? quotaAvailableLabel(orbQuota.period, remaining, activeLanguage)
     : unlimited
@@ -784,8 +876,8 @@ export const QuotaOrb = memo(function QuotaOrb({ snapshot, onDrag, onHover, lang
 
   return (
     <main
-      className={`quota-orb quota-card--${snapshot.status} quota-card--${tier} quota-card--style-${visualStyle} quota-card--theme-${resolvedAppearance}${idle ? " quota-orb--idle" : ""}`}
-      style={{ "--accent-color": accentColor } as CSSProperties}
+      className={`quota-orb quota-card--${snapshot.status} quota-card--${tier} quota-card--compact-${compactLayout} quota-card--style-${colorTheme} quota-card--theme-${resolvedAppearance}${idle ? " quota-orb--idle" : ""}`}
+      style={{ "--accent-color": accentColor, "--quota-progress-angle": `${Math.round(compactProgress * 36) / 10}deg` } as CSSProperties}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={() => { onHover(false); scheduleIdle(); }}
       onMouseDown={(event) => { if (event.button === 0) void onDrag(); }}
@@ -830,6 +922,7 @@ interface QuotaIslandProps {
   snapshot: ProviderSnapshot;
   snapshots: ProviderSnapshot[];
   language?: Language;
+  colorTheme?: ColorTheme;
   accentColor?: string;
   resolvedAppearance?: ResolvedAppearance;
   onSelectProvider: (provider: ProviderId) => void;
@@ -841,6 +934,7 @@ export const QuotaIsland = memo(function QuotaIsland({
   snapshot,
   snapshots,
   language = "zh-CN",
+  colorTheme = "aurora",
   accentColor = "#397ae0",
   resolvedAppearance = "dark",
   onSelectProvider,
@@ -883,7 +977,7 @@ export const QuotaIsland = memo(function QuotaIsland({
 
   return (
     <main
-      className={`quota-island quota-card--${snapshot.status} quota-card--${quotaTier(remaining)} quota-card--theme-${resolvedAppearance}`}
+      className={`quota-island quota-card--${snapshot.status} quota-card--${quotaTier(remaining)} quota-card--compact-bar quota-card--style-${colorTheme} quota-card--theme-${resolvedAppearance}`}
       style={{ "--accent-color": accentColor } as CSSProperties}
       onMouseEnter={() => {
         cancelHover();

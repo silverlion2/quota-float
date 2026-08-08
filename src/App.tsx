@@ -450,7 +450,7 @@ export default function App() {
     if (value) void refresh(true);
     if (value) {
       const sequence = ++hoverSequence.current;
-      void setWidgetExpanded(true, preferences.visualStyle)
+      void setWidgetExpanded(true, preferences.compactLayout)
         .then(() => { if (hoverSequence.current === sequence) setCompact(false); })
         .catch(() => {
           setCompact(false);
@@ -462,21 +462,21 @@ export default function App() {
     collapseTimer.current = window.setTimeout(() => {
       if (hoverSequence.current !== sequence) return;
       setCompact(true);
-      void setWidgetExpanded(false, preferences.visualStyle).catch(() => setOperationError("Widget collapse failed."));
+      void setWidgetExpanded(false, preferences.compactLayout).catch(() => setOperationError("Widget collapse failed."));
     }, 180);
-  }, [preferences.stayExpanded, preferences.visualStyle, refresh]);
+  }, [preferences.compactLayout, preferences.stayExpanded, refresh]);
 
   useEffect(() => {
     if (!preferences.stayExpanded) return;
     if (collapseTimer.current !== null) window.clearTimeout(collapseTimer.current);
     setCompact(false);
-    void setWidgetExpanded(true, preferences.visualStyle).catch(() => setOperationError("Widget expand failed."));
-  }, [preferences.stayExpanded, preferences.visualStyle]);
+    void setWidgetExpanded(true, preferences.compactLayout).catch(() => setOperationError("Widget expand failed."));
+  }, [preferences.compactLayout, preferences.stayExpanded]);
 
   useEffect(() => {
     if (!compact || preferences.stayExpanded) return;
-    void setWidgetExpanded(false, preferences.visualStyle).catch(() => setOperationError("Widget style resize failed."));
-  }, [compact, preferences.stayExpanded, preferences.visualStyle]);
+    void setWidgetExpanded(false, preferences.compactLayout).catch(() => setOperationError("Widget layout resize failed."));
+  }, [compact, preferences.compactLayout, preferences.stayExpanded]);
 
   useEffect(() => {
     if (compact) return;
@@ -511,11 +511,12 @@ export default function App() {
       const index = orderedSnapshots.findIndex((item) => item.provider === provider);
       if (index >= 0) setActiveIndex(index);
     };
-    return preferences.visualStyle === "island" ? (
+    return preferences.compactLayout === "bar" ? (
       <QuotaIsland
         snapshot={current}
         snapshots={orderedSnapshots}
         language={language}
+        colorTheme={preferences.colorTheme}
         accentColor={preferences.accentColor}
         resolvedAppearance={resolvedAppearance}
         onSelectProvider={selectCompactProvider}
@@ -526,7 +527,8 @@ export default function App() {
       <QuotaOrb
         snapshot={current}
         language={language}
-        visualStyle={preferences.visualStyle}
+        compactLayout={preferences.compactLayout}
+        colorTheme={preferences.colorTheme}
         accentColor={preferences.accentColor}
         resolvedAppearance={resolvedAppearance}
         onDrag={() => { void startDragging().catch(() => setOperationError("Widget drag failed.")); }}
@@ -571,6 +573,7 @@ export default function App() {
       onOpenResetForecast={(url) => void openExternalUrl(url).catch(() => setOperationError("Reset forecast could not be opened."))}
       paceBaselines={runtimeState.dailyPaceBaselines}
       history={runtimeState.history}
+      dailyUsage={runtimeState.dailyUsage}
       updateState={updateState}
       updateOpen={updateOpen}
       onUpdateOpen={handleUpdateOpen}

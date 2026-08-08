@@ -153,6 +153,61 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
     history: "Show recent quota trails",
     historyHint: "Draw local-history sparklines inside provider rows",
   };
+  const customizationLabels = zh ? {
+    layoutSection: "布局",
+    layoutHint: "小组件与展开面板可分别选择布局",
+    compactLayout: "小组件",
+    expandedLayout: "展开面板",
+    float: "浮窗",
+    floatHint: "紧凑方形指标",
+    ring: "圆环",
+    ringHint: "环形进度指标",
+    bar: "横条",
+    barHint: "顶部横条与平台滑块",
+    dashboard: "仪表板",
+    dashboardHint: "指标与平台列表",
+    providerBar: "平台栏",
+    providerBarHint: "带平台快捷切换栏",
+    stacked: "纵向堆叠",
+    stackedHint: "主指标位于平台列表上方",
+    colorSection: "颜色",
+    colorHint: "颜色主题适用于所有布局",
+    colorTheme: "颜色主题",
+    accent: "强调色",
+    aurora: "极光",
+    auroraHint: "柔和玻璃与环境色",
+    graphite: "石墨",
+    graphiteHint: "高对比工作台",
+    paper: "纸面",
+    paperHint: "温暖克制的纸张质感",
+  } : {
+    layoutSection: "Layout",
+    layoutHint: "Choose compact and expanded layouts independently",
+    compactLayout: "Small widget",
+    expandedLayout: "Expanded widget",
+    float: "Float",
+    floatHint: "Compact square metric",
+    ring: "Ring",
+    ringHint: "Circular progress metric",
+    bar: "Bar",
+    barHint: "Top bar with provider slider",
+    dashboard: "Dashboard",
+    dashboardHint: "Metric and provider ledger",
+    providerBar: "Provider bar",
+    providerBarHint: "Adds quick provider switching",
+    stacked: "Stacked",
+    stackedHint: "Metric above the provider ledger",
+    colorSection: "Color",
+    colorHint: "Color themes apply to every layout",
+    colorTheme: "Color theme",
+    accent: "Accent color",
+    aurora: "Aurora",
+    auroraHint: "Soft glass with ambient color",
+    graphite: "Graphite",
+    graphiteHint: "High-contrast workstation",
+    paper: "Paper",
+    paperHint: "Warm, restrained paper texture",
+  };
 
   const historyCounts = useMemo(() => new Map(PROVIDER_CATALOG.map((provider) => [provider.id, runtimeState.history.filter((point) => point.provider === provider.id).length])), [runtimeState.history]);
   const snapshotsByProvider = useMemo(() => new Map(snapshots.map((snapshot) => [snapshot.provider, snapshot])), [snapshots]);
@@ -164,7 +219,8 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
     const saved: SavedLayout = {
       id: crypto.randomUUID(), name, createdAt: new Date().toISOString(), providerOrder: preferences.providerOrder ?? DEFAULT_PROVIDER_ORDER,
       hiddenProviders: preferences.hiddenProviders, collapsedProviders: preferences.collapsedProviders, layoutMode: preferences.layoutMode, accentColor: preferences.accentColor,
-      visualStyle: preferences.visualStyle, appearanceMode: preferences.appearanceMode, riskFirst: preferences.riskFirst, showHistorySparklines: preferences.showHistorySparklines,
+      compactLayout: preferences.compactLayout, expandedLayout: preferences.expandedLayout, colorTheme: preferences.colorTheme,
+      appearanceMode: preferences.appearanceMode, riskFirst: preferences.riskFirst, showHistorySparklines: preferences.showHistorySparklines,
     };
     onRuntimeState({ ...runtimeState, savedLayouts: [...runtimeState.savedLayouts, saved].slice(-12) });
     setLayoutName("");
@@ -186,10 +242,42 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
         {tab === "display" ? <>
           <div className="control-grid">
             <label className="control-field"><span>{labels.layout}</span><select value={preferences.layoutMode} onChange={(event) => onPreferences({ ...preferences, layoutMode: event.target.value as WidgetPreferences['layoutMode'] })}><option value="compact">{labels.compact}</option><option value="standard">{labels.standard}</option><option value="detailed">{labels.detailed}</option></select></label>
-            <label className="control-field"><span>{labels.accent}</span><input type="color" value={preferences.accentColor} onChange={(event) => onPreferences({ ...preferences, accentColor: event.target.value })} /></label>
             <label className="control-field"><span>{labels.rotate} · {preferences.autoRotateSeconds}s</span><input type="range" min="5" max="60" step="1" value={preferences.autoRotateSeconds} onChange={(event) => onPreferences({ ...preferences, autoRotateSeconds: Number(event.target.value) })} /></label>
           </div>
-          <div className="control-section-title control-section-title--appearance"><span>{appearanceLabels.appearance}</span><small>{appearanceLabels.appearanceHint}</small></div>
+          <div className="control-section-title control-section-title--appearance"><span>{customizationLabels.layoutSection}</span><small>{customizationLabels.layoutHint}</small></div>
+          <div className="layout-choice-groups">
+            <fieldset className="layout-choice-group">
+              <legend>{customizationLabels.compactLayout}</legend>
+              <div className="layout-options" role="radiogroup" aria-label={customizationLabels.compactLayout}>
+                {([
+                  ["float", customizationLabels.float, customizationLabels.floatHint],
+                  ["ring", customizationLabels.ring, customizationLabels.ringHint],
+                  ["bar", customizationLabels.bar, customizationLabels.barHint],
+                ] as const).map(([id, label, hint]) => (
+                  <button key={id} type="button" role="radio" aria-checked={preferences.compactLayout === id} className={`layout-option layout-option--${id}${preferences.compactLayout === id ? " is-active" : ""}`} onClick={() => onPreferences({ ...preferences, compactLayout: id })}>
+                    <i aria-hidden="true">{id === "float" ? <span className="layout-float-value">67<small>%</small></span> : id === "ring" ? <span className="layout-ring-value">67<small>%</small></span> : <><ProviderMark provider="codex" label="Codex" /><span className="layout-bar-value">74%</span></>}</i>
+                    <span><strong>{label}</strong><small>{hint}</small></span>
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+            <fieldset className="layout-choice-group">
+              <legend>{customizationLabels.expandedLayout}</legend>
+              <div className="layout-options" role="radiogroup" aria-label={customizationLabels.expandedLayout}>
+                {([
+                  ["dashboard", customizationLabels.dashboard, customizationLabels.dashboardHint],
+                  ["provider-bar", customizationLabels.providerBar, customizationLabels.providerBarHint],
+                  ["stacked", customizationLabels.stacked, customizationLabels.stackedHint],
+                ] as const).map(([id, label, hint]) => (
+                  <button key={id} type="button" role="radio" aria-checked={preferences.expandedLayout === id} className={`layout-option layout-option--${id}${preferences.expandedLayout === id ? " is-active" : ""}`} onClick={() => onPreferences({ ...preferences, expandedLayout: id })}>
+                    <i aria-hidden="true"><b /><span /><span /><span /></i>
+                    <span><strong>{label}</strong><small>{hint}</small></span>
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+          </div>
+          <div className="control-section-title control-section-title--appearance"><span>{customizationLabels.colorSection}</span><small>{customizationLabels.colorHint}</small></div>
           <div className="appearance-options" role="radiogroup" aria-label={appearanceLabels.appearance}>
             {([
               ["system", Monitor, appearanceLabels.system],
@@ -209,33 +297,26 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
               </button>
             ))}
           </div>
-          <div className="control-section-title"><span>{appearanceLabels.style}</span></div>
-          <div className="visual-style-options" role="radiogroup" aria-label={appearanceLabels.style}>
+          <div className="color-theme-options" role="radiogroup" aria-label={customizationLabels.colorTheme}>
             {([
-              ["float", appearanceLabels.float, appearanceLabels.floatHint],
-              ["aurora", appearanceLabels.aurora, appearanceLabels.auroraHint],
-              ["graphite", appearanceLabels.graphite, appearanceLabels.graphiteHint],
-              ["paper", appearanceLabels.paper, appearanceLabels.paperHint],
-              ["island", appearanceLabels.island, appearanceLabels.islandHint],
+              ["aurora", customizationLabels.aurora, customizationLabels.auroraHint],
+              ["graphite", customizationLabels.graphite, customizationLabels.graphiteHint],
+              ["paper", customizationLabels.paper, customizationLabels.paperHint],
             ] as const).map(([id, label, hint]) => (
               <button
                 key={id}
                 type="button"
                 role="radio"
-                aria-checked={preferences.visualStyle === id}
-                className={`visual-style-option visual-style-option--${id}${preferences.visualStyle === id ? " is-active" : ""}`}
-                onClick={() => onPreferences({ ...preferences, visualStyle: id })}
+                aria-checked={preferences.colorTheme === id}
+                className={`color-theme-option color-theme-option--${id}${preferences.colorTheme === id ? " is-active" : ""}`}
+                onClick={() => onPreferences({ ...preferences, colorTheme: id })}
               >
-                <i aria-hidden="true">
-                  {id === "float" ? <><span className="style-float-value">67<small>%</small></span><b /></> : null}
-                  {id === "island" ? <><ProviderMark provider="codex" label="Codex" /><span className="style-island-value">74%</span></> : null}
-                  {id !== "float" && id !== "island" ? <><span /><span /><span /></> : null}
-                </i>
-                <strong>{label}</strong>
-                <small>{hint}</small>
+                <i aria-hidden="true"><span /><span /><span /></i>
+                <span><strong>{label}</strong><small>{hint}</small></span>
               </button>
             ))}
           </div>
+          <label className="control-field color-accent-field"><span>{customizationLabels.accent}</span><input type="color" value={preferences.accentColor} onChange={(event) => onPreferences({ ...preferences, accentColor: event.target.value })} /></label>
           <div className="display-feature-options">
             <label className="display-feature-option"><ListStar /><span><strong>{appearanceLabels.riskFirst}</strong><small>{appearanceLabels.riskFirstHint}</small></span><span className="switch"><input type="checkbox" checked={preferences.riskFirst} onChange={(event) => onPreferences({ ...preferences, riskFirst: event.target.checked })} /><i /></span></label>
             <label className="display-feature-option"><ChartLineUp /><span><strong>{appearanceLabels.history}</strong><small>{appearanceLabels.historyHint}</small></span><span className="switch"><input type="checkbox" checked={preferences.showHistorySparklines} onChange={(event) => onPreferences({ ...preferences, showHistorySparklines: event.target.checked })} /><i /></span></label>
@@ -250,7 +331,7 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
           </div>
           <div className="control-section-title"><span>{labels.savedLayouts}</span></div>
           <div className="layout-save"><input value={layoutName} onChange={(event) => setLayoutName(event.target.value)} placeholder={zh ? "方案名称" : "Profile name"} /><button type="button" onClick={saveLayout}><Plus />{labels.saveLayout}</button></div>
-          <div className="saved-layouts">{runtimeState.savedLayouts.length === 0 ? <p>{labels.noLayouts}</p> : runtimeState.savedLayouts.map((layout) => <div key={layout.id}><button type="button" onClick={() => onPreferences({ ...preferences, providerOrder: layout.providerOrder, hiddenProviders: layout.hiddenProviders, collapsedProviders: layout.collapsedProviders, layoutMode: layout.layoutMode, visualStyle: layout.visualStyle, appearanceMode: layout.appearanceMode, riskFirst: layout.riskFirst, showHistorySparklines: layout.showHistorySparklines, accentColor: layout.accentColor })}><strong>{layout.name}</strong><small>{layout.visualStyle} · {layout.appearanceMode} · {layout.layoutMode}</small></button><button type="button" aria-label="Delete" onClick={() => onRuntimeState({ ...runtimeState, savedLayouts: runtimeState.savedLayouts.filter((item) => item.id !== layout.id) })}><Trash /></button></div>)}</div>
+          <div className="saved-layouts">{runtimeState.savedLayouts.length === 0 ? <p>{labels.noLayouts}</p> : runtimeState.savedLayouts.map((layout) => <div key={layout.id}><button type="button" onClick={() => onPreferences({ ...preferences, providerOrder: layout.providerOrder, hiddenProviders: layout.hiddenProviders, collapsedProviders: layout.collapsedProviders, layoutMode: layout.layoutMode, compactLayout: layout.compactLayout, expandedLayout: layout.expandedLayout, colorTheme: layout.colorTheme, appearanceMode: layout.appearanceMode, riskFirst: layout.riskFirst, showHistorySparklines: layout.showHistorySparklines, accentColor: layout.accentColor })}><strong>{layout.name}</strong><small>{layout.compactLayout} · {layout.expandedLayout} · {layout.colorTheme} · {layout.layoutMode}</small></button><button type="button" aria-label="Delete" onClick={() => onRuntimeState({ ...runtimeState, savedLayouts: runtimeState.savedLayouts.filter((item) => item.id !== layout.id) })}><Trash /></button></div>)}</div>
         </> : null}
 
         {tab === "health" ? <>

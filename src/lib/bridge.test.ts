@@ -40,15 +40,15 @@ describe("widget transitions", () => {
     await setWidgetExpanded(true);
     expect(api.invoke).toHaveBeenCalledWith("expand_widget", {
       workArea: { position: { x: 0, y: 0 }, size: { width: 1920, height: 1040 } },
-      visualStyle: "float",
+      compactLayout: "float",
     });
   });
 
-  it("passes Island sizing intent to both transition commands", async () => {
-    await setWidgetExpanded(true, "island");
-    await setWidgetExpanded(false, "island");
-    expect(api.invoke).toHaveBeenCalledWith("expand_widget", expect.objectContaining({ visualStyle: "island" }));
-    expect(api.invoke).toHaveBeenCalledWith("collapse_widget", { visualStyle: "island" });
+  it("passes bar sizing intent to both transition commands", async () => {
+    await setWidgetExpanded(true, "bar");
+    await setWidgetExpanded(false, "bar");
+    expect(api.invoke).toHaveBeenCalledWith("expand_widget", expect.objectContaining({ compactLayout: "bar" }));
+    expect(api.invoke).toHaveBeenCalledWith("collapse_widget", { compactLayout: "bar" });
   });
 
   it("serializes rapid expand and collapse requests", async () => {

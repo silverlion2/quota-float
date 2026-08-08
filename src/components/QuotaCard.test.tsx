@@ -188,6 +188,48 @@ describe("QuotaCard platform ledger", () => {
     expect(container.querySelector(".provider-history polyline")).toBeInTheDocument();
   });
 
+  it("switches between exactly two tabs while preserving the local usage dashboard", () => {
+    render(
+      <QuotaCard
+        snapshot={codex}
+        snapshots={[codex]}
+        preferences={preferences}
+        history={[
+          { provider: "codex", capturedAt: "2026-07-15T00:00:00Z", metric: 82, metricKind: "percent", status: "ok", resetsAt: "2026-07-19T00:00:00Z" },
+          { provider: "codex", capturedAt: "2026-07-16T00:00:00Z", metric: 74, metricKind: "percent", status: "ok", resetsAt: "2026-07-19T00:00:00Z" },
+        ]}
+        dailyUsage={[{ provider: "codex", localDate: "2026-07-16", observedUsedPercent: 8, sampleCount: 3, updatedAt: "2026-07-16T00:00:00Z" }]}
+        onSelectProvider={noop}
+        onLock={noop}
+        onLanguage={noop}
+        onDrag={noop}
+        onHover={noop}
+        consumingProviders={new Set()}
+      />,
+    );
+
+    const quotaTab = screen.getByRole("tab", { name: "Quota" });
+    const insightsTab = screen.getByRole("tab", { name: "Insights" });
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
+    expect(quotaTab).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.click(insightsTab);
+    expect(insightsTab).toHaveAttribute("aria-selected", "true");
+    expect(quotaTab).toHaveAttribute("aria-selected", "false");
+    expect(screen.getByRole("region", { name: "Usage insights" })).toBeInTheDocument();
+    expect(screen.getByText("Last 90 days")).toBeInTheDocument();
+    expect(screen.getByText(/no prompt or token content/i)).toBeInTheDocument();
+
+    fireEvent.click(quotaTab);
+    expect(quotaTab).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByRole("region", { name: "Usage insights" })).not.toBeInTheDocument();
+
+    fireEvent.keyDown(quotaTab, { key: "ArrowRight" });
+    expect(insightsTab).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(insightsTab, { key: "ArrowLeft" });
+    expect(quotaTab).toHaveAttribute("aria-selected", "true");
+  });
+
   it("marks platforms without a collector as not detected", () => {
     render(
       <QuotaCard
@@ -211,9 +253,33 @@ describe("QuotaCard platform ledger", () => {
     expect(screen.getByLabelText("1280 credits")).toBeInTheDocument();
   });
 
-  it("preserves the legacy Float tile as a distinct compact style", () => {
-    render(<QuotaOrb snapshot={codex} language="en" visualStyle="float" resolvedAppearance="light" onDrag={noop} onHover={noop} />);
-    expect(screen.getByLabelText("Weekly quota remaining 74%")).toHaveClass("quota-card--style-float", "quota-card--theme-light");
+  it("applies compact layout and color theme independently", () => {
+    render(<QuotaOrb snapshot={codex} language="en" compactLayout="float" colorTheme="paper" resolvedAppearance="light" onDrag={noop} onHover={noop} />);
+    expect(screen.getByLabelText("Weekly quota remaining 74%")).toHaveClass("quota-card--compact-float", "quota-card--style-paper", "quota-card--theme-light");
+  });
+
+  it("renders the Ring compact layout with any color theme", () => {
+    render(<QuotaOrb snapshot={codex} language="en" compactLayout="ring" colorTheme="graphite" resolvedAppearance="dark" onDrag={noop} onHover={noop} />);
+    const ring = screen.getByLabelText("Weekly quota remaining 74%");
+    expect(ring).toHaveClass("quota-card--compact-ring", "quota-card--style-graphite", "quota-card--theme-dark");
+    expect(ring).toHaveStyle({ "--quota-progress-angle": "266.4deg" });
+  });
+
+  it("renders the Stacked expanded layout independently from color", () => {
+    const { container } = render(
+      <QuotaCard
+        snapshot={codex}
+        snapshots={[codex, qoder]}
+        preferences={{ ...preferences, expandedLayout: "stacked", colorTheme: "paper" }}
+        onSelectProvider={noop}
+        onLock={noop}
+        onLanguage={noop}
+        onDrag={noop}
+        onHover={noop}
+        consumingProviders={new Set()}
+      />,
+    );
+    expect(container.querySelector(".quota-card")).toHaveClass("quota-card--expanded-stacked", "quota-card--style-paper");
   });
 
   it("switches providers from the compact Island slider without expanding", () => {
@@ -231,6 +297,7 @@ describe("QuotaCard platform ledger", () => {
 
     fireEvent.click(screen.getByRole("radio", { name: "QODER" }));
     expect(onSelectProvider).toHaveBeenCalledWith("qoder");
+    expect(screen.getByLabelText(/CODEX 74% left On track/i)).toHaveClass("quota-card--compact-bar", "quota-card--style-aurora");
     expect(screen.getByText("74%")).toBeInTheDocument();
     expect(screen.getByText("On track")).toBeInTheDocument();
   });

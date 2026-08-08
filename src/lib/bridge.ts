@@ -1,4 +1,4 @@
-import type { AppDiagnostics, ProviderSnapshot, ResetForecast, RuntimeState, VisualStyle, VolcengineDiagnostics, WidgetPreferences } from "../types";
+import type { AppDiagnostics, CompactLayout, ProviderSnapshot, ResetForecast, RuntimeState, VolcengineDiagnostics, WidgetPreferences } from "../types";
 import { EMPTY_RUNTIME_STATE, normalizeRuntimeState } from "./activity";
 import { DEFAULT_WIDGET_PREFERENCES } from "./preferences";
 
@@ -287,12 +287,12 @@ export async function startDragging(): Promise<void> {
   }, 80);
 }
 
-export function setWidgetExpanded(expanded: boolean, visualStyle: VisualStyle = "float"): Promise<void> {
+export function setWidgetExpanded(expanded: boolean, compactLayout: CompactLayout = "float"): Promise<void> {
   if (!isTauri()) return Promise.resolve();
   return enqueueWidgetTransition(async () => {
     const { invoke } = await import("@tauri-apps/api/core");
     if (!expanded) {
-      await invoke("collapse_widget", { visualStyle });
+      await invoke("collapse_widget", { compactLayout });
       return;
     }
     const { currentMonitor } = await import("@tauri-apps/api/window");
@@ -301,7 +301,7 @@ export function setWidgetExpanded(expanded: boolean, visualStyle: VisualStyle = 
       position: { x: monitor.workArea.position.x, y: monitor.workArea.position.y },
       size: { width: monitor.workArea.size.width, height: monitor.workArea.size.height },
     } : null;
-    await invoke("expand_widget", { workArea, visualStyle });
+    await invoke("expand_widget", { workArea, compactLayout });
   });
 }
 

@@ -6,20 +6,34 @@ describe("widget preference migration", () => {
     const value = normalizeWidgetPreferences({ language: "en", providerOrder: ["qoder", "codex"] as never });
     expect(value.providerOrder).toEqual(["qoder", "codex", "trae", "workbuddy", "volcengine", "antigravity"]);
     expect(value.layoutMode).toBe("standard");
-    expect(value.visualStyle).toBe("aurora");
+    expect(value.compactLayout).toBe("float");
+    expect(value.expandedLayout).toBe("dashboard");
+    expect(value.colorTheme).toBe("aurora");
     expect(value.appearanceMode).toBe("system");
     expect(value.riskFirst).toBe(false);
     expect(value.showHistorySparklines).toBe(true);
     expect(value.notificationsEnabled).toBe(true);
   });
 
-  it("normalizes visual styles and optional ledger features", () => {
-    expect(normalizeWidgetPreferences({ visualStyle: "graphite", riskFirst: true, showHistorySparklines: false }).visualStyle).toBe("graphite");
-    expect(normalizeWidgetPreferences({ visualStyle: "float" }).visualStyle).toBe("float");
-    expect(normalizeWidgetPreferences({ visualStyle: "island" }).visualStyle).toBe("island");
+  it("normalizes independent compact layouts and color themes", () => {
+    const graphiteBar = normalizeWidgetPreferences({ compactLayout: "bar", expandedLayout: "provider-bar", colorTheme: "graphite", riskFirst: true, showHistorySparklines: false });
+    expect(graphiteBar.compactLayout).toBe("bar");
+    expect(graphiteBar.expandedLayout).toBe("provider-bar");
+    expect(graphiteBar.colorTheme).toBe("graphite");
+    expect(normalizeWidgetPreferences({ compactLayout: "ring", expandedLayout: "stacked" })).toEqual(expect.objectContaining({ compactLayout: "ring", expandedLayout: "stacked" }));
     expect(normalizeWidgetPreferences({ appearanceMode: "dark" }).appearanceMode).toBe("dark");
     expect(normalizeWidgetPreferences({ appearanceMode: "sepia" as never }).appearanceMode).toBe("system");
-    expect(normalizeWidgetPreferences({ visualStyle: "neon" as never }).visualStyle).toBe("aurora");
+    expect(normalizeWidgetPreferences({ compactLayout: "stack" as never }).compactLayout).toBe("float");
+    expect(normalizeWidgetPreferences({ expandedLayout: "stack" as never }).expandedLayout).toBe("dashboard");
+    expect(normalizeWidgetPreferences({ colorTheme: "neon" as never }).colorTheme).toBe("aurora");
+  });
+
+  it("migrates legacy visual styles without coupling layout and color", () => {
+    expect(normalizeWidgetPreferences({ visualStyle: "island" }).compactLayout).toBe("bar");
+    expect(normalizeWidgetPreferences({ visualStyle: "island" }).expandedLayout).toBe("provider-bar");
+    expect(normalizeWidgetPreferences({ visualStyle: "island" }).colorTheme).toBe("aurora");
+    expect(normalizeWidgetPreferences({ visualStyle: "graphite" }).compactLayout).toBe("float");
+    expect(normalizeWidgetPreferences({ visualStyle: "graphite" }).colorTheme).toBe("graphite");
   });
 
   it("rejects unsafe colors and never hides every provider", () => {

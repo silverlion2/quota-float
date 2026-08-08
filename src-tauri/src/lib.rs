@@ -32,7 +32,7 @@ const COLLAPSED_LOGICAL_HEIGHT: f64 = 92.0;
 const ISLAND_LOGICAL_WIDTH: f64 = 400.0;
 const ISLAND_LOGICAL_HEIGHT: f64 = 38.0;
 const EXPANDED_LOGICAL_WIDTH: f64 = 552.0;
-const EXPANDED_LOGICAL_HEIGHT: f64 = 248.0;
+const EXPANDED_LOGICAL_HEIGHT: f64 = 320.0;
 const MIN_EXPANDED_LOGICAL_HEIGHT: f64 = 160.0;
 const MAX_EXPANDED_LOGICAL_HEIGHT: f64 = 1_200.0;
 const EDGE_SAFE_INSET_LOGICAL: f64 = 4.0;
@@ -109,8 +109,8 @@ struct WidgetGeometryState {
     user_moved_expanded: bool,
 }
 
-fn compact_mode(visual_style: Option<&str>) -> CompactMode {
-    if visual_style == Some("island") {
+fn compact_mode(compact_layout: Option<&str>) -> CompactMode {
+    if matches!(compact_layout, Some("bar" | "island")) {
         CompactMode::Island
     } else {
         CompactMode::Float
@@ -319,6 +319,7 @@ fn read_json_with_backup(path: &Path) -> serde_json::Value {
             serde_json::json!({
                 "schemaVersion": 1,
                 "history": [],
+                "dailyUsage": [],
                 "events": [],
                 "savedLayouts": [],
                 "lastNotifications": {}
@@ -882,7 +883,7 @@ fn infer_compact_mode(rect: WidgetRect) -> CompactMode {
 #[tauri::command]
 fn expand_widget(
     work_area: Option<WorkAreaPayload>,
-    visual_style: Option<String>,
+    compact_layout: Option<String>,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
@@ -892,7 +893,7 @@ fn expand_widget(
     let current = current_widget_rect(&window)?;
     let (monitor, scale_factor) = monitor_and_scale(&window)?;
     let safe_inset = logical_to_physical(EDGE_SAFE_INSET_LOGICAL, scale_factor);
-    let compact_mode = compact_mode(visual_style.as_deref());
+    let compact_mode = compact_mode(compact_layout.as_deref());
     let collapsed_size = collapsed_physical_size(compact_mode, scale_factor, safe_inset);
     let expanded_size = PhysicalSize::new(
         widget_window_size(EXPANDED_LOGICAL_WIDTH, scale_factor, safe_inset),
@@ -1101,7 +1102,7 @@ mod geometry_tests {
 
     #[test]
     fn invalid_expanded_height_falls_back_to_the_default() {
-        assert_eq!(bounded_expanded_height(f64::NAN, 1.0, 4, Some(1040)), 256);
+        assert_eq!(bounded_expanded_height(f64::NAN, 1.0, 4, Some(1040)), 328);
     }
 
     #[test]
@@ -1152,7 +1153,7 @@ mod geometry_tests {
 
 #[tauri::command]
 fn collapse_widget(
-    visual_style: Option<String>,
+    compact_layout: Option<String>,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
@@ -1162,7 +1163,7 @@ fn collapse_widget(
     let current = current_widget_rect(&window)?;
     let (monitor, scale_factor) = monitor_and_scale(&window)?;
     let safe_inset = logical_to_physical(EDGE_SAFE_INSET_LOGICAL, scale_factor);
-    let compact_mode = compact_mode(visual_style.as_deref());
+    let compact_mode = compact_mode(compact_layout.as_deref());
     let collapsed_size = collapsed_physical_size(compact_mode, scale_factor, safe_inset);
     let Some(monitor) = monitor else {
         window

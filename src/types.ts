@@ -2,7 +2,9 @@ export type ProviderId = "codex" | "qoder" | "trae" | "workbuddy" | "volcengine"
 export type SnapshotStatus = "ok" | "stale" | "loading" | "unavailable" | "signed_out";
 export type Language = "zh-CN" | "en";
 export type LayoutMode = "compact" | "standard" | "detailed";
-export type VisualStyle = "float" | "aurora" | "graphite" | "paper" | "island";
+export type CompactLayout = "float" | "ring" | "bar";
+export type ExpandedLayout = "dashboard" | "provider-bar" | "stacked";
+export type ColorTheme = "aurora" | "graphite" | "paper";
 export type AppearanceMode = "system" | "light" | "dark";
 export type ResolvedAppearance = Exclude<AppearanceMode, "system">;
 export type UpdateChannel = "stable" | "beta";
@@ -50,7 +52,9 @@ export interface WidgetPreferences {
   hiddenProviders: ProviderId[];
   collapsedProviders: ProviderId[];
   layoutMode: LayoutMode;
-  visualStyle: VisualStyle;
+  compactLayout: CompactLayout;
+  expandedLayout: ExpandedLayout;
+  colorTheme: ColorTheme;
   appearanceMode: AppearanceMode;
   riskFirst: boolean;
   showHistorySparklines: boolean;
@@ -86,6 +90,14 @@ export interface QuotaHistoryPoint {
   resetsAt: string | null;
 }
 
+export interface DailyUsageSummary {
+  provider: ProviderId;
+  localDate: string;
+  observedUsedPercent: number;
+  sampleCount: number;
+  updatedAt: string;
+}
+
 export interface SavedLayout {
   id: string;
   name: string;
@@ -94,7 +106,9 @@ export interface SavedLayout {
   hiddenProviders: ProviderId[];
   collapsedProviders: ProviderId[];
   layoutMode: LayoutMode;
-  visualStyle: VisualStyle;
+  compactLayout: CompactLayout;
+  expandedLayout: ExpandedLayout;
+  colorTheme: ColorTheme;
   appearanceMode: AppearanceMode;
   riskFirst: boolean;
   showHistorySparklines: boolean;
@@ -118,6 +132,7 @@ export interface DailyPaceBaseline {
 export interface RuntimeState {
   schemaVersion: 1;
   history: QuotaHistoryPoint[];
+  dailyUsage: DailyUsageSummary[];
   events: ActivityEvent[];
   savedLayouts: SavedLayout[];
   lastNotifications: Record<string, string>;

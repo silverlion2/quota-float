@@ -24,6 +24,19 @@ describe("activity timeline and notification policy", () => {
     expect(second.state.history).toHaveLength(1);
   });
 
+  it("aggregates observed daily quota use without counting resets as consumption", () => {
+    const first = recordSnapshotActivity(EMPTY_RUNTIME_STATE, [], [snapshot(90)], null, 15, new Date("2026-07-19T01:00:00Z"));
+    const used = recordSnapshotActivity(first.state, [snapshot(90)], [snapshot(82)], null, 15, new Date("2026-07-19T02:00:00Z"));
+    expect(used.state.dailyUsage).toEqual([
+      expect.objectContaining({ provider: "codex", localDate: "2026-07-19", observedUsedPercent: 8, sampleCount: 2 }),
+    ]);
+
+    const reset = snapshot(100);
+    reset.weeklyWindow = { ...reset.weeklyWindow!, resetsAt: "2026-08-01T00:00:00Z" };
+    const restored = recordSnapshotActivity(used.state, [snapshot(82)], [reset], null, 15, new Date("2026-07-19T03:00:00Z"));
+    expect(restored.state.dailyUsage[0].observedUsedPercent).toBe(8);
+  });
+
   it("supports overnight quiet hours and per-alert cooldowns", () => {
     expect(isQuietHour(23, 22, 8)).toBe(true);
     expect(isQuietHour(7, 22, 8)).toBe(true);
@@ -253,6 +266,52 @@ describe("activity timeline and notification policy", () => {
       planningResetsAt: "2026-07-25T00:00:00Z",
       resetForecastScore: null,
       resetForecastWindowHours: null,
+    }));
+  });
+
+  it("migrates legacy saved styles and preserves newer layout variations", () => {
+    const normalized = normalizeRuntimeState({
+      savedLayouts: [{
+        id: "legacy-island",
+        name: "Legacy Island",
+        createdAt: "2026-07-19T01:00:00Z",
+        providerOrder: ["codex"],
+        hiddenProviders: [],
+        collapsedProviders: [],
+        layoutMode: "standard",
+        visualStyle: "island",
+        appearanceMode: "dark",
+        riskFirst: false,
+        showHistorySparklines: true,
+        accentColor: "#397ae0",
+      }, {
+        id: "ring-stacked",
+        name: "Ring and Stacked",
+        createdAt: "2026-07-20T01:00:00Z",
+        providerOrder: ["codex"],
+        hiddenProviders: [],
+        collapsedProviders: [],
+        layoutMode: "standard",
+        compactLayout: "ring",
+        expandedLayout: "stacked",
+        colorTheme: "paper",
+        appearanceMode: "light",
+        riskFirst: false,
+        showHistorySparklines: true,
+        accentColor: "#397ae0",
+      }],
+    });
+
+    expect(normalized.savedLayouts[0]).toEqual(expect.objectContaining({
+      compactLayout: "bar",
+      expandedLayout: "provider-bar",
+      colorTheme: "aurora",
+      appearanceMode: "dark",
+    }));
+    expect(normalized.savedLayouts[1]).toEqual(expect.objectContaining({
+      compactLayout: "ring",
+      expandedLayout: "stacked",
+      colorTheme: "paper",
     }));
   });
 

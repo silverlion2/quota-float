@@ -13,7 +13,9 @@ export const DEFAULT_WIDGET_PREFERENCES: WidgetPreferences = {
   hiddenProviders: [],
   collapsedProviders: [],
   layoutMode: "standard",
-  visualStyle: "aurora",
+  compactLayout: "float",
+  expandedLayout: "dashboard",
+  colorTheme: "aurora",
   appearanceMode: "system",
   riskFirst: false,
   showHistorySparklines: true,
@@ -52,17 +54,24 @@ function safeSkippedVersion(value: unknown): string | null {
   return normalized.length > 0 && normalized.length <= 64 ? normalized : null;
 }
 
-export function normalizeWidgetPreferences(value: Partial<WidgetPreferences> | null | undefined): WidgetPreferences {
+type LegacyWidgetPreferences = Partial<WidgetPreferences> & { visualStyle?: unknown };
+
+export function normalizeWidgetPreferences(value: LegacyWidgetPreferences | null | undefined): WidgetPreferences {
   const candidate = value && typeof value === "object" ? value as Record<string, unknown> : {};
   const hiddenProviders = providerList(candidate.hiddenProviders);
   const pinnedProvider = providerSet.has(candidate.pinnedProvider as ProviderId) ? candidate.pinnedProvider as ProviderId : null;
   const layoutMode = candidate.layoutMode === "compact" || candidate.layoutMode === "detailed" ? candidate.layoutMode : "standard";
-  const visualStyle = candidate.visualStyle === "float"
-    || candidate.visualStyle === "graphite"
-    || candidate.visualStyle === "paper"
-    || candidate.visualStyle === "island"
-    ? candidate.visualStyle
-    : "aurora";
+  const compactLayout = candidate.compactLayout === "bar" || candidate.compactLayout === "ring" || candidate.compactLayout === "float"
+    ? candidate.compactLayout
+    : candidate.visualStyle === "island" ? "bar" : "float";
+  const expandedLayout = candidate.expandedLayout === "provider-bar" || candidate.expandedLayout === "stacked" || candidate.expandedLayout === "dashboard"
+    ? candidate.expandedLayout
+    : candidate.visualStyle === "island" ? "provider-bar" : "dashboard";
+  const colorTheme = candidate.colorTheme === "graphite" || candidate.colorTheme === "paper" || candidate.colorTheme === "aurora"
+    ? candidate.colorTheme
+    : candidate.visualStyle === "graphite" || candidate.visualStyle === "paper"
+      ? candidate.visualStyle
+      : "aurora";
   const appearanceMode = candidate.appearanceMode === "light" || candidate.appearanceMode === "dark"
     ? candidate.appearanceMode
     : "system";
@@ -81,7 +90,9 @@ export function normalizeWidgetPreferences(value: Partial<WidgetPreferences> | n
     hiddenProviders: hiddenProviders.length >= DEFAULT_PROVIDER_ORDER.length ? [] : hiddenProviders,
     collapsedProviders: providerList(candidate.collapsedProviders),
     layoutMode,
-    visualStyle,
+    compactLayout,
+    expandedLayout,
+    colorTheme,
     appearanceMode,
     riskFirst: booleanValue(candidate.riskFirst, DEFAULT_WIDGET_PREFERENCES.riskFirst),
     showHistorySparklines: booleanValue(candidate.showHistorySparklines, DEFAULT_WIDGET_PREFERENCES.showHistorySparklines),

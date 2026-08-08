@@ -77,8 +77,14 @@ pub struct WidgetPreferences {
     pub collapsed_providers: Vec<String>,
     #[serde(default = "default_layout_mode")]
     pub layout_mode: String,
-    #[serde(default = "default_visual_style")]
-    pub visual_style: String,
+    #[serde(default = "default_compact_layout")]
+    pub compact_layout: String,
+    #[serde(default = "default_expanded_layout")]
+    pub expanded_layout: String,
+    #[serde(default = "default_color_theme")]
+    pub color_theme: String,
+    #[serde(default, skip_serializing)]
+    pub visual_style: Option<String>,
     #[serde(default = "default_appearance_mode")]
     pub appearance_mode: String,
     #[serde(default)]
@@ -129,7 +135,13 @@ fn default_provider_order() -> Vec<String> {
 fn default_layout_mode() -> String {
     "standard".into()
 }
-fn default_visual_style() -> String {
+fn default_compact_layout() -> String {
+    "float".into()
+}
+fn default_expanded_layout() -> String {
+    "dashboard".into()
+}
+fn default_color_theme() -> String {
     "aurora".into()
 }
 fn default_appearance_mode() -> String {
@@ -171,7 +183,10 @@ impl Default for WidgetPreferences {
             hidden_providers: Vec::new(),
             collapsed_providers: Vec::new(),
             layout_mode: default_layout_mode(),
-            visual_style: default_visual_style(),
+            compact_layout: default_compact_layout(),
+            expanded_layout: default_expanded_layout(),
+            color_theme: default_color_theme(),
+            visual_style: None,
             appearance_mode: default_appearance_mode(),
             risk_first: false,
             show_history_sparklines: true,
@@ -245,11 +260,34 @@ impl WidgetPreferences {
         ) {
             self.layout_mode = default_layout_mode();
         }
+        if let Some(legacy_style) = self.visual_style.take() {
+            self.compact_layout = if legacy_style == "island" {
+                "bar".into()
+            } else {
+                default_compact_layout()
+            };
+            self.expanded_layout = if legacy_style == "island" {
+                "provider-bar".into()
+            } else {
+                default_expanded_layout()
+            };
+            self.color_theme = if matches!(legacy_style.as_str(), "graphite" | "paper") {
+                legacy_style
+            } else {
+                default_color_theme()
+            };
+        }
+        if !matches!(self.compact_layout.as_str(), "float" | "ring" | "bar") {
+            self.compact_layout = default_compact_layout();
+        }
         if !matches!(
-            self.visual_style.as_str(),
-            "float" | "aurora" | "graphite" | "paper" | "island"
+            self.expanded_layout.as_str(),
+            "dashboard" | "provider-bar" | "stacked"
         ) {
-            self.visual_style = default_visual_style();
+            self.expanded_layout = default_expanded_layout();
+        }
+        if !matches!(self.color_theme.as_str(), "aurora" | "graphite" | "paper") {
+            self.color_theme = default_color_theme();
         }
         if !matches!(self.appearance_mode.as_str(), "system" | "light" | "dark") {
             self.appearance_mode = default_appearance_mode();
@@ -355,29 +393,55 @@ mod tests {
     }
 
     #[test]
-    fn visual_style_is_backward_compatible_and_bounded() {
+    fn layout_and_color_are_backward_compatible_and_bounded() {
         let legacy: WidgetPreferences = serde_json::from_str(
-            r#"{"locked":false,"pinnedProvider":null,"autoRotateSeconds":12}"#,
+            r#"{"locked":false,"pinnedProvider":null,"autoRotateSeconds":12,"visualStyle":"island"}"#,
         )
         .expect("legacy preferences should remain readable");
-        assert_eq!(legacy.visual_style, "aurora");
+        let legacy = legacy.normalized();
+        assert_eq!(legacy.compact_layout, "bar");
+        assert_eq!(legacy.expanded_layout, "provider-bar");
+        assert_eq!(legacy.color_theme, "aurora");
         assert_eq!(legacy.appearance_mode, "system");
         assert!(legacy.show_history_sparklines);
+        let serialized = serde_json::to_value(&legacy).expect("preferences should serialize");
+        assert_eq!(serialized["compactLayout"], "bar");
+        assert_eq!(serialized["expandedLayout"], "provider-bar");
+        assert_eq!(serialized["colorTheme"], "aurora");
+        assert!(serialized.get("visualStyle").is_none());
 
         let preferences = WidgetPreferences {
-            visual_style: "neon".into(),
+            compact_layout: "stack".into(),
+            expanded_layout: "stack".into(),
+            color_theme: "neon".into(),
             ..Default::default()
         };
-        assert_eq!(preferences.normalized().visual_style, "aurora");
+        let normalized = preferences.normalized();
+        assert_eq!(normalized.compact_layout, "float");
+        assert_eq!(normalized.expanded_layout, "dashboard");
+        assert_eq!(normalized.color_theme, "aurora");
 
         let preferences = WidgetPreferences {
-            visual_style: "island".into(),
+            compact_layout: "bar".into(),
+            expanded_layout: "provider-bar".into(),
+            color_theme: "paper".into(),
             appearance_mode: "dark".into(),
             ..Default::default()
         };
         let normalized = preferences.normalized();
-        assert_eq!(normalized.visual_style, "island");
+        assert_eq!(normalized.compact_layout, "bar");
+        assert_eq!(normalized.expanded_layout, "provider-bar");
+        assert_eq!(normalized.color_theme, "paper");
         assert_eq!(normalized.appearance_mode, "dark");
+
+        let preferences = WidgetPreferences {
+            compact_layout: "ring".into(),
+            expanded_layout: "stacked".into(),
+            ..Default::default()
+        };
+        let normalized = preferences.normalized();
+        assert_eq!(normalized.compact_layout, "ring");
+        assert_eq!(normalized.expanded_layout, "stacked");
 
         let preferences = WidgetPreferences {
             appearance_mode: "sepia".into(),
