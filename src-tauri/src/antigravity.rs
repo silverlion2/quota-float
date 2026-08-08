@@ -261,9 +261,9 @@ fn is_installed() -> bool {
     }
     #[cfg(target_os = "macos")]
     {
-        return PathBuf::from("/Applications/Antigravity.app").is_dir()
+        PathBuf::from("/Applications/Antigravity.app").is_dir()
             || dirs::home_dir()
-                .is_some_and(|home| home.join("Applications").join("Antigravity.app").is_dir());
+                .is_some_and(|home| home.join("Applications").join("Antigravity.app").is_dir())
     }
     #[cfg(not(any(windows, target_os = "macos")))]
     {
