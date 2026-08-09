@@ -164,6 +164,25 @@ describe("QuotaCard platform ledger", () => {
     expect(screen.getByText("Weekly remaining")).toBeInTheDocument();
   });
 
+  it("keeps the full-size provider-bar layout free of a duplicate slider", () => {
+    render(
+      <QuotaCard
+        snapshot={codex}
+        snapshots={[codex, qoder]}
+        preferences={{ ...preferences, expandedLayout: "provider-bar" }}
+        onSelectProvider={noop}
+        onLock={noop}
+        onLanguage={noop}
+        onDrag={noop}
+        onHover={noop}
+        consumingProviders={new Set()}
+      />,
+    );
+
+    expect(screen.queryByRole("radiogroup", { name: "Choose provider" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /QODER.*1,280.*credits/i })).toBeInTheDocument();
+  });
+
   it("shows risk-first values and local history trails", () => {
     const { container } = render(
       <QuotaCard
@@ -199,6 +218,13 @@ describe("QuotaCard platform ledger", () => {
           { provider: "codex", capturedAt: "2026-07-16T00:00:00Z", metric: 74, metricKind: "percent", status: "ok", resetsAt: "2026-07-19T00:00:00Z" },
         ]}
         dailyUsage={[{ provider: "codex", localDate: "2026-07-16", observedUsedPercent: 8, sampleCount: 3, updatedAt: "2026-07-16T00:00:00Z" }]}
+        resetForecast={{
+          score: 92,
+          windowHours: 48,
+          fetchedAt: "2026-07-20T18:14:26.948Z",
+          resetAnnounced: false,
+          sourceUrl: "https://codexresetradar.com/",
+        }}
         onSelectProvider={noop}
         onLock={noop}
         onLanguage={noop}
@@ -217,6 +243,12 @@ describe("QuotaCard platform ledger", () => {
     expect(insightsTab).toHaveAttribute("aria-selected", "true");
     expect(quotaTab).toHaveAttribute("aria-selected", "false");
     expect(screen.getByRole("region", { name: "Usage insights" })).toBeInTheDocument();
+    expect(screen.getByText("Used this cycle")).toBeInTheDocument();
+    expect(screen.getByText("Today observed")).toBeInTheDocument();
+    expect(screen.getByText("Daily guide")).toBeInTheDocument();
+    expect(screen.getByText("Unofficial outlook")).toBeInTheDocument();
+    expect(screen.getByText("Reset outlook")).toBeInTheDocument();
+    expect(screen.getByText("within 48h · unofficial estimate")).toBeInTheDocument();
     expect(screen.getByText("Last 90 days")).toBeInTheDocument();
     expect(screen.getByText(/no prompt or token content/i)).toBeInTheDocument();
 

@@ -688,7 +688,10 @@ export const QuotaCard = memo(function QuotaCard({
                   onClick={() => onOpenResetForecast(visibleResetForecast.sourceUrl)}
                 >
                   <Gauge weight="bold" />
-                  {resetForecastLabel(language, visibleResetForecast.score, visibleResetForecast.windowHours, visibleResetForecast.resetAnnounced)}
+                  <span className="reset-forecast-copy">
+                    <small>{language === "en" ? "Unofficial outlook" : "非官方重置展望"}</small>
+                    <strong>{resetForecastLabel(language, visibleResetForecast.score, visibleResetForecast.windowHours, visibleResetForecast.resetAnnounced)}</strong>
+                  </span>
                 </button>
               ) : null}
             </div>
@@ -761,14 +764,6 @@ export const QuotaCard = memo(function QuotaCard({
       </section>
 
       <aside className="provider-ledger" aria-hidden={overlayOpen || undefined} inert={overlayOpen || undefined}>
-        {preferences.expandedLayout === "provider-bar" ? (
-          <ProviderLogoSlider
-            providers={providerDefinitions}
-            selected={snapshot.provider}
-            onSelect={onSelectProvider}
-            ariaLabel={language === "en" ? "Choose provider" : "选择平台"}
-          />
-        ) : null}
         <header className="ledger-header">
           <p>{t.allServices}<span>{providerDefinitions.length}/{PROVIDER_CATALOG.length}</span>{preferences.riskFirst ? <b>{language === "en" ? "RISK FIRST" : "风险优先"}</b> : null}</p>
         </header>
@@ -826,6 +821,8 @@ export const QuotaCard = memo(function QuotaCard({
           dailyUsage={dailyUsage}
           paceBaselines={paceBaselines}
           language={language}
+          resetForecast={visibleResetForecast}
+          onOpenResetForecast={onOpenResetForecast}
         />
       </div>
     </main>

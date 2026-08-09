@@ -1,5 +1,5 @@
 import { useMemo, useState, type CSSProperties } from "react";
-import type { ColorTheme, CompactLayout, DailyUsageSummary, ExpandedLayout, ProviderId, ProviderSnapshot, QuotaHistoryPoint, ResolvedAppearance, WidgetPreferences } from "../types";
+import type { ColorTheme, CompactLayout, DailyUsageSummary, ExpandedLayout, ProviderId, ProviderSnapshot, QuotaHistoryPoint, ResetForecast, ResolvedAppearance, WidgetPreferences } from "../types";
 import { QuotaCard, QuotaIsland, QuotaOrb } from "./QuotaCard";
 import type { UpdateViewState } from "./UpdatePanel";
 import { DEFAULT_WIDGET_PREFERENCES } from "../lib/preferences";
@@ -64,6 +64,14 @@ const previewDailyUsage: DailyUsageSummary[] = Array.from({ length: 90 }, (_, in
     updatedAt: date.toISOString(),
   };
 });
+const previewResetForecast: ResetForecast = {
+  score: 62,
+  windowHours: 48,
+  fetchedAt: new Date().toISOString(),
+  resetAnnounced: false,
+  resetAt: null,
+  sourceUrl: "https://codexresetradar.com/",
+};
 
 const readyUpdate: UpdateViewState = {
   phase: "ready",
@@ -211,7 +219,7 @@ export function DesignPlayground() {
       return (
         <div className={`screenshot-stage screenshot-stage--insights${captureMode ? " screenshot-stage--capture" : ""}`} style={style}>
           <div className="design-card-frame">
-            <QuotaCard snapshot={preview} snapshots={previewSnapshots(preview)} preferences={activePreferences} resolvedAppearance={resolvedAppearance} history={previewHistory} dailyUsage={previewDailyUsage} initialInsightsOpen onSelectProvider={noSelect} onLock={noop} onToggleStayExpanded={noop} onLanguage={noop} onDrag={noop} onHover={noop} consumingProviders={noConsumingProviders} />
+            <QuotaCard snapshot={preview} snapshots={previewSnapshots(preview)} preferences={activePreferences} resolvedAppearance={resolvedAppearance} history={previewHistory} dailyUsage={previewDailyUsage} resetForecast={previewResetForecast} initialInsightsOpen onSelectProvider={noSelect} onLock={noop} onToggleStayExpanded={noop} onLanguage={noop} onDrag={noop} onHover={noop} consumingProviders={noConsumingProviders} />
           </div>
         </div>
       );
@@ -234,7 +242,7 @@ export function DesignPlayground() {
             ? compactLayout === "bar"
               ? <QuotaIsland snapshot={displayedPreview} snapshots={activeSnapshots} language="en" colorTheme={colorTheme} accentColor={activePreferences.accentColor} resolvedAppearance={resolvedAppearance} onSelectProvider={setSelectedProvider} onDrag={noop} onHover={noop} />
               : <QuotaOrb snapshot={activePreview} language="en" compactLayout={compactLayout} colorTheme={colorTheme} accentColor={activePreferences.accentColor} resolvedAppearance={resolvedAppearance} onDrag={() => {}} onHover={() => {}} />
-            : <QuotaCard snapshot={displayedPreview} snapshots={activeSnapshots} preferences={activePreferences} resolvedAppearance={resolvedAppearance} history={previewHistory} onSelectProvider={setSelectedProvider} onLock={noop} onToggleStayExpanded={noop} onLanguage={noop} onDrag={noop} onHover={noop} consumingProviders={noConsumingProviders} initialShowCreditTip={showCreditTip} />}
+            : <QuotaCard snapshot={displayedPreview} snapshots={activeSnapshots} preferences={activePreferences} resolvedAppearance={resolvedAppearance} history={previewHistory} dailyUsage={previewDailyUsage} resetForecast={previewResetForecast} onSelectProvider={setSelectedProvider} onLock={noop} onToggleStayExpanded={noop} onLanguage={noop} onDrag={noop} onHover={noop} consumingProviders={noConsumingProviders} initialShowCreditTip={showCreditTip} />}
         </div>
       </div>
     );
@@ -253,7 +261,7 @@ export function DesignPlayground() {
             ? compactLayout === "bar"
               ? <QuotaIsland snapshot={displayedPreview} snapshots={activeSnapshots} colorTheme={colorTheme} accentColor={activePreferences.accentColor} resolvedAppearance={resolvedAppearance} onSelectProvider={setSelectedProvider} onDrag={noop} onHover={noop} />
               : <QuotaOrb snapshot={activePreview} compactLayout={compactLayout} colorTheme={colorTheme} accentColor={activePreferences.accentColor} resolvedAppearance={resolvedAppearance} onDrag={() => {}} onHover={() => {}} />
-            : <QuotaCard snapshot={displayedPreview} snapshots={activeSnapshots} preferences={activePreferences} resolvedAppearance={resolvedAppearance} history={previewHistory} onSelectProvider={setSelectedProvider} onLock={noop} onToggleStayExpanded={noop} onLanguage={noop} onDrag={noop} onHover={noop} consumingProviders={noConsumingProviders} />}
+            : <QuotaCard snapshot={displayedPreview} snapshots={activeSnapshots} preferences={activePreferences} resolvedAppearance={resolvedAppearance} history={previewHistory} dailyUsage={previewDailyUsage} resetForecast={previewResetForecast} onSelectProvider={setSelectedProvider} onLock={noop} onToggleStayExpanded={noop} onLanguage={noop} onDrag={noop} onHover={noop} consumingProviders={noConsumingProviders} />}
         </div>
       </section>
       <aside className="design-controls">
