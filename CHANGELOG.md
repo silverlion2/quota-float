@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.17 - 2026-08-09
+
+- feat: compact quota insights and reset outlook
+- fix: gate Windows-only JSON import
+- fix: satisfy macOS clippy
+- chore: refresh audited build dependencies
+
 ## 0.2.16 - 2026-08-08
 
 - feat: add flexible layouts and usage insights
