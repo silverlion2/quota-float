@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.18 - 2026-08-10
+
+- fix: improve usage insights and modal dialogs
+
 ## 0.2.17 - 2026-08-09
 
 - feat: compact quota insights and reset outlook
