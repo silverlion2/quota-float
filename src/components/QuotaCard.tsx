@@ -2,6 +2,7 @@ import { ArrowClockwise, ArrowsInSimple, ArrowsOutSimple, CheckCircle, ClockCoun
 import { memo, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { clampPercent, formatDateTime, formatResetDate, formatResetTime, quotaTier } from "../lib/format";
 import { copy, normalizeLanguage, resetForecastLabel, resetForecastTitle } from "../lib/i18n";
+import { useModalDialog } from "../lib/modalDialog";
 import { normalizeProviderOrder, PROVIDER_CATALOG, type ProviderDefinition } from "../lib/providers";
 import { recentPercentageHistory, sortProviderIdsByRisk } from "../lib/providerPresentation";
 import { calculateQuotaPace, paceBaselineKey, trackedQuotaWindows, type NamedQuotaWindow, type QuotaPace, type QuotaPeriod } from "../lib/quotaPace";
@@ -312,6 +313,7 @@ function VolcengineDiagnosticsPanel({
   onClose: () => void;
   onReconnect: () => void;
 }) {
+  const dialogRef = useModalDialog<HTMLElement>(onClose);
   const t = copy[language];
   const healthy = Boolean(
     value?.installed
@@ -323,10 +325,12 @@ function VolcengineDiagnosticsPanel({
 
   return (
     <section
+      ref={dialogRef}
       className="diagnostics-panel"
       role="dialog"
       aria-modal="true"
       aria-labelledby="volcengine-diagnostics-title"
+      tabIndex={-1}
       onMouseDown={(event) => event.stopPropagation()}
     >
       <header className="diagnostics-header">
@@ -335,7 +339,7 @@ function VolcengineDiagnosticsPanel({
           <h2 id="volcengine-diagnostics-title">{t.diagnosticsTitle}</h2>
           <p>{t.diagnosticsSubtitle}</p>
         </div>
-        <button type="button" onClick={onClose} aria-label={t.closeDiagnostics} title={t.closeDiagnostics}><X /></button>
+        <button type="button" onClick={onClose} aria-label={t.closeDiagnostics} title={t.closeDiagnostics} data-dialog-initial-focus><X /></button>
       </header>
 
       {loading && !value ? (

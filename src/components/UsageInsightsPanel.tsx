@@ -1,7 +1,14 @@
 import { CalendarDots, ChartLineUp, Gauge, X } from "@phosphor-icons/react";
 import { useMemo } from "react";
 import { clampPercent, formatResetTime } from "../lib/format";
-import { buildUsageCalendar, recentQuotaTrend, usageSummary } from "../lib/usageInsights";
+import {
+  buildQuotaTrendGeometry,
+  buildUsageCalendar,
+  mondayWeekdayIndex,
+  observedTrendUse,
+  recentQuotaTrend,
+  usageSummary,
+} from "../lib/usageInsights";
 import { calculateQuotaPace, paceBaselineKey, trackedQuotaWindows } from "../lib/quotaPace";
 import type { DailyPaceBaseline, DailyUsageSummary, Language, ProviderSnapshot, QuotaHistoryPoint, ResetForecast } from "../types";
 
@@ -14,19 +21,6 @@ interface Props {
   resetForecast?: ResetForecast | null;
   onOpenResetForecast?: (url: string) => void;
   onClose?: () => void;
-}
-
-function lineGeometry(values: number[]): { line: string; area: string } | null {
-  if (values.length < 2) return null;
-  const points = values.map((value, index) => {
-    const x = 4 + (index / (values.length - 1)) * 212;
-    const y = 66 - (clampPercent(value) / 100) * 56;
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  });
-  return {
-    line: `M ${points.join(" L ")}`,
-    area: `M 4 70 L ${points.join(" L ")} L 216 70 Z`,
-  };
 }
 
 function percent(value: number | null, digits = 1): string {
@@ -51,10 +45,14 @@ export function UsageInsightsPanel({ snapshot, history, dailyUsage, paceBaseline
     () => recentQuotaTrend(history, snapshot.provider, remaining, now),
     [history, remaining, snapshot.provider],
   );
-  const geometry = lineGeometry(trend.map((point) => point.remainingPercent));
+  const geometry = buildQuotaTrendGeometry(trend, now);
+  const trendUse = observedTrendUse(trend);
   const guide = pace ? pace.averageRate : null;
+  const guideLabel = pace?.unit === "hour"
+    ? (english ? "Hourly guide" : "每小时建议")
+    : (english ? "Daily guide" : "每日建议");
   const cycleUsed = remaining === null ? null : 100 - remaining;
-  const leadingCells = calendar[0]?.date.getDay() ?? 0;
+  const leadingCells = calendar[0] ? mondayWeekdayIndex(calendar[0].date) : 0;
   const dateFormatter = new Intl.DateTimeFormat(english ? "en-US" : "zh-CN", { month: "short", day: "numeric" });
   const forecastWindow = resetForecast?.windowHours ?? 48;
   const forecastMeta = resetForecast?.resetAnnounced
@@ -89,7 +87,7 @@ export function UsageInsightsPanel({ snapshot, history, dailyUsage, paceBaseline
           <small>{english ? "local history" : "本地历史"}</small>
         </article>
         <article className="usage-stat-card">
-          <span>{english ? "Daily guide" : "每日建议"}</span>
+          <span>{guideLabel}</span>
           <strong>{percent(guide)}</strong>
           <small>{pace?.status === "over_pace" ? (english ? "currently over guide" : "当前高于建议") : (english ? "based on this cycle" : "按本周期计算")}</small>
         </article>
@@ -109,7 +107,7 @@ export function UsageInsightsPanel({ snapshot, history, dailyUsage, paceBaseline
 
       <div className="usage-insights-detail-grid">
         <article className="usage-trend-card">
-          <header><span>{english ? "24H QUOTA TRAJECTORY" : "24 小时额度轨迹"}</span><strong>{trend.length > 1 ? `${Math.max(0, trend[0].remainingPercent - trend.at(-1)!.remainingPercent).toFixed(1)}%` : "—"}</strong></header>
+          <header><span>{english ? "24H QUOTA TRAJECTORY" : "24 小时额度轨迹"}</span><strong>{trend.length > 1 ? `${trendUse.toFixed(1)}%` : "—"}</strong></header>
           <svg viewBox="0 0 220 74" preserveAspectRatio="none" role="img" aria-label={english ? "Remaining quota trajectory" : "剩余额度轨迹"}>
             <defs><linearGradient id="usage-area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="currentColor" stopOpacity=".24" /><stop offset="1" stopColor="currentColor" stopOpacity="0" /></linearGradient></defs>
             <path className="usage-trend-grid" d="M 4 14 H 216 M 4 42 H 216 M 4 70 H 216" />

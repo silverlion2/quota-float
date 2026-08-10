@@ -1,3 +1,4 @@
+import { MAX_DAILY_OBSERVED_PERCENT } from "../types";
 import type { ActivityEvent, DailyPaceBaseline, DailyUsageSummary, Language, ProviderId, ProviderSnapshot, QuotaHistoryPoint, ResetForecast, RuntimeState } from "../types";
 import type { RecentCodexReset } from "./resetDetection";
 import { DEFAULT_PROVIDER_ORDER, normalizeProviderOrder } from "./providers";
@@ -57,7 +58,7 @@ function dailyUsageSummary(value: unknown): DailyUsageSummary | null {
   return {
     provider: candidate.provider,
     localDate: candidate.localDate,
-    observedUsedPercent: Math.min(100, Math.max(0, candidate.observedUsedPercent)),
+    observedUsedPercent: Math.min(MAX_DAILY_OBSERVED_PERCENT, Math.max(0, candidate.observedUsedPercent)),
     sampleCount: Math.min(10_000, Math.max(1, candidate.sampleCount)),
     updatedAt: candidate.updatedAt,
   };
@@ -195,7 +196,7 @@ function recordDailyUsage(
     const existing = next[index];
     next[index] = {
       ...existing,
-      observedUsedPercent: Math.min(100, existing.observedUsedPercent + observedDelta),
+      observedUsedPercent: Math.min(MAX_DAILY_OBSERVED_PERCENT, existing.observedUsedPercent + observedDelta),
       sampleCount: Math.min(10_000, existing.sampleCount + 1),
       updatedAt: point.capturedAt,
     };
@@ -203,7 +204,7 @@ function recordDailyUsage(
     next.push({
       provider: point.provider,
       localDate: day,
-      observedUsedPercent: Math.min(100, observedDelta),
+      observedUsedPercent: Math.min(MAX_DAILY_OBSERVED_PERCENT, observedDelta),
       sampleCount: 1,
       updatedAt: point.capturedAt,
     });
@@ -215,7 +216,9 @@ function recordDailyUsage(
 
 function metric(snapshot: ProviderSnapshot): Pick<QuotaHistoryPoint, "metric" | "metricKind" | "resetsAt"> {
   if (snapshot.balanceUnit === "unlimited") return { metric: null, metricKind: "unlimited", resetsAt: null };
-  if (snapshot.weeklyWindow) return { metric: snapshot.weeklyWindow.remainingPercent, metricKind: "percent", resetsAt: snapshot.weeklyWindow.resetsAt };
+  const percentageWindows = trackedQuotaWindows(snapshot);
+  const percentageWindow = percentageWindows.find((item) => item.period === "weekly") ?? percentageWindows[0] ?? null;
+  if (percentageWindow) return { metric: percentageWindow.window.remainingPercent, metricKind: "percent", resetsAt: percentageWindow.window.resetsAt };
   if (snapshot.balanceRemaining !== null && snapshot.balanceRemaining !== undefined) return { metric: snapshot.balanceRemaining, metricKind: "balance", resetsAt: null };
   return { metric: null, metricKind: "none", resetsAt: null };
 }

@@ -9,6 +9,8 @@ export type AppearanceMode = "system" | "light" | "dark";
 export type ResolvedAppearance = Exclude<AppearanceMode, "system">;
 export type UpdateChannel = "stable" | "beta";
 
+export const MAX_DAILY_OBSERVED_PERCENT = 10_000;
+
 export interface UsageWindow {
   remainingPercent: number;
   resetsAt: string | null;

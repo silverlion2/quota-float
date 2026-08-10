@@ -1,5 +1,6 @@
 import { ArrowClockwise, ArrowCounterClockwise, Bell, ChartLineUp, ClockCounterClockwise, DownloadSimple, Eye, EyeSlash, Heartbeat, Layout, ListStar, Monitor, Moon, Plus, Sun, Trash, UploadSimple, X } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
+import { useModalDialog } from "../lib/modalDialog";
 import { DEFAULT_PROVIDER_ORDER, PROVIDER_CATALOG } from "../lib/providers";
 import type { AppDiagnostics, Language, ProviderId, ProviderSnapshot, RuntimeState, SavedLayout, SnapshotStatus, WidgetPreferences } from "../types";
 import { ProviderMark } from "./ProviderMark";
@@ -41,6 +42,7 @@ function formatCheckedAt(value: string | undefined, language: Language, fallback
 }
 
 export function ControlCenter({ preferences, runtimeState, snapshots, diagnostics, language, onClose, onRefresh, onPreferences, onRuntimeState, onExport, onImport, onRestore, onCopyDiagnostics, autostartEnabled, onAutostart }: Props) {
+  const dialogRef = useModalDialog<HTMLElement>(onClose);
   const [tab, setTab] = useState<Tab>("display");
   const [layoutName, setLayoutName] = useState("");
   const zh = language !== "en";
@@ -227,10 +229,10 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
   };
 
   return (
-    <section className="control-center" role="dialog" aria-modal="true" aria-labelledby="control-center-title" onMouseDown={(event) => event.stopPropagation()}>
+    <section ref={dialogRef} className="control-center" role="dialog" aria-modal="true" aria-labelledby="control-center-title" tabIndex={-1} onMouseDown={(event) => event.stopPropagation()}>
       <header className="control-header">
         <div><p>QUOTA FLOAT · LOCAL FIRST</p><h2 id="control-center-title">{labels.title}</h2><small>{labels.subtitle}</small></div>
-        <button type="button" onClick={onClose} aria-label="Close"><X /></button>
+        <button type="button" onClick={onClose} aria-label="Close" data-dialog-initial-focus><X /></button>
       </header>
       <nav className="control-tabs" aria-label={labels.title}>
         {([['display', Layout, labels.display], ['health', Heartbeat, healthLabels.tab], ['alerts', Bell, labels.alerts], ['activity', ClockCounterClockwise, labels.activity], ['system', Heartbeat, labels.system]] as const).map(([id, Icon, label]) => (

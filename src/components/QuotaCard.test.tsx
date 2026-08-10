@@ -262,6 +262,26 @@ describe("QuotaCard platform ledger", () => {
     expect(quotaTab).toHaveAttribute("aria-selected", "true");
   });
 
+  it("labels a short-window pace guide by the hour", () => {
+    render(
+      <QuotaCard
+        snapshot={antigravity}
+        snapshots={[antigravity]}
+        preferences={preferences}
+        initialInsightsOpen
+        onSelectProvider={noop}
+        onLock={noop}
+        onLanguage={noop}
+        onDrag={noop}
+        onHover={noop}
+        consumingProviders={new Set()}
+      />,
+    );
+
+    expect(screen.getByText("Hourly guide")).toBeInTheDocument();
+    expect(screen.queryByText("Daily guide")).not.toBeInTheDocument();
+  });
+
   it("marks platforms without a collector as not detected", () => {
     render(
       <QuotaCard

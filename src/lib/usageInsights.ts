@@ -1,4 +1,5 @@
 import { clampPercent } from "./format";
+import { MAX_DAILY_OBSERVED_PERCENT } from "../types";
 import type { DailyUsageSummary, ProviderId, QuotaHistoryPoint } from "../types";
 
 export interface UsageCalendarDay {
@@ -9,11 +10,26 @@ export interface UsageCalendarDay {
   level: 0 | 1 | 2 | 3 | 4;
 }
 
+export interface QuotaTrendPoint {
+  capturedAt: string;
+  remainingPercent: number;
+}
+
+export interface QuotaTrendGeometry {
+  line: string;
+  area: string;
+  points: Array<{ x: number; y: number }>;
+}
+
 function dateKey(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+export function mondayWeekdayIndex(date: Date): number {
+  return (date.getDay() + 6) % 7;
 }
 
 function usageLevel(value: number | null): UsageCalendarDay["level"] {
@@ -36,7 +52,7 @@ function usageFromHistory(history: QuotaHistoryPoint[], provider: ProviderId): M
     const delta = Math.max(0, previous.metric - point.metric);
     if (delta <= 0) continue;
     const key = dateKey(new Date(point.capturedAt));
-    totals.set(key, Math.min(100, (totals.get(key) ?? 0) + delta));
+    totals.set(key, Math.min(MAX_DAILY_OBSERVED_PERCENT, (totals.get(key) ?? 0) + delta));
   }
   return totals;
 }
@@ -83,21 +99,56 @@ export function recentQuotaTrend(
   currentRemaining: number | null,
   now = new Date(),
   hours = 24,
-): Array<{ capturedAt: string; remainingPercent: number }> {
+): QuotaTrendPoint[] {
   const cutoff = now.getTime() - hours * 60 * 60_000;
+  const nowTime = now.getTime();
   const all = history
     .filter((point) => point.provider === provider && point.metricKind === "percent" && point.metric !== null)
     .map((point) => ({ capturedAt: point.capturedAt, remainingPercent: clampPercent(point.metric!) }))
     .sort((left, right) => Date.parse(left.capturedAt) - Date.parse(right.capturedAt));
-  let points = all.filter((point) => Date.parse(point.capturedAt) >= cutoff);
-  if (points.length < 2) points = all.slice(-12);
+  let points = all.filter((point) => {
+    const capturedAt = Date.parse(point.capturedAt);
+    return capturedAt >= cutoff && capturedAt <= nowTime;
+  });
   if (currentRemaining !== null) {
     const last = points.at(-1);
-    if (!last || Math.abs(last.remainingPercent - currentRemaining) > 0.01) {
+    const lastCapturedAt = last ? Date.parse(last.capturedAt) : Number.NaN;
+    if (!last || Math.abs(lastCapturedAt - nowTime) > 1_000 || Math.abs(last.remainingPercent - currentRemaining) > 0.01) {
       points = [...points, { capturedAt: now.toISOString(), remainingPercent: clampPercent(currentRemaining) }];
     }
   }
   return points;
+}
+
+export function buildQuotaTrendGeometry(
+  trend: QuotaTrendPoint[],
+  now = new Date(),
+  hours = 24,
+): QuotaTrendGeometry | null {
+  if (trend.length < 2) return null;
+  const duration = Math.max(1, hours * 60 * 60_000);
+  const cutoff = now.getTime() - duration;
+  const points = trend.map((point) => {
+    const elapsed = Math.min(duration, Math.max(0, Date.parse(point.capturedAt) - cutoff));
+    return {
+      x: Number((4 + (elapsed / duration) * 212).toFixed(1)),
+      y: Number((66 - (clampPercent(point.remainingPercent) / 100) * 56).toFixed(1)),
+    };
+  });
+  const pathPoints = points.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`);
+  const first = points[0];
+  const last = points.at(-1)!;
+  return {
+    line: `M ${pathPoints.join(" L ")}`,
+    area: `M ${first.x.toFixed(1)} 70 L ${pathPoints.join(" L ")} L ${last.x.toFixed(1)} 70 Z`,
+    points,
+  };
+}
+
+export function observedTrendUse(trend: QuotaTrendPoint[]): number {
+  return trend.slice(1).reduce((total, point, index) => (
+    total + Math.max(0, trend[index].remainingPercent - point.remainingPercent)
+  ), 0);
 }
 
 export function usageSummary(days: UsageCalendarDay[]): { activeDays: number; observedUsedPercent: number; averageActiveDayPercent: number; todayUsedPercent: number | null } {

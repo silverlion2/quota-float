@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { canSendNotification, EMPTY_RUNTIME_STATE, isQuietHour, normalizeRuntimeState, recordSnapshotActivity } from "./activity";
+import { MAX_DAILY_OBSERVED_PERCENT } from "../types";
 import type { ProviderSnapshot } from "../types";
 
 function snapshot(remainingPercent: number, status: ProviderSnapshot["status"] = "ok"): ProviderSnapshot {
@@ -35,6 +36,49 @@ describe("activity timeline and notification policy", () => {
     reset.weeklyWindow = { ...reset.weeklyWindow!, resetsAt: "2026-08-01T00:00:00Z" };
     const restored = recordSnapshotActivity(used.state, [snapshot(82)], [reset], null, 15, new Date("2026-07-19T03:00:00Z"));
     expect(restored.state.dailyUsage[0].observedUsedPercent).toBe(8);
+  });
+
+  it("tracks percentage history for providers that only expose a short window", () => {
+    const shortOnly = (remainingPercent: number): ProviderSnapshot => ({
+      provider: "antigravity",
+      displayName: "ANTIGRAVITY",
+      plan: "Google AI Pro",
+      shortWindow: { remainingPercent, resetsAt: "2026-07-19T05:00:00Z", windowSeconds: 18_000 },
+      weeklyWindow: null,
+      resetCredits: null,
+      updatedAt: "2026-07-19T00:00:00Z",
+      status: "ok",
+      message: null,
+    });
+    const first = recordSnapshotActivity(EMPTY_RUNTIME_STATE, [], [shortOnly(90)], null, 15, new Date("2026-07-19T01:00:00Z"));
+    const used = recordSnapshotActivity(first.state, [shortOnly(90)], [shortOnly(82)], null, 15, new Date("2026-07-19T02:00:00Z"));
+
+    expect(used.state.history.at(-1)).toEqual(expect.objectContaining({ provider: "antigravity", metricKind: "percent", metric: 82 }));
+    expect(used.state.dailyUsage.at(-1)).toEqual(expect.objectContaining({ provider: "antigravity", observedUsedPercent: 8 }));
+  });
+
+  it("preserves usage across multiple short-window cycles on the same day", () => {
+    const shortOnly = (remainingPercent: number, resetsAt: string): ProviderSnapshot => ({
+      provider: "antigravity",
+      displayName: "ANTIGRAVITY",
+      plan: "Google AI Pro",
+      shortWindow: { remainingPercent, resetsAt, windowSeconds: 18_000 },
+      weeklyWindow: null,
+      resetCredits: null,
+      updatedAt: "2026-07-19T00:00:00Z",
+      status: "ok",
+      message: null,
+    });
+    const cycleOneStart = shortOnly(100, "2026-07-19T05:00:00Z");
+    const cycleOneUsed = shortOnly(40, "2026-07-19T05:00:00Z");
+    const cycleTwoStart = shortOnly(100, "2026-07-19T10:00:00Z");
+    const cycleTwoUsed = shortOnly(40, "2026-07-19T10:00:00Z");
+    const first = recordSnapshotActivity(EMPTY_RUNTIME_STATE, [], [cycleOneStart], null, 15, new Date("2026-07-19T00:00:00Z"));
+    const firstCycle = recordSnapshotActivity(first.state, [cycleOneStart], [cycleOneUsed], null, 15, new Date("2026-07-19T01:00:00Z"));
+    const reset = recordSnapshotActivity(firstCycle.state, [cycleOneUsed], [cycleTwoStart], null, 15, new Date("2026-07-19T05:00:00Z"));
+    const secondCycle = recordSnapshotActivity(reset.state, [cycleTwoStart], [cycleTwoUsed], null, 15, new Date("2026-07-19T06:00:00Z"));
+
+    expect(secondCycle.state.dailyUsage.at(-1)?.observedUsedPercent).toBe(120);
   });
 
   it("supports overnight quiet hours and per-alert cooldowns", () => {
@@ -324,5 +368,26 @@ describe("activity timeline and notification policy", () => {
       lastNotifications: { "quota:codex": "not-a-date", unsafe: 12 },
     });
     expect(normalized).toEqual(EMPTY_RUNTIME_STATE);
+  });
+
+  it("preserves valid multi-cycle daily usage while bounding imported values", () => {
+    const base = {
+      schemaVersion: 1,
+      history: [],
+      events: [],
+      savedLayouts: [],
+      lastNotifications: {},
+      dailyPaceBaselines: {},
+    };
+    const normalized = normalizeRuntimeState({
+      ...base,
+      dailyUsage: [
+        { provider: "antigravity", localDate: "2026-07-19", observedUsedPercent: 120, sampleCount: 6, updatedAt: "2026-07-19T06:00:00Z" },
+        { provider: "codex", localDate: "2026-07-20", observedUsedPercent: MAX_DAILY_OBSERVED_PERCENT + 1, sampleCount: 2, updatedAt: "2026-07-20T06:00:00Z" },
+      ],
+    });
+
+    expect(normalized.dailyUsage[0].observedUsedPercent).toBe(120);
+    expect(normalized.dailyUsage[1].observedUsedPercent).toBe(MAX_DAILY_OBSERVED_PERCENT);
   });
 });

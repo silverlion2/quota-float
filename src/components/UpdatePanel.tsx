@@ -1,6 +1,7 @@
 import { ArrowClockwise, CheckCircle, CloudArrowDown, Power, SpinnerGap, WarningCircle, X } from "@phosphor-icons/react";
 import type { AppUpdateInfo, AppUpdateProgress } from "../lib/appUpdate";
 import { copy } from "../lib/i18n";
+import { useModalDialog } from "../lib/modalDialog";
 import type { Language } from "../types";
 
 export type UpdatePhase = "idle" | "checking" | "available" | "downloading" | "ready" | "installing" | "current" | "error";
@@ -27,6 +28,7 @@ interface Props {
 }
 
 export function UpdatePanel({ state, language, onClose, onDownload, onInstall, onRetry, onLater, onSkip, onOpenRelease }: Props) {
+  const dialogRef = useModalDialog<HTMLElement>(onClose, state.phase !== "installing");
   const t = copy[language];
   const version = state.info?.version;
   const busy = state.phase === "checking" || state.phase === "downloading" || state.phase === "installing";
@@ -55,14 +57,14 @@ export function UpdatePanel({ state, language, onClose, onDownload, onInstall, o
   const progress = state.progress?.percent;
 
   return (
-    <section className="update-panel" role="dialog" aria-modal="true" aria-labelledby="app-update-title" onMouseDown={(event) => event.stopPropagation()}>
+    <section ref={dialogRef} className="update-panel" role="dialog" aria-modal="true" aria-labelledby="app-update-title" tabIndex={-1} onMouseDown={(event) => event.stopPropagation()}>
       <header className="update-header">
         <div>
           <p className="update-kicker">UPDATE CENTER · {(state.info?.channel ?? "stable").toUpperCase()}</p>
           <h2 id="app-update-title">{t.updateCenterTitle}</h2>
           <p>{t.updateCenterSubtitle}</p>
         </div>
-        <button type="button" onClick={onClose} disabled={state.phase === "installing"} aria-label={t.updateClose} title={t.updateClose}><X /></button>
+        <button type="button" onClick={onClose} disabled={state.phase === "installing"} aria-label={t.updateClose} title={t.updateClose} data-dialog-initial-focus><X /></button>
       </header>
 
       <div className="update-body">
