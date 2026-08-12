@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.19 - 2026-08-12
+
+- fix: compact content-driven expanded panel
+
 ## 0.2.18 - 2026-08-10
 
 - fix: improve usage insights and modal dialogs
