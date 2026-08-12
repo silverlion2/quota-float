@@ -32,7 +32,9 @@ const COLLAPSED_LOGICAL_HEIGHT: f64 = 92.0;
 const ISLAND_LOGICAL_WIDTH: f64 = 400.0;
 const ISLAND_LOGICAL_HEIGHT: f64 = 38.0;
 const EXPANDED_LOGICAL_WIDTH: f64 = 552.0;
-const EXPANDED_LOGICAL_HEIGHT: f64 = 320.0;
+// The React card reports its intrinsic height immediately after expansion.
+// Keep the initial shell compact so the content-driven resize does not visibly jump down.
+const EXPANDED_LOGICAL_HEIGHT: f64 = 260.0;
 const MIN_EXPANDED_LOGICAL_HEIGHT: f64 = 160.0;
 const MAX_EXPANDED_LOGICAL_HEIGHT: f64 = 1_200.0;
 const EDGE_SAFE_INSET_LOGICAL: f64 = 4.0;
@@ -1102,7 +1104,7 @@ mod geometry_tests {
 
     #[test]
     fn invalid_expanded_height_falls_back_to_the_default() {
-        assert_eq!(bounded_expanded_height(f64::NAN, 1.0, 4, Some(1040)), 328);
+        assert_eq!(bounded_expanded_height(f64::NAN, 1.0, 4, Some(1040)), 268);
     }
 
     #[test]

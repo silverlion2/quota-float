@@ -1297,18 +1297,19 @@ select:focus-visible {
 
 /* Product-design compact pass: preserve the original Aurora system while tightening every expanded surface. */
 .quota-card {
-  min-height: 344px;
-  grid-template-columns: 200px minmax(0, 1fr);
-  column-gap: 14px;
-  row-gap: 10px;
-  padding: 16px 18px;
+  min-height: 0;
+  grid-template-columns: 190px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-content: start;
+  column-gap: 12px;
+  row-gap: 8px;
+  padding: 13px 16px;
 }
-.quota-card--insights-open { min-height: 438px; }
 .quota-card--overlay-open { min-height: 448px; }
 .quota-panel-header {
-  min-height: 48px;
-  gap: 12px;
-  padding: 0 0 8px;
+  min-height: 44px;
+  gap: 10px;
+  padding: 0 0 7px;
 }
 .quota-panel-navigation { gap: 5px; }
 .quota-panel-brand { font-size: 7px; letter-spacing: .18em; }
@@ -1319,8 +1320,8 @@ select:focus-visible {
 .quota-panel-header .usage-indicator { width: 26px; height: 26px; }
 .quota-panel-header .quota-panel-actions .language-button { min-width: 29px; padding: 0 6px; font-size: 9px; }
 .quota-panel-header .quota-panel-actions svg { width: 13px; height: 13px; }
-.quota-tab-panel--quota { grid-template-columns: 200px minmax(0, 1fr); gap: 14px; }
-.card-header { min-height: 33px; }
+.quota-tab-panel--quota { grid-template-columns: 190px minmax(0, 1fr); gap: 12px; }
+.card-header { min-height: 31px; }
 .eyebrow { font-size: 10px; letter-spacing: .13em; }
 .updated { font-size: 8px; }
 .metric-context { gap: 5px; }
@@ -1340,27 +1341,27 @@ select:focus-visible {
 .quota-pace-hint,
 .quota-pace-hint small { font-size: 8px; line-height: 1.35; }
 .provider-ledger,
-.quota-card--expanded-provider-bar .provider-ledger { padding-left: 13px; }
+.quota-card--expanded-provider-bar .provider-ledger { padding-left: 11px; }
 .ledger-header,
 .quota-card--expanded-provider-bar .ledger-header,
-.quota-card--expanded-provider-bar .ledger-header:not(:has(.card-actions)) { min-height: 24px; gap: 4px; }
+.quota-card--expanded-provider-bar .ledger-header:not(:has(.card-actions)) { min-height: 22px; gap: 3px; }
 .ledger-header > p { font-size: 9px; }
 .ledger-header > p span { font-size: 8px; }
-.provider-list { gap: 2px; }
+.provider-list { gap: 1px; }
 .provider-row-shell { grid-template-columns: minmax(0, 1fr) 20px; gap: 3px; border-radius: 9px; }
-.provider-reorder-grip { width: 20px; height: 26px; }
+.provider-reorder-grip { width: 20px; height: 24px; }
 .provider-reorder-grip svg { width: 11px; height: 11px; }
 .provider-row,
-.quota-card--layout-compact .provider-row { height: 27px; padding: 2px 7px; border-radius: 9px; }
-.quota-card--layout-detailed .provider-row { height: 31px; }
+.quota-card--layout-compact .provider-row { height: 25px; padding: 2px 7px; border-radius: 9px; }
+.quota-card--layout-detailed .provider-row { height: 29px; }
 .provider-row .provider-mark { width: 20px; height: 20px; }
 .provider-identity strong { font-size: 9px; }
 .provider-identity small { font-size: 7px; }
 .provider-value strong { font-size: 10px; }
 .provider-value small { font-size: 7px; }
 .quota-card--expanded-stacked .quota-tab-panel--quota { gap: 12px; }
-.quota-card--expanded-stacked .primary-pane { min-height: 142px; }
-.quota-card--expanded-stacked .provider-ledger { padding-top: 11px; }
+.quota-card--expanded-stacked .primary-pane { min-height: 132px; }
+.quota-card--expanded-stacked .provider-ledger { padding-top: 9px; }
 
 .quota-tab-panel--insights .usage-insights-panel,
 .usage-insights-panel {
@@ -1379,7 +1380,7 @@ select:focus-visible {
 .usage-summary-strip--forecast { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .usage-stat-card {
   min-width: 0;
-  min-height: 66px;
+  min-height: 60px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -1405,17 +1406,17 @@ button.usage-stat-card:hover { border-color: color-mix(in srgb, var(--accent-col
 .usage-stat-card--announced > strong { color: #7ee1b7; font-size: 13px; }
 .usage-insights-detail-grid { min-width: 0; min-height: 0; display: grid; grid-template-columns: .9fr 1.1fr; gap: 7px; }
 .usage-trend-card,
-.usage-calendar-card { min-width: 0; min-height: 170px; padding: 9px 10px 8px; }
+.usage-calendar-card { min-width: 0; min-height: 154px; padding: 9px 10px 8px; }
 .usage-trend-card header span,
 .usage-calendar-card > header span { font-size: 8px; }
 .usage-calendar-card > header svg { width: 12px; height: 12px; }
 .usage-trend-card header strong { font-size: 10px; }
 .usage-calendar-card > header small { max-width: 54%; overflow: hidden; font-size: 7px; text-overflow: ellipsis; white-space: nowrap; }
-.usage-trend-card svg { height: 104px; }
+.usage-trend-card svg { height: 90px; }
 .usage-trend-card footer { font-size: 7px; }
 .usage-calendar-body { gap: 6px; margin-top: 9px; }
 .usage-weekdays,
-.usage-calendar-grid { height: 94px; }
+.usage-calendar-grid { height: 88px; }
 .usage-weekdays,
 .usage-calendar-legend { font-size: 6.5px; }
 .usage-insights-footnote { font-size: 6.5px; }
