@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.20 - 2026-08-13
 
 - feat: add magnetic Top/Left/Right Bar placement with normalized restart-safe offsets
 - feat: add upright side rails, edge previews, inward expansion and saved-layout persistence
