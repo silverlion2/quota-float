@@ -9,6 +9,7 @@
 | 2026-07-10 | 0.1.3 Windows | Some users report white edges around the floating card/orb. | Visual polish / transparent window rendering | Reduced high-contrast white borders, switched to subtle inner strokes, added background clipping, disabled user resizing, and added a 4px transparent safe inset so rounded-edge antialiasing is not drawn directly on the OS window boundary. | Code implemented; pending user confirmation | Ready for QA | Screenshots recorded in the bilingual Excel tracker. | Pending observation | Inspect against light and dark wallpapers. |
 | 2026-07-10 | 0.1.3 macOS | macOS shows white square corners outside the rounded card/orb; screenshots show the transparent window area rendered as white around all four corners. | macOS transparent window rendering | Enabled Tauri `app.macOSPrivateApi`, set the widget window `backgroundColor` to `#00000000`, and added a 4px transparent safe inset around the rounded UI. | Code implemented; pending macOS confirmation | Ready for macOS QA | User-provided WXWork screenshots: `65cc2c04-c178-45b8-bddb-15a399fbb1bb.jpg`, `4b0e44ab-bf1d-4813-996d-35e4637d6dda.jpg`. macOS version still unknown and must be captured during QA. | Pending observation | Run macOS CI artifact on a Mac and record `sw_vers`, app version, expanded/collapsed screenshots on light and dark wallpapers. |
 | 2026-07-10 | 0.1.3 Windows/macOS | A slight clipped/cut edge can still appear around the floating card/orb. | Visual polish / window edge clipping | Added a transparent safe inset and updated backend geometry so the inset can sit outside the monitor edge while the visible rounded card/orb remains visually docked. | Code implemented; pending user confirmation | Ready for QA | Needs repeat screenshots after the safe-inset build. | Pending observation | Check right-edge dock, expanded hover, collapsed hover, and bottom-right corner at 100%, 125%, and 150% scale where available. |
+| 2026-08-13 | 0.2.19 Windows/macOS | The Bar was limited to the top edge; requested magnetic Top/Left/Right choices, restart-safe placement, inward expansion and another pass over clipping/white-edge/hover regressions. | Feature upgrade / window geometry | Generalized Island to Bar; added `top/left/right` + normalized offset persistence, vertical side rails, current-edge corner tie behavior, work-area-aware expansion/collapse, and drag-result persistence. Existing safe-inset and hover-delay paths were retained. | Implemented in Unreleased; pending platform smoke | Automated regression complete; visual QA pending | TypeScript component/preferences/bridge coverage and Rust geometry coverage include negative origins, taskbars, DPI sizes, three edges, orientation changes and content resizing. No separate new clipping or white-edge root cause was reproduced in code-level tests. | Pending observation | Run the Windows scale/multi-monitor matrix and a real Mac artifact; capture screenshots before changing the existing safe-inset workaround. |
 
 ## Verification Checklist
 
@@ -22,11 +23,13 @@ npm.cmd run build
 
 Manual Windows smoke test:
 
-- Drag the collapsed orb to the far right edge; the visible orb should reach the edge without a 10px gap.
-- Hover to expand near the right edge; the card should shift left and keep all rounded corners visible.
-- Repeat near the bottom-right corner; the card should shift left/up.
-- Inspect the card and orb against light and dark wallpapers; no obvious white rim should appear.
-- Confirm tray, refresh, language, always-on-top, and dragging still work.
+- Test at 100%, 125%, and 150% scaling with a secondary monitor on a negative or non-zero origin when available.
+- Select Top/Left/Right Bar in Control Center; verify sizes, upright text and flat attached/rounded inward edges.
+- Drag across the three magnetic zones and exact corners; restart and confirm the normalized along-edge position persists.
+- Hover each Bar edge to expand inward, vary content height, then collapse; no panel should cross the usable taskbar boundary.
+- Drag the expanded dashboard and collapse; the saved Bar placement must remain unchanged.
+- Repeat the prior orb right-edge/bottom-right clipping checks against light and dark wallpapers; no obvious white rim should appear.
+- Confirm provider selection, locking/pointer pass-through, tray, refresh, language, always-on-top and dragging.
 
 Manual macOS smoke test:
 
@@ -35,6 +38,7 @@ Manual macOS smoke test:
 - Optional: run `bash scripts/macos-smoke-capture.sh "/Applications/Quota Float.app"` on a Mac to collect `system.txt` plus collapsed/expanded screenshots.
 - Open the app on light and dark wallpapers; capture collapsed and expanded screenshots.
 - Drag the orb to each screen edge and corner; hover to expand and move the mouse away to collapse.
+- Repeat Top/Left/Right Bar selection, cross-edge magnetic dragging, restart persistence and inward expansion.
 - Confirm there is no white square background outside rounded corners and no visible clipped edge.
 
 ## macOS Runtime Verification Policy

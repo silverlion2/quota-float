@@ -54,18 +54,24 @@ const snapshots: ProviderSnapshot[] = [
   },
 ];
 
-function renderControlCenter(onRefresh = vi.fn(), onPreferences = vi.fn()) {
+function renderControlCenter(
+  onRefresh = vi.fn(),
+  onPreferences = vi.fn(),
+  preferences = { ...DEFAULT_WIDGET_PREFERENCES, language: "en" as const },
+  onRuntimeState = vi.fn(),
+  state = runtimeState,
+) {
   render(
     <ControlCenter
-      preferences={{ ...DEFAULT_WIDGET_PREFERENCES, language: "en" }}
-      runtimeState={runtimeState}
+      preferences={preferences}
+      runtimeState={state}
       snapshots={snapshots}
       diagnostics={diagnostics}
       language="en"
       onClose={vi.fn()}
       onRefresh={onRefresh}
       onPreferences={onPreferences}
-      onRuntimeState={vi.fn()}
+      onRuntimeState={onRuntimeState}
       onExport={vi.fn()}
       onImport={vi.fn()}
       onRestore={vi.fn()}
@@ -74,7 +80,7 @@ function renderControlCenter(onRefresh = vi.fn(), onPreferences = vi.fn()) {
       onAutostart={vi.fn()}
     />,
   );
-  return { onPreferences };
+  return { onPreferences, onRuntimeState };
 }
 
 describe("ControlCenter provider health", () => {
@@ -124,5 +130,55 @@ describe("ControlCenter provider health", () => {
 
     fireEvent.click(screen.getByRole("checkbox", { name: /Put attention-needed providers first/i }));
     expect(onPreferences).toHaveBeenCalledWith(expect.objectContaining({ riskFirst: true }));
+  });
+
+  it("shows magnetic edge previews for Bar and applies an edge choice", () => {
+    const onPreferences = vi.fn();
+    renderControlCenter(
+      vi.fn(),
+      onPreferences,
+      { ...DEFAULT_WIDGET_PREFERENCES, language: "en", compactLayout: "bar", barEdge: "top" },
+    );
+
+    expect(screen.getByRole("radiogroup", { name: "Bar attachment edge" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Top" })).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(screen.getByRole("radio", { name: "Left" }));
+    expect(onPreferences).toHaveBeenCalledWith(expect.objectContaining({
+      compactLayout: "bar",
+      barEdge: "left",
+      barOffset: 0.5,
+    }));
+  });
+
+  it("round-trips Bar placement through a saved layout", () => {
+    const onRuntimeState = vi.fn();
+    const barPreferences = {
+      ...DEFAULT_WIDGET_PREFERENCES,
+      language: "en" as const,
+      compactLayout: "bar" as const,
+      barEdge: "right" as const,
+      barOffset: 0.37,
+    };
+    renderControlCenter(vi.fn(), vi.fn(), barPreferences, onRuntimeState);
+    fireEvent.change(screen.getByPlaceholderText("Profile name"), { target: { value: "Magnetic rail" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save current layout" }));
+
+    const savedState = onRuntimeState.mock.calls[0][0] as RuntimeState;
+    expect(savedState.savedLayouts[0]).toEqual(expect.objectContaining({
+      name: "Magnetic rail",
+      compactLayout: "bar",
+      barEdge: "right",
+      barOffset: 0.37,
+    }));
+
+    cleanup();
+    const onPreferences = vi.fn();
+    renderControlCenter(vi.fn(), onPreferences, { ...DEFAULT_WIDGET_PREFERENCES, language: "en" }, vi.fn(), savedState);
+    fireEvent.click(screen.getByRole("button", { name: /Magnetic rail/i }));
+    expect(onPreferences).toHaveBeenCalledWith(expect.objectContaining({
+      compactLayout: "bar",
+      barEdge: "right",
+      barOffset: 0.37,
+    }));
   });
 });

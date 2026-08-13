@@ -29,8 +29,10 @@ use tauri_plugin_window_state::Builder as WindowStateBuilder;
 
 const COLLAPSED_LOGICAL_WIDTH: f64 = 92.0;
 const COLLAPSED_LOGICAL_HEIGHT: f64 = 92.0;
-const ISLAND_LOGICAL_WIDTH: f64 = 400.0;
-const ISLAND_LOGICAL_HEIGHT: f64 = 38.0;
+const BAR_TOP_LOGICAL_WIDTH: f64 = 400.0;
+const BAR_TOP_LOGICAL_HEIGHT: f64 = 38.0;
+const BAR_SIDE_LOGICAL_WIDTH: f64 = 64.0;
+const BAR_SIDE_LOGICAL_HEIGHT: f64 = 320.0;
 const EXPANDED_LOGICAL_WIDTH: f64 = 552.0;
 // The React card reports its intrinsic height immediately after expansion.
 // Keep the initial shell compact so the content-driven resize does not visibly jump down.
@@ -71,6 +73,12 @@ struct WidgetRect {
     size: PhysicalSize<u32>,
 }
 
+#[derive(Clone, Copy)]
+struct PhysicalBounds {
+    position: PhysicalPosition<i32>,
+    size: PhysicalSize<u32>,
+}
+
 #[derive(Clone, Copy, Deserialize)]
 struct WorkAreaPoint {
     x: i32,
@@ -98,13 +106,38 @@ enum WidgetMode {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CompactMode {
     Float,
-    Island,
+    Bar,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum BarEdge {
+    Top,
+    Left,
+    Right,
+}
+
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BarPlacement {
+    edge: BarEdge,
+    offset: f64,
+}
+
+impl Default for BarPlacement {
+    fn default() -> Self {
+        Self {
+            edge: BarEdge::Top,
+            offset: 0.5,
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
 struct WidgetGeometryState {
     mode: WidgetMode,
     compact_mode: CompactMode,
+    bar_placement: BarPlacement,
     dock: DockState,
     collapsed_rect: WidgetRect,
     expanded_rect: Option<WidgetRect>,
@@ -113,20 +146,38 @@ struct WidgetGeometryState {
 
 fn compact_mode(compact_layout: Option<&str>) -> CompactMode {
     if matches!(compact_layout, Some("bar" | "island")) {
-        CompactMode::Island
+        CompactMode::Bar
     } else {
         CompactMode::Float
     }
 }
 
+fn bar_placement(bar_edge: Option<&str>, bar_offset: Option<f64>) -> BarPlacement {
+    BarPlacement {
+        edge: match bar_edge {
+            Some("left") => BarEdge::Left,
+            Some("right") => BarEdge::Right,
+            _ => BarEdge::Top,
+        },
+        offset: bar_offset
+            .filter(|value| value.is_finite())
+            .unwrap_or(0.5)
+            .clamp(0.0, 1.0),
+    }
+}
+
 fn collapsed_physical_size(
     compact_mode: CompactMode,
+    bar_edge: BarEdge,
     scale_factor: f64,
     safe_inset: u32,
 ) -> PhysicalSize<u32> {
     let (width, height) = match compact_mode {
         CompactMode::Float => (COLLAPSED_LOGICAL_WIDTH, COLLAPSED_LOGICAL_HEIGHT),
-        CompactMode::Island => (ISLAND_LOGICAL_WIDTH, ISLAND_LOGICAL_HEIGHT),
+        CompactMode::Bar if bar_edge == BarEdge::Top => {
+            (BAR_TOP_LOGICAL_WIDTH, BAR_TOP_LOGICAL_HEIGHT)
+        }
+        CompactMode::Bar => (BAR_SIDE_LOGICAL_WIDTH, BAR_SIDE_LOGICAL_HEIGHT),
     };
     PhysicalSize::new(
         widget_window_size(width, scale_factor, safe_inset),
@@ -569,6 +620,161 @@ fn clamp_position_to_bounds(
     )
 }
 
+fn bar_dock(edge: BarEdge) -> DockState {
+    match edge {
+        BarEdge::Top => DockState {
+            horizontal: None,
+            vertical: Some(VerticalDock::Top),
+        },
+        BarEdge::Left => DockState {
+            horizontal: Some(HorizontalDock::Left),
+            vertical: None,
+        },
+        BarEdge::Right => DockState {
+            horizontal: Some(HorizontalDock::Right),
+            vertical: None,
+        },
+    }
+}
+
+fn bar_position_in_bounds(
+    size: PhysicalSize<u32>,
+    placement: BarPlacement,
+    bounds_position: PhysicalPosition<i32>,
+    bounds_size: PhysicalSize<u32>,
+    safe_inset: i32,
+) -> PhysicalPosition<i32> {
+    let min_x = bounds_position.x - safe_inset;
+    let min_y = bounds_position.y - safe_inset;
+    let max_x =
+        (bounds_position.x + bounds_size.width as i32 - size.width as i32 + safe_inset).max(min_x);
+    let max_y = (bounds_position.y + bounds_size.height as i32 - size.height as i32 + safe_inset)
+        .max(min_y);
+    let interpolate = |minimum: i32, maximum: i32| {
+        minimum + ((maximum - minimum) as f64 * placement.offset.clamp(0.0, 1.0)).round() as i32
+    };
+    match placement.edge {
+        BarEdge::Top => PhysicalPosition::new(interpolate(min_x, max_x), min_y),
+        BarEdge::Left => PhysicalPosition::new(min_x, interpolate(min_y, max_y)),
+        BarEdge::Right => PhysicalPosition::new(max_x, interpolate(min_y, max_y)),
+    }
+}
+
+fn bar_offset_from_rect(
+    current: WidgetRect,
+    target_size: PhysicalSize<u32>,
+    edge: BarEdge,
+    bounds_position: PhysicalPosition<i32>,
+    bounds_size: PhysicalSize<u32>,
+    safe_inset: i32,
+) -> f64 {
+    let (current_center, target_length, minimum, maximum) = match edge {
+        BarEdge::Top => (
+            current.position.x as f64 + current.size.width as f64 / 2.0,
+            target_size.width,
+            bounds_position.x - safe_inset,
+            bounds_position.x + bounds_size.width as i32 - target_size.width as i32 + safe_inset,
+        ),
+        BarEdge::Left | BarEdge::Right => (
+            current.position.y as f64 + current.size.height as f64 / 2.0,
+            target_size.height,
+            bounds_position.y - safe_inset,
+            bounds_position.y + bounds_size.height as i32 - target_size.height as i32 + safe_inset,
+        ),
+    };
+    let maximum = maximum.max(minimum);
+    if maximum == minimum {
+        return 0.5;
+    }
+    let desired = current_center - target_length as f64 / 2.0;
+    ((desired - minimum as f64) / (maximum - minimum) as f64).clamp(0.0, 1.0)
+}
+
+fn magnetic_bar_edge(
+    current: WidgetRect,
+    current_edge: BarEdge,
+    bounds_position: PhysicalPosition<i32>,
+    bounds_size: PhysicalSize<u32>,
+    threshold: i32,
+    safe_inset: i32,
+) -> BarEdge {
+    let visible_left = current.position.x + safe_inset;
+    let visible_top = current.position.y + safe_inset;
+    let visible_right = current.position.x + current.size.width as i32 - safe_inset;
+    let bounds_right = bounds_position.x + bounds_size.width as i32;
+    let distances = [
+        (BarEdge::Top, (visible_top - bounds_position.y).abs()),
+        (BarEdge::Left, (visible_left - bounds_position.x).abs()),
+        (BarEdge::Right, (bounds_right - visible_right).abs()),
+    ];
+    let best = distances
+        .iter()
+        .filter_map(|(_, distance)| (*distance <= threshold).then_some(*distance))
+        .min();
+    let Some(best) = best else {
+        return current_edge;
+    };
+    let mut nearest = distances
+        .into_iter()
+        .filter(|(_, distance)| *distance == best)
+        .map(|(edge, _)| edge);
+    let first = nearest.next().unwrap_or(current_edge);
+    if nearest.next().is_some() {
+        current_edge
+    } else {
+        first
+    }
+}
+
+fn bar_collapsed_geometry(
+    placement: BarPlacement,
+    scale_factor: f64,
+    safe_inset: u32,
+    bounds_position: PhysicalPosition<i32>,
+    bounds_size: PhysicalSize<u32>,
+) -> (WidgetRect, DockState) {
+    let size = collapsed_physical_size(CompactMode::Bar, placement.edge, scale_factor, safe_inset);
+    (
+        WidgetRect {
+            position: bar_position_in_bounds(
+                size,
+                placement,
+                bounds_position,
+                bounds_size,
+                safe_inset as i32,
+            ),
+            size,
+        },
+        bar_dock(placement.edge),
+    )
+}
+
+fn bar_expanded_position_in_bounds(
+    collapsed: WidgetRect,
+    expanded_size: PhysicalSize<u32>,
+    placement: BarPlacement,
+    bounds: PhysicalBounds,
+    safe_inset: i32,
+) -> PhysicalPosition<i32> {
+    let min_x = bounds.position.x - safe_inset;
+    let min_y = bounds.position.y - safe_inset;
+    let max_x = (bounds.position.x + bounds.size.width as i32 - expanded_size.width as i32
+        + safe_inset)
+        .max(min_x);
+    let max_y = (bounds.position.y + bounds.size.height as i32 - expanded_size.height as i32
+        + safe_inset)
+        .max(min_y);
+    let centered_x =
+        collapsed.position.x + collapsed.size.width as i32 / 2 - expanded_size.width as i32 / 2;
+    let centered_y =
+        collapsed.position.y + collapsed.size.height as i32 / 2 - expanded_size.height as i32 / 2;
+    match placement.edge {
+        BarEdge::Top => PhysicalPosition::new(centered_x.clamp(min_x, max_x), min_y),
+        BarEdge::Left => PhysicalPosition::new(min_x, centered_y.clamp(min_y, max_y)),
+        BarEdge::Right => PhysicalPosition::new(max_x, centered_y.clamp(min_y, max_y)),
+    }
+}
+
 fn detect_dock(
     position: PhysicalPosition<i32>,
     size: PhysicalSize<u32>,
@@ -680,24 +886,16 @@ fn expanded_position(
     expanded_size: PhysicalSize<u32>,
     dock: DockState,
     compact_mode: CompactMode,
-    monitor: &tauri::Monitor,
-    work_area: Option<WorkAreaPayload>,
+    bar_placement: BarPlacement,
+    bounds: PhysicalBounds,
     safe_inset: i32,
 ) -> PhysicalPosition<i32> {
-    let (bounds_position, bounds_size) = work_area
-        .map(|area| {
-            (
-                PhysicalPosition::new(area.position.x, area.position.y),
-                PhysicalSize::new(area.size.width, area.size.height),
-            )
-        })
-        .unwrap_or_else(|| (*monitor.position(), *monitor.size()));
-    if compact_mode == CompactMode::Island {
-        return island_expanded_position_in_bounds(
+    if compact_mode == CompactMode::Bar {
+        return bar_expanded_position_in_bounds(
             collapsed,
             expanded_size,
-            bounds_position,
-            bounds_size,
+            bar_placement,
+            bounds,
             safe_inset,
         );
     }
@@ -705,69 +903,9 @@ fn expanded_position(
         collapsed,
         expanded_size,
         dock,
-        bounds_position,
-        bounds_size,
+        bounds.position,
+        bounds.size,
         safe_inset,
-    )
-}
-
-fn island_expanded_position_in_bounds(
-    collapsed: WidgetRect,
-    expanded_size: PhysicalSize<u32>,
-    bounds_position: PhysicalPosition<i32>,
-    bounds_size: PhysicalSize<u32>,
-    safe_inset: i32,
-) -> PhysicalPosition<i32> {
-    let centered = PhysicalPosition::new(
-        collapsed.position.x + (collapsed.size.width as i32 - expanded_size.width as i32) / 2,
-        bounds_position.y - safe_inset,
-    );
-    clamp_position_to_bounds(
-        centered,
-        expanded_size,
-        bounds_position,
-        bounds_size,
-        safe_inset,
-    )
-}
-
-fn island_collapsed_geometry(
-    current: WidgetRect,
-    collapsed_size: PhysicalSize<u32>,
-    monitor: &tauri::Monitor,
-    safe_inset: i32,
-    previous: Option<WidgetGeometryState>,
-) -> (WidgetRect, DockState) {
-    let monitor_position = monitor.position();
-    let monitor_size = monitor.size();
-    let previous_island = previous.filter(|value| value.compact_mode == CompactMode::Island);
-    let x = previous_island
-        .map(|value| {
-            if value.user_moved_expanded {
-                current.position.x + (current.size.width as i32 - collapsed_size.width as i32) / 2
-            } else {
-                value.collapsed_rect.position.x
-            }
-        })
-        .unwrap_or_else(|| {
-            monitor_position.x + (monitor_size.width as i32 - collapsed_size.width as i32) / 2
-        });
-    let position = clamp_position_to_monitor(
-        PhysicalPosition::new(x, monitor_position.y - safe_inset),
-        collapsed_size,
-        monitor,
-        safe_inset,
-    );
-    let dock = DockState {
-        horizontal: None,
-        vertical: Some(VerticalDock::Top),
-    };
-    (
-        WidgetRect {
-            position: snap_position(position, collapsed_size, dock, monitor, safe_inset),
-            size: collapsed_size,
-        },
-        dock,
     )
 }
 
@@ -875,8 +1013,10 @@ fn infer_mode(rect: WidgetRect, collapsed_size: PhysicalSize<u32>) -> WidgetMode
 }
 
 fn infer_compact_mode(rect: WidgetRect) -> CompactMode {
-    if rect.size.width > rect.size.height.saturating_mul(3) {
-        CompactMode::Island
+    if rect.size.width > rect.size.height.saturating_mul(3)
+        || rect.size.height > rect.size.width.saturating_mul(3)
+    {
+        CompactMode::Bar
     } else {
         CompactMode::Float
     }
@@ -886,6 +1026,8 @@ fn infer_compact_mode(rect: WidgetRect) -> CompactMode {
 fn expand_widget(
     work_area: Option<WorkAreaPayload>,
     compact_layout: Option<String>,
+    bar_edge: Option<String>,
+    bar_offset: Option<f64>,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
@@ -896,7 +1038,9 @@ fn expand_widget(
     let (monitor, scale_factor) = monitor_and_scale(&window)?;
     let safe_inset = logical_to_physical(EDGE_SAFE_INSET_LOGICAL, scale_factor);
     let compact_mode = compact_mode(compact_layout.as_deref());
-    let collapsed_size = collapsed_physical_size(compact_mode, scale_factor, safe_inset);
+    let bar_placement = bar_placement(bar_edge.as_deref(), bar_offset);
+    let collapsed_size =
+        collapsed_physical_size(compact_mode, bar_placement.edge, scale_factor, safe_inset);
     let expanded_size = PhysicalSize::new(
         widget_window_size(EXPANDED_LOGICAL_WIDTH, scale_factor, safe_inset),
         widget_window_size(EXPANDED_LOGICAL_HEIGHT, scale_factor, safe_inset),
@@ -909,13 +1053,22 @@ fn expand_widget(
     };
     let threshold = logical_to_physical(SNAP_THRESHOLD_LOGICAL, scale_factor) as i32;
     let previous = state.geometry.lock().ok().and_then(|value| *value);
-    let (collapsed_rect, dock) = if compact_mode == CompactMode::Island {
-        island_collapsed_geometry(
-            current,
-            collapsed_size,
-            &monitor,
-            safe_inset as i32,
-            previous,
+    let bounds = work_area
+        .map(|area| PhysicalBounds {
+            position: PhysicalPosition::new(area.position.x, area.position.y),
+            size: PhysicalSize::new(area.size.width, area.size.height),
+        })
+        .unwrap_or(PhysicalBounds {
+            position: *monitor.position(),
+            size: *monitor.size(),
+        });
+    let (collapsed_rect, dock) = if compact_mode == CompactMode::Bar {
+        bar_collapsed_geometry(
+            bar_placement,
+            scale_factor,
+            safe_inset,
+            bounds.position,
+            bounds.size,
         )
     } else {
         collapsed_geometry_for_expand(
@@ -933,8 +1086,8 @@ fn expand_widget(
             expanded_size,
             dock,
             compact_mode,
-            &monitor,
-            work_area,
+            bar_placement,
+            bounds,
             safe_inset as i32,
         ),
         size: expanded_size,
@@ -944,6 +1097,7 @@ fn expand_widget(
         *geometry = Some(WidgetGeometryState {
             mode: WidgetMode::Expanded,
             compact_mode,
+            bar_placement,
             dock,
             collapsed_rect,
             expanded_rect: Some(expanded_rect),
@@ -973,54 +1127,46 @@ fn resize_expanded_widget(
     let (monitor, scale_factor) = monitor_and_scale(&window)?;
     let safe_inset = logical_to_physical(EDGE_SAFE_INSET_LOGICAL, scale_factor);
     let expanded_width = widget_window_size(EXPANDED_LOGICAL_WIDTH, scale_factor, safe_inset);
-    let bounds = work_area.map(|area| {
-        (
-            PhysicalPosition::new(area.position.x, area.position.y),
-            PhysicalSize::new(area.size.width, area.size.height),
-        )
+    let bounds = work_area.map(|area| PhysicalBounds {
+        position: PhysicalPosition::new(area.position.x, area.position.y),
+        size: PhysicalSize::new(area.size.width, area.size.height),
     });
-    let fallback_bounds = monitor
-        .as_ref()
-        .map(|item| (*item.position(), *item.size()));
+    let fallback_bounds = monitor.as_ref().map(|item| PhysicalBounds {
+        position: *item.position(),
+        size: *item.size(),
+    });
     let active_bounds = bounds.or(fallback_bounds);
     let expanded_height = bounded_expanded_height(
         content_height,
         scale_factor,
         safe_inset,
-        active_bounds.map(|(_, size)| size.height),
+        active_bounds.map(|bounds| bounds.size.height),
     );
     let expanded_size = PhysicalSize::new(expanded_width, expanded_height);
     let previous = state.geometry.lock().ok().and_then(|value| *value);
 
     let next_position = match (previous, active_bounds) {
-        (Some(geometry), Some((bounds_position, bounds_size))) if geometry.user_moved_expanded => {
-            clamp_position_to_bounds(
-                current.position,
-                expanded_size,
-                bounds_position,
-                bounds_size,
-                safe_inset as i32,
-            )
-        }
-        (Some(geometry), Some(_)) => {
-            let monitor = monitor
-                .as_ref()
-                .ok_or_else(|| "widget monitor missing".to_string())?;
-            expanded_position(
-                geometry.collapsed_rect,
-                expanded_size,
-                geometry.dock,
-                geometry.compact_mode,
-                monitor,
-                work_area,
-                safe_inset as i32,
-            )
-        }
-        (_, Some((bounds_position, bounds_size))) => clamp_position_to_bounds(
+        (Some(geometry), Some(bounds)) if geometry.user_moved_expanded => clamp_position_to_bounds(
             current.position,
             expanded_size,
-            bounds_position,
-            bounds_size,
+            bounds.position,
+            bounds.size,
+            safe_inset as i32,
+        ),
+        (Some(geometry), Some(bounds)) => expanded_position(
+            geometry.collapsed_rect,
+            expanded_size,
+            geometry.dock,
+            geometry.compact_mode,
+            geometry.bar_placement,
+            bounds,
+            safe_inset as i32,
+        ),
+        (_, Some(bounds)) => clamp_position_to_bounds(
+            current.position,
+            expanded_size,
+            bounds.position,
+            bounds.size,
             safe_inset as i32,
         ),
         (_, None) => current.position,
@@ -1064,35 +1210,210 @@ mod geometry_tests {
     #[test]
     fn compact_modes_use_distinct_window_sizes() {
         assert_eq!(
-            collapsed_physical_size(CompactMode::Float, 1.0, 4),
+            collapsed_physical_size(CompactMode::Float, BarEdge::Top, 1.0, 4),
             PhysicalSize::new(100, 100)
         );
         assert_eq!(
-            collapsed_physical_size(CompactMode::Island, 1.0, 4),
+            collapsed_physical_size(CompactMode::Bar, BarEdge::Top, 1.0, 4),
             PhysicalSize::new(408, 46)
+        );
+        assert_eq!(
+            collapsed_physical_size(CompactMode::Bar, BarEdge::Left, 1.0, 4),
+            PhysicalSize::new(72, 328)
+        );
+        assert_eq!(
+            collapsed_physical_size(CompactMode::Bar, BarEdge::Top, 1.25, 5),
+            PhysicalSize::new(510, 58)
+        );
+        assert_eq!(
+            collapsed_physical_size(CompactMode::Bar, BarEdge::Right, 1.5, 6),
+            PhysicalSize::new(108, 492)
         );
         assert_eq!(
             infer_compact_mode(WidgetRect {
                 position: PhysicalPosition::new(0, 0),
                 size: PhysicalSize::new(408, 46),
             }),
-            CompactMode::Island
+            CompactMode::Bar
+        );
+        assert_eq!(
+            infer_compact_mode(WidgetRect {
+                position: PhysicalPosition::new(0, 0),
+                size: PhysicalSize::new(72, 328),
+            }),
+            CompactMode::Bar
         );
     }
 
     #[test]
-    fn island_expansion_stays_top_attached_and_centered() {
-        let position = island_expanded_position_in_bounds(
-            WidgetRect {
-                position: PhysicalPosition::new(756, -4),
-                size: PhysicalSize::new(408, 46),
-            },
-            PhysicalSize::new(560, 280),
+    fn bar_positions_cover_three_edges_and_normalized_offsets() {
+        let bounds_position = PhysicalPosition::new(-1280, 40);
+        let bounds_size = PhysicalSize::new(1280, 960);
+        let top_size = PhysicalSize::new(408, 46);
+        let side_size = PhysicalSize::new(72, 328);
+        for (offset, expected_x) in [(0.0, -1284), (0.5, -844), (1.0, -404)] {
+            assert_eq!(
+                bar_position_in_bounds(
+                    top_size,
+                    BarPlacement {
+                        edge: BarEdge::Top,
+                        offset,
+                    },
+                    bounds_position,
+                    bounds_size,
+                    4,
+                ),
+                PhysicalPosition::new(expected_x, 36)
+            );
+        }
+        for (offset, expected_y) in [(0.0, 36), (0.5, 356), (1.0, 676)] {
+            assert_eq!(
+                bar_position_in_bounds(
+                    side_size,
+                    BarPlacement {
+                        edge: BarEdge::Left,
+                        offset,
+                    },
+                    bounds_position,
+                    bounds_size,
+                    4,
+                ),
+                PhysicalPosition::new(-1284, expected_y)
+            );
+            assert_eq!(
+                bar_position_in_bounds(
+                    side_size,
+                    BarPlacement {
+                        edge: BarEdge::Right,
+                        offset,
+                    },
+                    bounds_position,
+                    bounds_size,
+                    4,
+                ),
+                PhysicalPosition::new(-68, expected_y)
+            );
+        }
+    }
+
+    #[test]
+    fn bar_offset_projects_the_drag_center_across_orientation_changes() {
+        let top_rect = WidgetRect {
+            position: PhysicalPosition::new(500, 337),
+            size: PhysicalSize::new(408, 46),
+        };
+        let side_offset = bar_offset_from_rect(
+            top_rect,
+            PhysicalSize::new(72, 328),
+            BarEdge::Left,
             PhysicalPosition::new(0, 0),
             PhysicalSize::new(1920, 1040),
             4,
         );
-        assert_eq!(position, PhysicalPosition::new(680, -4));
+        assert!((side_offset - 0.277_777_777_8).abs() < 0.000_001);
+
+        let side_rect = WidgetRect {
+            position: PhysicalPosition::new(400, 300),
+            size: PhysicalSize::new(72, 328),
+        };
+        let top_offset = bar_offset_from_rect(
+            side_rect,
+            PhysicalSize::new(408, 46),
+            BarEdge::Top,
+            PhysicalPosition::new(0, 0),
+            PhysicalSize::new(1920, 1040),
+            4,
+        );
+        assert!((top_offset - 0.155_263_157_9).abs() < 0.000_001);
+    }
+
+    #[test]
+    fn bar_expansion_and_content_resize_preserve_the_collapsed_anchor() {
+        let bounds = PhysicalBounds {
+            position: PhysicalPosition::new(0, 0),
+            size: PhysicalSize::new(1920, 1040),
+        };
+        let placement = BarPlacement {
+            edge: BarEdge::Left,
+            offset: 0.25,
+        };
+        let (collapsed, _) =
+            bar_collapsed_geometry(placement, 1.0, 4, bounds.position, bounds.size);
+        let compact_dashboard = PhysicalSize::new(568, 280);
+        let tall_dashboard = PhysicalSize::new(568, 600);
+        let compact_position =
+            bar_expanded_position_in_bounds(collapsed, compact_dashboard, placement, bounds, 4);
+        let tall_position =
+            bar_expanded_position_in_bounds(collapsed, tall_dashboard, placement, bounds, 4);
+
+        let collapsed_center = collapsed.position.y + collapsed.size.height as i32 / 2;
+        assert_eq!(compact_position, PhysicalPosition::new(-4, 200));
+        assert_eq!(tall_position, PhysicalPosition::new(-4, 40));
+        assert_eq!(
+            compact_position.y + compact_dashboard.height as i32 / 2,
+            collapsed_center
+        );
+        assert_eq!(
+            tall_position.y + tall_dashboard.height as i32 / 2,
+            collapsed_center
+        );
+    }
+
+    #[test]
+    fn magnetic_bar_edges_switch_near_targets_and_keep_current_on_ties() {
+        let bounds_position = PhysicalPosition::new(0, 0);
+        let bounds_size = PhysicalSize::new(1920, 1040);
+        let near_left = WidgetRect {
+            position: PhysicalPosition::new(-2, 320),
+            size: PhysicalSize::new(408, 46),
+        };
+        assert_eq!(
+            magnetic_bar_edge(near_left, BarEdge::Top, bounds_position, bounds_size, 24, 4),
+            BarEdge::Left
+        );
+
+        let top_left_tie = WidgetRect {
+            position: PhysicalPosition::new(-4, -4),
+            size: PhysicalSize::new(408, 46),
+        };
+        assert_eq!(
+            magnetic_bar_edge(
+                top_left_tie,
+                BarEdge::Top,
+                bounds_position,
+                bounds_size,
+                24,
+                4
+            ),
+            BarEdge::Top
+        );
+        assert_eq!(
+            magnetic_bar_edge(
+                top_left_tie,
+                BarEdge::Right,
+                bounds_position,
+                bounds_size,
+                24,
+                4
+            ),
+            BarEdge::Right
+        );
+
+        let bottom_center = WidgetRect {
+            position: PhysicalPosition::new(900, 990),
+            size: PhysicalSize::new(72, 328),
+        };
+        assert_eq!(
+            magnetic_bar_edge(
+                bottom_center,
+                BarEdge::Right,
+                bounds_position,
+                bounds_size,
+                24,
+                4
+            ),
+            BarEdge::Right
+        );
     }
 
     #[test]
@@ -1155,7 +1476,10 @@ mod geometry_tests {
 
 #[tauri::command]
 fn collapse_widget(
+    work_area: Option<WorkAreaPayload>,
     compact_layout: Option<String>,
+    bar_edge: Option<String>,
+    bar_offset: Option<f64>,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
@@ -1166,7 +1490,9 @@ fn collapse_widget(
     let (monitor, scale_factor) = monitor_and_scale(&window)?;
     let safe_inset = logical_to_physical(EDGE_SAFE_INSET_LOGICAL, scale_factor);
     let compact_mode = compact_mode(compact_layout.as_deref());
-    let collapsed_size = collapsed_physical_size(compact_mode, scale_factor, safe_inset);
+    let bar_placement = bar_placement(bar_edge.as_deref(), bar_offset);
+    let collapsed_size =
+        collapsed_physical_size(compact_mode, bar_placement.edge, scale_factor, safe_inset);
     let Some(monitor) = monitor else {
         window
             .set_size(collapsed_size)
@@ -1175,13 +1501,21 @@ fn collapse_widget(
     };
     let threshold = logical_to_physical(SNAP_THRESHOLD_LOGICAL, scale_factor) as i32;
     let previous = state.geometry.lock().ok().and_then(|value| *value);
-    let (collapsed_rect, dock) = if compact_mode == CompactMode::Island {
-        island_collapsed_geometry(
-            current,
-            collapsed_size,
-            &monitor,
-            safe_inset as i32,
-            previous,
+    let (bounds_position, bounds_size) = work_area
+        .map(|area| {
+            (
+                PhysicalPosition::new(area.position.x, area.position.y),
+                PhysicalSize::new(area.size.width, area.size.height),
+            )
+        })
+        .unwrap_or_else(|| (*monitor.position(), *monitor.size()));
+    let (collapsed_rect, dock) = if compact_mode == CompactMode::Bar {
+        bar_collapsed_geometry(
+            bar_placement,
+            scale_factor,
+            safe_inset,
+            bounds_position,
+            bounds_size,
         )
     } else {
         let compatible_previous = previous.filter(|value| value.compact_mode == compact_mode);
@@ -1219,6 +1553,7 @@ fn collapse_widget(
         *geometry = Some(WidgetGeometryState {
             mode: WidgetMode::Collapsed,
             compact_mode,
+            bar_placement,
             dock,
             collapsed_rect,
             expanded_rect: None,
@@ -1241,19 +1576,16 @@ fn begin_widget_drag(app: AppHandle, state: State<'_, AppState>) -> Result<(), S
     let current = current_widget_rect(&window)?;
     let (_, scale_factor) = monitor_and_scale(&window)?;
     let safe_inset = logical_to_physical(EDGE_SAFE_INSET_LOGICAL, scale_factor);
-    let compact_mode = state
-        .geometry
-        .lock()
-        .ok()
-        .and_then(|value| *value)
+    let geometry = state.geometry.lock().ok().and_then(|value| *value);
+    let compact_mode = geometry
         .map(|value| value.compact_mode)
         .unwrap_or_else(|| infer_compact_mode(current));
-    let collapsed_size = collapsed_physical_size(compact_mode, scale_factor, safe_inset);
-    let mode = state
-        .geometry
-        .lock()
-        .ok()
-        .and_then(|value| *value)
+    let placement = geometry
+        .map(|value| value.bar_placement)
+        .unwrap_or_default();
+    let collapsed_size =
+        collapsed_physical_size(compact_mode, placement.edge, scale_factor, safe_inset);
+    let mode = geometry
         .map(|value| value.mode)
         .unwrap_or_else(|| infer_mode(current, collapsed_size));
     if let Ok(mut drag_mode) = state.drag_mode.lock() {
@@ -1263,14 +1595,18 @@ fn begin_widget_drag(app: AppHandle, state: State<'_, AppState>) -> Result<(), S
 }
 
 #[tauri::command]
-fn finish_widget_drag(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+fn finish_widget_drag(
+    work_area: Option<WorkAreaPayload>,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<BarPlacement>, String> {
     let window = app
         .get_webview_window("widget")
         .ok_or_else(|| "widget window missing".to_string())?;
     let current = current_widget_rect(&window)?;
     let (monitor, scale_factor) = monitor_and_scale(&window)?;
     let Some(monitor) = monitor else {
-        return Ok(());
+        return Ok(None);
     };
     let threshold = logical_to_physical(SNAP_THRESHOLD_LOGICAL, scale_factor) as i32;
     let safe_inset = logical_to_physical(EDGE_SAFE_INSET_LOGICAL, scale_factor);
@@ -1278,7 +1614,23 @@ fn finish_widget_drag(app: AppHandle, state: State<'_, AppState>) -> Result<(), 
     let compact_mode = previous_geometry
         .map(|value| value.compact_mode)
         .unwrap_or_else(|| infer_compact_mode(current));
-    let collapsed_size = collapsed_physical_size(compact_mode, scale_factor, safe_inset);
+    let previous_placement = previous_geometry
+        .map(|value| value.bar_placement)
+        .unwrap_or_default();
+    let collapsed_size = collapsed_physical_size(
+        compact_mode,
+        previous_placement.edge,
+        scale_factor,
+        safe_inset,
+    );
+    let (bounds_position, bounds_size) = work_area
+        .map(|area| {
+            (
+                PhysicalPosition::new(area.position.x, area.position.y),
+                PhysicalSize::new(area.size.width, area.size.height),
+            )
+        })
+        .unwrap_or_else(|| (*monitor.position(), *monitor.size()));
     let mode = state
         .drag_mode
         .lock()
@@ -1287,16 +1639,38 @@ fn finish_widget_drag(app: AppHandle, state: State<'_, AppState>) -> Result<(), 
         .or_else(|| previous_geometry.map(|value| value.mode))
         .unwrap_or_else(|| infer_mode(current, collapsed_size));
 
-    match mode {
+    let resolved_placement = match mode {
         WidgetMode::Collapsed => {
-            let (collapsed_rect, dock) = if compact_mode == CompactMode::Island {
-                island_collapsed_geometry(
+            let (collapsed_rect, dock, placement) = if compact_mode == CompactMode::Bar {
+                let edge = magnetic_bar_edge(
                     current,
-                    collapsed_size,
-                    &monitor,
+                    previous_placement.edge,
+                    bounds_position,
+                    bounds_size,
+                    threshold,
                     safe_inset as i32,
-                    previous_geometry,
-                )
+                );
+                let target_size =
+                    collapsed_physical_size(CompactMode::Bar, edge, scale_factor, safe_inset);
+                let placement = BarPlacement {
+                    edge,
+                    offset: bar_offset_from_rect(
+                        current,
+                        target_size,
+                        edge,
+                        bounds_position,
+                        bounds_size,
+                        safe_inset as i32,
+                    ),
+                };
+                let (rect, dock) = bar_collapsed_geometry(
+                    placement,
+                    scale_factor,
+                    safe_inset,
+                    bounds_position,
+                    bounds_size,
+                );
+                (rect, dock, Some(placement))
             } else {
                 let dock = detect_dock(
                     current.position,
@@ -1327,8 +1701,12 @@ fn finish_widget_drag(app: AppHandle, state: State<'_, AppState>) -> Result<(), 
                         size: collapsed_size,
                     },
                     dock,
+                    None,
                 )
             };
+            window
+                .set_size(collapsed_rect.size)
+                .map_err(|_| "failed to resize widget".to_string())?;
             window
                 .set_position(collapsed_rect.position)
                 .map_err(|_| "failed to position widget".to_string())?;
@@ -1336,18 +1714,21 @@ fn finish_widget_drag(app: AppHandle, state: State<'_, AppState>) -> Result<(), 
                 *geometry = Some(WidgetGeometryState {
                     mode: WidgetMode::Collapsed,
                     compact_mode,
+                    bar_placement: placement.unwrap_or(previous_placement),
                     dock,
                     collapsed_rect,
                     expanded_rect: None,
                     user_moved_expanded: false,
                 });
             }
+            placement
         }
         WidgetMode::Expanded => {
-            let current_position = clamp_position_to_monitor(
+            let current_position = clamp_position_to_bounds(
                 current.position,
                 current.size,
-                &monitor,
+                bounds_position,
+                bounds_size,
                 safe_inset as i32,
             );
             let updated_rect = WidgetRect {
@@ -1365,9 +1746,10 @@ fn finish_widget_drag(app: AppHandle, state: State<'_, AppState>) -> Result<(), 
                     *geometry = Some(value);
                 }
             }
+            None
         }
-    }
-    Ok(())
+    };
+    Ok(resolved_placement)
 }
 
 #[tauri::command]

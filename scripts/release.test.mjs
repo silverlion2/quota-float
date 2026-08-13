@@ -34,6 +34,18 @@ describe("release automation", () => {
     expect(result).toContain("- Fix updater\n- Add retry");
   });
 
+  it("promotes detailed Unreleased notes into the target version", () => {
+    const result = buildChangelog(
+      "# Changelog\n\n## Unreleased\n\n- Add magnetic Bar.\n- Preserve edge anchors.\n\n## 0.2.19 - 2026-08-12\n\n- Previous.\n",
+      "0.2.20",
+      ["feat: add magnetic side bar"],
+      "2026-08-13",
+    );
+    expect(result).toContain("## 0.2.20 - 2026-08-13\n\n- Add magnetic Bar.\n- Preserve edge anchors.");
+    expect(result).not.toContain("## Unreleased");
+    expect(result.indexOf("## 0.2.20")).toBeLessThan(result.indexOf("## 0.2.19"));
+  });
+
   it("publishes a per-user NSIS updater on Windows", () => {
     const workflow = readFileSync(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
     expect(workflow).toMatch(/platform: windows-latest\s+args: "--bundles nsis"/);

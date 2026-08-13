@@ -93,6 +93,13 @@ export function buildChangelog(existing, version, commits, date) {
   const normalized = existing.trim();
   if (!normalized) return `# Changelog\n\n${section}\n`;
   if (normalized.startsWith("# Changelog")) {
+    const body = normalized.slice("# Changelog".length).trimStart();
+    const unreleased = /^## Unreleased\s*\n([\s\S]*?)(?=\n## |$)/.exec(body);
+    if (unreleased) {
+      const notes = unreleased[1].trim() || bullets;
+      const remaining = `${body.slice(0, unreleased.index)}${body.slice(unreleased.index + unreleased[0].length)}`.trimStart();
+      return `# Changelog\n\n## ${version} - ${date}\n\n${notes}\n\n${remaining}\n`;
+    }
     return `# Changelog\n\n${section}\n${normalized.slice("# Changelog".length).trimStart()}\n`;
   }
   return `# Changelog\n\n${section}\n${normalized}\n`;

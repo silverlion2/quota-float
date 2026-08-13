@@ -1,6 +1,6 @@
 import { useMemo, useState, type CSSProperties } from "react";
-import type { ColorTheme, CompactLayout, DailyUsageSummary, ExpandedLayout, ProviderId, ProviderSnapshot, QuotaHistoryPoint, ResetForecast, ResolvedAppearance, WidgetPreferences } from "../types";
-import { QuotaCard, QuotaIsland, QuotaOrb } from "./QuotaCard";
+import type { BarEdge, ColorTheme, CompactLayout, DailyUsageSummary, ExpandedLayout, ProviderId, ProviderSnapshot, QuotaHistoryPoint, ResetForecast, ResolvedAppearance, WidgetPreferences } from "../types";
+import { QuotaBar, QuotaCard, QuotaOrb } from "./QuotaCard";
 import type { UpdateViewState } from "./UpdatePanel";
 import { DEFAULT_WIDGET_PREFERENCES } from "../lib/preferences";
 
@@ -141,6 +141,8 @@ export function DesignPlayground() {
   const compactLayout: CompactLayout = compactParam === "bar" || compactParam === "ring" || compactParam === "float"
     ? compactParam
     : visualParam === "island" ? "bar" : "float";
+  const edgeParam = params.get("edge");
+  const barEdge: BarEdge = edgeParam === "left" || edgeParam === "right" ? edgeParam : "top";
   const expandedParam = params.get("expanded");
   const expandedLayout: ExpandedLayout = expandedParam === "provider-bar" || expandedParam === "stacked" || expandedParam === "dashboard"
     ? expandedParam
@@ -151,6 +153,7 @@ export function DesignPlayground() {
   const activePreferences: WidgetPreferences = {
     ...preferences,
     compactLayout,
+    barEdge,
     expandedLayout,
     colorTheme,
     appearanceMode: resolvedAppearance,
@@ -236,11 +239,11 @@ export function DesignPlayground() {
     }
 
     return (
-      <div className={`screenshot-stage${previewMode === "orb" && compactLayout === "bar" ? " screenshot-stage--island" : ""}${captureMode ? " screenshot-stage--capture" : ""}`} style={style}>
-        <div className={previewMode === "orb" ? compactLayout === "bar" ? "design-island-frame" : "design-orb-frame" : "design-card-frame"}>
+      <div className={`screenshot-stage${previewMode === "orb" && compactLayout === "bar" ? " screenshot-stage--bar" : ""}${captureMode ? " screenshot-stage--capture" : ""}`} style={style}>
+        <div className={previewMode === "orb" ? compactLayout === "bar" ? `design-bar-frame design-bar-frame--${barEdge}` : "design-orb-frame" : "design-card-frame"}>
           {previewMode === "orb"
             ? compactLayout === "bar"
-              ? <QuotaIsland snapshot={displayedPreview} snapshots={activeSnapshots} language="en" colorTheme={colorTheme} accentColor={activePreferences.accentColor} resolvedAppearance={resolvedAppearance} onSelectProvider={setSelectedProvider} onDrag={noop} onHover={noop} />
+              ? <QuotaBar snapshot={displayedPreview} snapshots={activeSnapshots} edge={barEdge} language="en" colorTheme={colorTheme} accentColor={activePreferences.accentColor} resolvedAppearance={resolvedAppearance} onSelectProvider={setSelectedProvider} onDrag={noop} onHover={noop} />
               : <QuotaOrb snapshot={activePreview} language="en" compactLayout={compactLayout} colorTheme={colorTheme} accentColor={activePreferences.accentColor} resolvedAppearance={resolvedAppearance} onDrag={() => {}} onHover={() => {}} />
             : <QuotaCard snapshot={displayedPreview} snapshots={activeSnapshots} preferences={activePreferences} resolvedAppearance={resolvedAppearance} history={previewHistory} dailyUsage={previewDailyUsage} resetForecast={previewResetForecast} onSelectProvider={setSelectedProvider} onLock={noop} onToggleStayExpanded={noop} onLanguage={noop} onDrag={noop} onHover={noop} consumingProviders={noConsumingProviders} initialShowCreditTip={showCreditTip} />}
         </div>
@@ -256,10 +259,10 @@ export function DesignPlayground() {
             <button key={mode.value} className={previewMode === mode.value ? "is-active" : ""} onClick={() => setPreviewMode(mode.value)}>{mode.label}</button>
           ))}
         </div>
-        <div className={previewMode === "orb" ? compactLayout === "bar" ? "design-island-frame" : "design-orb-frame" : "design-card-frame"}>
+        <div className={previewMode === "orb" ? compactLayout === "bar" ? `design-bar-frame design-bar-frame--${barEdge}` : "design-orb-frame" : "design-card-frame"}>
           {previewMode === "orb"
             ? compactLayout === "bar"
-              ? <QuotaIsland snapshot={displayedPreview} snapshots={activeSnapshots} colorTheme={colorTheme} accentColor={activePreferences.accentColor} resolvedAppearance={resolvedAppearance} onSelectProvider={setSelectedProvider} onDrag={noop} onHover={noop} />
+              ? <QuotaBar snapshot={displayedPreview} snapshots={activeSnapshots} edge={barEdge} colorTheme={colorTheme} accentColor={activePreferences.accentColor} resolvedAppearance={resolvedAppearance} onSelectProvider={setSelectedProvider} onDrag={noop} onHover={noop} />
               : <QuotaOrb snapshot={activePreview} compactLayout={compactLayout} colorTheme={colorTheme} accentColor={activePreferences.accentColor} resolvedAppearance={resolvedAppearance} onDrag={() => {}} onHover={() => {}} />
             : <QuotaCard snapshot={displayedPreview} snapshots={activeSnapshots} preferences={activePreferences} resolvedAppearance={resolvedAppearance} history={previewHistory} dailyUsage={previewDailyUsage} resetForecast={previewResetForecast} onSelectProvider={setSelectedProvider} onLock={noop} onToggleStayExpanded={noop} onLanguage={noop} onDrag={noop} onHover={noop} consumingProviders={noConsumingProviders} />}
         </div>

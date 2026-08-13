@@ -62,9 +62,9 @@ Study date: 2026-08-06
 
 ### Adapted product slice
 
-- Add five first-party visual systems: Float (legacy compact square), Aurora (existing glass), Graphite (dark workstation), Paper (warm low-distraction), and Island (top-docked multi-provider strip).
+- Add independent compact layouts and color systems: Float/Ring/Bar for shape, and Aurora/Graphite/Paper for color and surface treatment.
 - Apply one System/Light/Dark appearance choice across every visual system, and preserve it in saved layouts.
-- Let Island switch providers through a compact monochrome-logo slider while keeping the selected provider's quota, reset, status, and freshness visible.
+- Let Bar switch providers through a compact monochrome-logo slider while keeping quota, reset, status and freshness upright on Top/Left/Right edges.
 - Add optional risk-first ordering. It is presentation-only, uses the most constrained reported window, and disables drag ordering while active.
 - Add optional percentage-history sparklines from Quota Float's existing bounded local history. No new provider calls or data collection are introduced.
 - Save these choices inside layout profiles and normalize legacy preferences to Aurora, custom order, and visible history trails.

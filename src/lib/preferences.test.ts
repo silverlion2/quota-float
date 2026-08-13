@@ -7,12 +7,20 @@ describe("widget preference migration", () => {
     expect(value.providerOrder).toEqual(["qoder", "codex", "trae", "workbuddy", "volcengine", "antigravity"]);
     expect(value.layoutMode).toBe("standard");
     expect(value.compactLayout).toBe("float");
+    expect(value.barEdge).toBe("top");
+    expect(value.barOffset).toBe(0.5);
     expect(value.expandedLayout).toBe("dashboard");
     expect(value.colorTheme).toBe("aurora");
     expect(value.appearanceMode).toBe("system");
     expect(value.riskFirst).toBe(false);
     expect(value.showHistorySparklines).toBe(true);
     expect(value.notificationsEnabled).toBe(true);
+  });
+
+  it("normalizes persisted bar placement", () => {
+    expect(normalizeWidgetPreferences({ barEdge: "left", barOffset: 0.25 })).toEqual(expect.objectContaining({ barEdge: "left", barOffset: 0.25 }));
+    expect(normalizeWidgetPreferences({ barEdge: "bottom" as never, barOffset: 5 })).toEqual(expect.objectContaining({ barEdge: "top", barOffset: 1 }));
+    expect(normalizeWidgetPreferences({ barEdge: "right", barOffset: Number.NaN })).toEqual(expect.objectContaining({ barEdge: "right", barOffset: 0.5 }));
   });
 
   it("normalizes independent compact layouts and color themes", () => {

@@ -5,7 +5,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProviderSnapshot, VolcengineDiagnostics, WidgetPreferences } from "../types";
 import { DEFAULT_WIDGET_PREFERENCES } from "../lib/preferences";
-import { QuotaCard, QuotaIsland, QuotaOrb } from "./QuotaCard";
+import { QuotaBar, QuotaCard, QuotaOrb } from "./QuotaCard";
 
 const codex: ProviderSnapshot = {
   provider: "codex",
@@ -334,12 +334,13 @@ describe("QuotaCard platform ledger", () => {
     expect(container.querySelector(".quota-card")).toHaveClass("quota-card--expanded-stacked", "quota-card--style-paper");
   });
 
-  it("switches providers from the compact Island slider without expanding", () => {
+  it("switches providers from the compact top Bar without expanding", () => {
     const onSelectProvider = vi.fn();
     render(
-      <QuotaIsland
+      <QuotaBar
         snapshot={codex}
         snapshots={[codex, qoder, trae, antigravity]}
+        edge="top"
         language="en"
         onSelectProvider={onSelectProvider}
         onDrag={noop}
@@ -350,25 +351,84 @@ describe("QuotaCard platform ledger", () => {
     fireEvent.click(screen.getByRole("radio", { name: "QODER" }));
     expect(onSelectProvider).toHaveBeenCalledWith("qoder");
     expect(screen.getByLabelText(/CODEX 74% left On track/i)).toHaveClass("quota-card--compact-bar", "quota-card--style-aurora");
+    expect(screen.getByRole("radiogroup", { name: "Choose provider" })).toHaveAttribute("aria-orientation", "horizontal");
     expect(screen.getByText("74%")).toBeInTheDocument();
     expect(screen.getByText("On track")).toBeInTheDocument();
   });
 
-  it("delays Island expansion so the provider slider remains usable", () => {
+  it.each([
+    ["left", "aurora", "light"],
+    ["right", "aurora", "dark"],
+    ["left", "graphite", "light"],
+    ["right", "graphite", "dark"],
+    ["left", "paper", "light"],
+    ["right", "paper", "dark"],
+  ] as const)("renders an upright %s Bar with its selected theme", (edge, colorTheme, resolvedAppearance) => {
+    const { container } = render(
+      <QuotaBar
+        snapshot={codex}
+        snapshots={[codex, qoder, trae, antigravity]}
+        edge={edge}
+        language="en"
+        colorTheme={colorTheme}
+        resolvedAppearance={resolvedAppearance}
+        onSelectProvider={noop}
+        onDrag={noop}
+        onHover={noop}
+      />,
+    );
+
+    const bar = screen.getByLabelText(/CODEX 74% left On track/i);
+    expect(bar).toHaveClass(`quota-bar--${edge}`, `quota-card--style-${colorTheme}`, `quota-card--theme-${resolvedAppearance}`);
+    expect(bar).toHaveStyle({ "--bar-progress": "74%" });
+    expect(screen.getByRole("radiogroup", { name: "Choose provider" })).toHaveAttribute("aria-orientation", "vertical");
+    expect(container.querySelector(".bar-metric")).toHaveTextContent("CODEX74%left");
+  });
+
+  it("maps vertical Bar slider dragging to the provider stack", () => {
+    class TestPointerEvent extends MouseEvent {
+      pointerId: number;
+
+      constructor(type: string, init: MouseEventInit & { pointerId?: number } = {}) {
+        super(type, init);
+        this.pointerId = init.pointerId ?? 1;
+      }
+    }
+    Object.defineProperty(window, "PointerEvent", { configurable: true, value: TestPointerEvent });
+    const onSelectProvider = vi.fn();
+    render(
+      <QuotaBar
+        snapshot={codex}
+        snapshots={[codex, qoder, trae, antigravity]}
+        edge="left"
+        language="en"
+        onSelectProvider={onSelectProvider}
+        onDrag={noop}
+        onHover={noop}
+      />,
+    );
+    const slider = screen.getByRole("radiogroup", { name: "Choose provider" });
+    vi.spyOn(slider, "getBoundingClientRect").mockReturnValue({ top: 100, height: 200 } as DOMRect);
+    fireEvent.pointerDown(slider, { button: 0, pointerId: 1, clientY: 275 });
+    expect(onSelectProvider).toHaveBeenCalledWith("antigravity");
+  });
+
+  it("delays Bar expansion so the provider slider remains usable", () => {
     vi.useFakeTimers();
     const onHover = vi.fn();
     render(
-      <QuotaIsland
+      <QuotaBar
         snapshot={codex}
         snapshots={[codex, qoder]}
+        edge="top"
         language="en"
         onSelectProvider={noop}
         onDrag={noop}
         onHover={onHover}
       />,
     );
-    const island = screen.getByLabelText(/CODEX 74% left On track/i);
-    fireEvent.mouseEnter(island);
+    const bar = screen.getByLabelText(/CODEX 74% left On track/i);
+    fireEvent.mouseEnter(bar);
     act(() => vi.advanceTimersByTime(649));
     expect(onHover).not.toHaveBeenCalledWith(true);
     act(() => vi.advanceTimersByTime(1));

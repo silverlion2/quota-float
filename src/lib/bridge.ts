@@ -1,4 +1,4 @@
-import type { AppDiagnostics, CompactLayout, ProviderSnapshot, ResetForecast, RuntimeState, VolcengineDiagnostics, WidgetPreferences } from "../types";
+import type { AppDiagnostics, BarPlacement, CompactLayout, ProviderSnapshot, ResetForecast, RuntimeState, VolcengineDiagnostics, WidgetPreferences } from "../types";
 import { EMPTY_RUNTIME_STATE, normalizeRuntimeState } from "./activity";
 import { DEFAULT_WIDGET_PREFERENCES } from "./preferences";
 
@@ -252,56 +252,70 @@ export async function setAlwaysOnTop(alwaysOnTop: boolean): Promise<WidgetPrefer
   return invoke<WidgetPreferences>("set_widget_always_on_top", { alwaysOnTop });
 }
 
-export async function startDragging(): Promise<void> {
-  if (!isTauri()) return;
+interface WorkAreaPayload {
+  position: { x: number; y: number };
+  size: { width: number; height: number };
+}
+
+async function currentWorkArea(): Promise<WorkAreaPayload | null> {
+  const { currentMonitor } = await import("@tauri-apps/api/window");
+  const monitor = await currentMonitor().catch(() => null);
+  return monitor ? {
+    position: { x: monitor.workArea.position.x, y: monitor.workArea.position.y },
+    size: { width: monitor.workArea.size.width, height: monitor.workArea.size.height },
+  } : null;
+}
+
+export async function startDragging(): Promise<BarPlacement | null> {
+  if (!isTauri()) return null;
   const { getCurrentWindow } = await import("@tauri-apps/api/window");
   const { invoke } = await import("@tauri-apps/api/core");
   const currentWindow = getCurrentWindow();
   await invoke("begin_widget_drag");
+  const finish = async () => invoke<BarPlacement | null>("finish_widget_drag", { workArea: await currentWorkArea() });
   let previous: { x: number; y: number };
   try {
     await currentWindow.startDragging();
     previous = await currentWindow.outerPosition();
   } catch (error) {
-    await invoke("finish_widget_drag").catch(() => undefined);
+    await finish().catch(() => undefined);
     throw error;
   }
-  let stableTicks = 0;
-  let attempts = 0;
-  const finishWhenStable = window.setInterval(() => {
-    void currentWindow.outerPosition()
-      .then((next) => {
-        attempts += 1;
-        const stable = Math.abs(next.x - previous.x) <= 1 && Math.abs(next.y - previous.y) <= 1;
-        stableTicks = stable ? stableTicks + 1 : 0;
-        previous = next;
-        if (stableTicks >= 3 || attempts >= 25) {
-          window.clearInterval(finishWhenStable);
-          void invoke("finish_widget_drag").catch(() => undefined);
-        }
-      })
-      .catch(() => {
-        window.clearInterval(finishWhenStable);
-        void invoke("finish_widget_drag").catch(() => undefined);
-      });
-  }, 80);
+  return new Promise<BarPlacement | null>((resolve, reject) => {
+    let stableTicks = 0;
+    let attempts = 0;
+    let finished = false;
+    const complete = () => {
+      if (finished) return;
+      finished = true;
+      window.clearInterval(finishWhenStable);
+      void finish().then(resolve, reject);
+    };
+    const finishWhenStable = window.setInterval(() => {
+      void currentWindow.outerPosition()
+        .then((next) => {
+          attempts += 1;
+          const stable = Math.abs(next.x - previous.x) <= 1 && Math.abs(next.y - previous.y) <= 1;
+          stableTicks = stable ? stableTicks + 1 : 0;
+          previous = next;
+          if (stableTicks >= 3 || attempts >= 25) complete();
+        })
+        .catch(complete);
+    }, 80);
+  });
 }
 
-export function setWidgetExpanded(expanded: boolean, compactLayout: CompactLayout = "float"): Promise<void> {
+export function setWidgetExpanded(
+  expanded: boolean,
+  compactLayout: CompactLayout = "float",
+  placement: BarPlacement = { edge: "top", offset: 0.5 },
+): Promise<void> {
   if (!isTauri()) return Promise.resolve();
   return enqueueWidgetTransition(async () => {
     const { invoke } = await import("@tauri-apps/api/core");
-    if (!expanded) {
-      await invoke("collapse_widget", { compactLayout });
-      return;
-    }
-    const { currentMonitor } = await import("@tauri-apps/api/window");
-    const monitor = await currentMonitor().catch(() => null);
-    const workArea = monitor ? {
-      position: { x: monitor.workArea.position.x, y: monitor.workArea.position.y },
-      size: { width: monitor.workArea.size.width, height: monitor.workArea.size.height },
-    } : null;
-    await invoke("expand_widget", { workArea, compactLayout });
+    const workArea = await currentWorkArea();
+    const payload = { workArea, compactLayout, barEdge: placement.edge, barOffset: placement.offset };
+    await invoke(expanded ? "expand_widget" : "collapse_widget", payload);
   });
 }
 
@@ -309,12 +323,7 @@ export function resizeWidgetToContent(contentHeight: number): Promise<void> {
   if (!isTauri() || !Number.isFinite(contentHeight) || contentHeight <= 0) return Promise.resolve();
   return enqueueWidgetTransition(async () => {
     const { invoke } = await import("@tauri-apps/api/core");
-    const { currentMonitor } = await import("@tauri-apps/api/window");
-    const monitor = await currentMonitor().catch(() => null);
-    const workArea = monitor ? {
-      position: { x: monitor.workArea.position.x, y: monitor.workArea.position.y },
-      size: { width: monitor.workArea.size.width, height: monitor.workArea.size.height },
-    } : null;
+    const workArea = await currentWorkArea();
     await invoke("resize_expanded_widget", { contentHeight, workArea });
   });
 }

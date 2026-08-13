@@ -480,14 +480,17 @@ button { font: inherit; }
 .design-workbench { width: 100vw; min-height: 100vh; display: grid; grid-template-columns: minmax(680px, 1fr) 390px; color: #17191f; background: #f3f4f6; overflow: auto; }
 .screenshot-stage { width: 100vw; height: 100vh; display: grid; place-content: center; background: #f6f7fb; overflow: hidden; }
 .screenshot-stage--capture { place-content: start; padding: 64px; box-sizing: border-box; }
-.screenshot-stage--island { align-content: start; }
-.screenshot-stage--island .quota-island { height: 38px; margin-top: 0; }
+.screenshot-stage--bar { align-content: start; }
+.screenshot-stage--bar .quota-bar--top { height: 38px; margin-top: 0; }
 .screenshot-stage--states { grid-template-columns: repeat(3, 560px); gap: 24px; align-content: center; justify-content: center; }
 .design-stage { min-height: 100vh; display: grid; place-content: center; justify-items: center; gap: 18px; padding: 60px; background-image: linear-gradient(45deg, #e6e8ec 25%, transparent 25%), linear-gradient(-45deg, #e6e8ec 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e6e8ec 75%), linear-gradient(-45deg, transparent 75%, #e6e8ec 75%); background-size: 24px 24px; background-position: 0 0, 0 12px, 12px -12px, -12px 0; }
 .design-card-frame { width: 560px; height: 256px; box-shadow: none; border-radius: var(--card-radius); }
 .screenshot-stage--insights .design-card-frame { height: 400px; }
 .design-orb-frame { width: 100px; height: 100px; box-shadow: none; border-radius: 38px; }
-.design-island-frame { width: 408px; height: 46px; box-shadow: none; }
+.design-bar-frame { box-shadow: none; }
+.design-bar-frame--top { width: 408px; height: 46px; }
+.design-bar-frame--left,
+.design-bar-frame--right { width: 72px; height: 328px; }
 .design-preview-switch { max-width: 520px; display: flex; flex-wrap: wrap; justify-content: center; gap: 7px; padding: 5px; border: 1px solid rgba(99,108,128,.16); border-radius: 14px; background: rgba(255,255,255,.84); box-shadow: 0 8px 24px rgba(36,42,60,.08); }
 .design-preview-switch button { min-height: 34px; padding: 0 13px; border: 0; border-radius: 10px; color: #626a78; background: transparent; cursor: pointer; font-size: 12px; font-weight: 650; }
 .design-preview-switch button span { margin-left: 3px; font-size: 10px; font-weight: 500; }
@@ -608,7 +611,7 @@ button { font: inherit; }
 .quota-card--style-paper.quota-orb { border-radius: 18px; background: #f2e8d6; }
 .quota-card--style-paper.quota-orb--idle { background: rgba(242,232,214,.9); }
 
-/* Provider switching is shared by the compact Island and its expanded ledger. */
+/* Provider switching is shared by the compact Bar and its expanded ledger. */
 .provider-logo-slider { height: 34px; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); align-items: center; gap: 3px; margin: 0 0 5px; padding: 3px 5px 5px; border: 1px solid rgba(255,255,255,.07); border-radius: 12px; background: rgba(0,0,0,.16); touch-action: none; cursor: ew-resize; }
 .provider-logo-slider button { position: relative; min-width: 0; height: 25px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 8px; color: rgba(235,240,243,.54); background: transparent; cursor: pointer; }
 .provider-logo-slider button:hover { color: rgba(245,248,250,.86); background: rgba(255,255,255,.045); }
@@ -621,20 +624,18 @@ button { font: inherit; }
 .provider-logo-slider--compact button.is-active::after { left: 24%; right: 24%; bottom: -3px; }
 .provider-logo-slider--compact .provider-mark { width: 18px; height: 18px; padding: 3px; }
 
-.quota-island {
+.provider-logo-slider--vertical { grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(6, minmax(0, 1fr)); cursor: ns-resize; }
+.provider-logo-slider--compact.provider-logo-slider--vertical { width: 32px; height: 142px; padding: 2px 4px 2px 2px; }
+.provider-logo-slider--compact.provider-logo-slider--vertical button { width: 26px; height: auto; min-height: 21px; }
+.provider-logo-slider--compact.provider-logo-slider--vertical button.is-active::after { left: auto; right: -3px; top: 24%; bottom: 24%; width: 2px; height: auto; }
+
+.quota-bar {
   position: relative;
   width: calc(100% - (var(--edge-safe-inset) * 2));
   height: calc(100% - (var(--edge-safe-inset) * 2));
   margin: var(--edge-safe-inset);
-  display: grid;
-  grid-template-columns: 128px 1px minmax(84px, 1fr) 40px 54px 18px;
-  align-items: center;
-  gap: 7px;
-  padding: 0 10px;
   overflow: hidden;
   border: 1px solid rgba(255,255,255,.09);
-  border-top-color: transparent;
-  border-radius: 4px 4px 15px 15px;
   color: #f4f7f8;
   background: rgba(13,17,23,.98);
   background-clip: padding-box;
@@ -645,19 +646,60 @@ button { font: inherit; }
   backdrop-filter: blur(16px) saturate(1.12);
   -webkit-backdrop-filter: blur(16px) saturate(1.12);
 }
-.island-divider { width: 1px; height: 16px; background: linear-gradient(transparent, rgba(255,255,255,.14), transparent); }
-.island-metric { min-width: 0; display: flex; align-items: baseline; gap: 4px; white-space: nowrap; }
-.island-metric strong { max-width: 58px; overflow: hidden; font-size: 8px; font-weight: 790; letter-spacing: .08em; text-overflow: ellipsis; }
-.island-metric b { font-size: 15px; font-weight: 710; font-variant-numeric: tabular-nums; letter-spacing: -.025em; }
-.island-metric small { color: rgba(235,241,244,.5); font-size: 6px; font-weight: 650; }
-.island-reset, .island-freshness { color: rgba(235,241,244,.56); font-size: 7px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.island-status { display: flex; align-items: center; gap: 4px; overflow: hidden; color: rgba(235,241,244,.62); font-size: 6.5px; font-weight: 690; text-overflow: ellipsis; white-space: nowrap; }
-.island-status i { width: 5px; height: 5px; flex: 0 0 auto; border-radius: 50%; background: #ff8e69; box-shadow: 0 0 8px rgba(255,142,105,.32); }
-.island-status--ok { color: #65d9aa; }
-.island-status--ok i { background: #55d7a3; box-shadow: 0 0 8px rgba(85,215,163,.38); }
-.island-freshness { justify-self: end; font-size: 6px; }
-.island-progress { position: absolute; z-index: 2; left: 10px; right: 10px; bottom: 0; height: 2px; overflow: hidden; border-radius: 99px 99px 0 0; background: rgba(255,255,255,.06); }
-.island-progress i { display: block; height: 100%; border-radius: inherit; background: var(--accent-color, #397ae0); box-shadow: 0 0 8px color-mix(in srgb, var(--accent-color, #397ae0) 50%, transparent); transition: width .2s ease; }
+.quota-bar--top {
+  display: grid;
+  grid-template-columns: 128px 1px minmax(84px, 1fr) 40px 54px 18px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  border-top-color: transparent;
+  border-radius: 0 0 15px 15px;
+}
+.quota-bar--left,
+.quota-bar--right {
+  display: grid;
+  grid-template-rows: 142px 1px 56px 20px 20px 14px;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: center;
+  justify-items: center;
+  gap: 6px;
+  padding: 9px 0;
+}
+.quota-bar--left { border-left-color: transparent; border-radius: 0 16px 16px 0; }
+.quota-bar--right { border-right-color: transparent; border-radius: 16px 0 0 16px; }
+.bar-divider { width: 1px; height: 16px; background: linear-gradient(transparent, rgba(255,255,255,.14), transparent); }
+.bar-metric { min-width: 0; display: flex; align-items: baseline; gap: 4px; white-space: nowrap; }
+.bar-metric strong { max-width: 58px; overflow: hidden; font-size: 8px; font-weight: 790; letter-spacing: .08em; text-overflow: ellipsis; }
+.bar-metric b { font-size: 15px; font-weight: 710; font-variant-numeric: tabular-nums; letter-spacing: -.025em; }
+.bar-metric small { color: rgba(235,241,244,.5); font-size: 6px; font-weight: 650; }
+.bar-reset, .bar-freshness { color: rgba(235,241,244,.56); font-size: 7px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bar-status { display: flex; align-items: center; gap: 4px; overflow: hidden; color: rgba(235,241,244,.62); font-size: 6.5px; font-weight: 690; text-overflow: ellipsis; white-space: nowrap; }
+.bar-status i { width: 5px; height: 5px; flex: 0 0 auto; border-radius: 50%; background: #ff8e69; box-shadow: 0 0 8px rgba(255,142,105,.32); }
+.bar-status--ok { color: #65d9aa; }
+.bar-status--ok i { background: #55d7a3; box-shadow: 0 0 8px rgba(85,215,163,.38); }
+.bar-freshness { justify-self: end; font-size: 6px; }
+.bar-progress { position: absolute; z-index: 2; left: 10px; right: 10px; bottom: 0; height: 2px; overflow: hidden; border-radius: 99px 99px 0 0; background: rgba(255,255,255,.06); }
+.bar-progress i { display: block; width: var(--bar-progress, 0%); height: 100%; border-radius: inherit; background: var(--accent-color, #397ae0); box-shadow: 0 0 8px color-mix(in srgb, var(--accent-color, #397ae0) 50%, transparent); transition: width .2s ease, height .2s ease; }
+.quota-bar--left .bar-divider,
+.quota-bar--right .bar-divider { width: 32px; height: 1px; background: linear-gradient(90deg, transparent, rgba(255,255,255,.14), transparent); }
+.quota-bar--left .bar-metric,
+.quota-bar--right .bar-metric { max-width: 56px; flex-direction: column; align-items: center; gap: 2px; text-align: center; }
+.quota-bar--left .bar-metric strong,
+.quota-bar--right .bar-metric strong { max-width: 52px; font-size: 7px; }
+.quota-bar--left .bar-metric b,
+.quota-bar--right .bar-metric b { font-size: 19px; }
+.quota-bar--left .bar-reset,
+.quota-bar--right .bar-reset,
+.quota-bar--left .bar-freshness,
+.quota-bar--right .bar-freshness { justify-self: center; font-size: 7px; }
+.quota-bar--left .bar-status,
+.quota-bar--right .bar-status { max-width: 54px; justify-content: center; font-size: 6.5px; }
+.quota-bar--left .bar-progress,
+.quota-bar--right .bar-progress { top: 10px; bottom: 10px; width: 2px; height: auto; }
+.quota-bar--left .bar-progress { left: auto; right: 0; border-radius: 99px 0 0 99px; }
+.quota-bar--right .bar-progress { left: 0; right: auto; border-radius: 0 99px 99px 0; }
+.quota-bar--left .bar-progress i,
+.quota-bar--right .bar-progress i { position: absolute; bottom: 0; width: 100%; height: var(--bar-progress, 0%); }
 
 /* Global appearance changes contrast and surfaces without changing layout or data. */
 .quota-card--theme-dark.quota-card--style-aurora {
@@ -710,16 +752,17 @@ button { font: inherit; }
 .quota-card--theme-light.quota-card--style-graphite .provider-mark { color: #334351; background: rgba(255,255,255,.5); }
 .quota-card--theme-light.quota-card--style-graphite.quota-orb { color: #1a2530; background: #edf2f5; }
 
-.quota-island.quota-card--theme-light { color: #172432; border-color: rgba(47,68,86,.12); border-top-color: transparent; background: rgba(248,249,248,.985); box-shadow: inset 0 1px 0 rgba(255,255,255,.8), 0 7px 20px rgba(44,62,76,.12); }
-.quota-island.quota-card--theme-light .provider-logo-slider button { color: rgba(26,38,48,.5); }
-.quota-island.quota-card--theme-light .provider-logo-slider button:hover,
-.quota-island.quota-card--theme-light .provider-logo-slider button.is-active { color: #172432; background: color-mix(in srgb, var(--accent-color, #397ae0) 8%, transparent); }
-.quota-island.quota-card--theme-light .provider-mark { color: currentColor; background: transparent; }
-.quota-island.quota-card--theme-light .island-divider { background: linear-gradient(transparent, rgba(22,38,51,.15), transparent); }
-.quota-island.quota-card--theme-light .island-metric small,
-.quota-island.quota-card--theme-light .island-reset,
-.quota-island.quota-card--theme-light .island-freshness { color: rgba(23,36,50,.54); }
-.quota-island.quota-card--theme-light .island-progress { background: rgba(23,36,50,.08); }
+.quota-bar.quota-card--theme-light { color: #172432; border-color: rgba(47,68,86,.12); background: rgba(248,249,248,.985); box-shadow: inset 0 1px 0 rgba(255,255,255,.8), 0 7px 20px rgba(44,62,76,.12); }
+.quota-bar.quota-card--theme-light .provider-logo-slider button { color: rgba(26,38,48,.5); }
+.quota-bar.quota-card--theme-light .provider-logo-slider button:hover,
+.quota-bar.quota-card--theme-light .provider-logo-slider button.is-active { color: #172432; background: color-mix(in srgb, var(--accent-color, #397ae0) 8%, transparent); }
+.quota-bar.quota-card--theme-light .provider-mark { color: currentColor; background: transparent; }
+.quota-bar.quota-card--theme-light .bar-divider { background: linear-gradient(transparent, rgba(22,38,51,.15), transparent); }
+.quota-bar.quota-card--theme-light:is(.quota-bar--left, .quota-bar--right) .bar-divider { background: linear-gradient(90deg, transparent, rgba(22,38,51,.15), transparent); }
+.quota-bar.quota-card--theme-light .bar-metric small,
+.quota-bar.quota-card--theme-light .bar-reset,
+.quota-bar.quota-card--theme-light .bar-freshness { color: rgba(23,36,50,.54); }
+.quota-bar.quota-card--theme-light .bar-progress { background: rgba(23,36,50,.08); }
 /* Control Center follows the global appearance independently of widget style. */
 .quota-card--theme-dark .control-center { color: #edf2f5; border-color: rgba(255,255,255,.1); background: linear-gradient(145deg, rgba(20,27,36,.985), rgba(13,18,25,.98)); box-shadow: 0 24px 70px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.055); }
 .quota-card--theme-dark .control-header { border-bottom-color: rgba(255,255,255,.07); }
@@ -772,7 +815,9 @@ button { font: inherit; }
   flex: none;
   transition: width .22s ease, height .22s ease;
 }
-.browser-widget-frame:has(.quota-island) { width: 408px; height: 46px; align-self: start; }
+.browser-widget-frame:has(.quota-bar--top) { width: 408px; height: 46px; align-self: start; }
+.browser-widget-frame:has(.quota-bar--left),
+.browser-widget-frame:has(.quota-bar--right) { width: 72px; height: 328px; align-self: start; }
 .browser-widget-frame:has(.quota-card) { width: 560px; height: auto; }
 .browser-preview-note {
   position: fixed;
@@ -1207,6 +1252,23 @@ select:focus-visible {
 .layout-option--bar > i { justify-content: space-between; padding: 0 7px; color: #eef4f6; background: #141b24; }
 .layout-option--bar .provider-mark { width: 19px; height: 19px; margin: 0; padding: 3px; border: 0; color: inherit; background: transparent; box-shadow: none; }
 .layout-option--bar .layout-bar-value { font-size: 8px; font-style: normal; font-weight: 760; }
+.bar-edge-choice { margin: 7px 0 0; padding: 8px; border: 1px solid rgba(35,73,119,.1); border-radius: 12px; background: color-mix(in srgb, var(--accent-color, #397ae0) 3%, rgba(255,255,255,.3)); }
+.bar-edge-choice legend { width: 100%; padding: 0 2px; }
+.bar-edge-choice legend span,
+.bar-edge-choice legend small { display: block; }
+.bar-edge-choice legend span { color: rgba(23,33,49,.68); font-size: 9px; font-weight: 760; }
+.bar-edge-choice legend small { margin-top: 2px; color: rgba(23,33,49,.43); font-size: 7px; font-weight: 520; }
+.bar-edge-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 6px; }
+.bar-edge-option { min-height: 44px; display: grid; grid-template-columns: 48px minmax(0, 1fr); align-items: center; gap: 7px; padding: 5px 7px; border: 1px solid rgba(35,73,119,.09); border-radius: 10px; color: #273649; background: rgba(255,255,255,.42); cursor: pointer; text-align: left; }
+.bar-edge-option:hover { border-color: color-mix(in srgb, var(--accent-color, #397ae0) 28%, transparent); background: rgba(255,255,255,.65); }
+.bar-edge-option.is-active { border-color: color-mix(in srgb, var(--accent-color, #397ae0) 50%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-color, #397ae0) 12%, transparent); }
+.bar-edge-option > i { position: relative; width: 46px; height: 28px; display: block; overflow: hidden; border-radius: 7px; background: linear-gradient(145deg, #dce8f1, #f5f8fa); box-shadow: inset 0 0 0 1px rgba(48,76,105,.09); }
+.bar-edge-option > i span { position: absolute; inset: 4px; border: 1px dashed rgba(58,82,110,.15); border-radius: 4px; }
+.bar-edge-option > i b { position: absolute; background: #18212b; box-shadow: 0 2px 6px rgba(21,31,43,.18); }
+.bar-edge-option--top > i b { left: 10px; right: 10px; top: 0; height: 5px; border-radius: 0 0 4px 4px; }
+.bar-edge-option--left > i b { left: 0; top: 5px; bottom: 5px; width: 7px; border-radius: 0 4px 4px 0; }
+.bar-edge-option--right > i b { right: 0; top: 5px; bottom: 5px; width: 7px; border-radius: 4px 0 0 4px; }
+.bar-edge-option strong { overflow: hidden; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .layout-option--dashboard > i,
 .layout-option--provider-bar > i { align-items: flex-end; padding: 7px 9px; }
 .layout-option--dashboard > i span,
@@ -1240,6 +1302,11 @@ select:focus-visible {
 .quota-card--theme-dark :is(.layout-option small, .color-theme-option small) { color: rgba(233,240,244,.5); }
 .quota-card--theme-dark :is(.layout-option, .color-theme-option) { color: #edf2f5; border-color: rgba(255,255,255,.08); background: rgba(255,255,255,.035); }
 .quota-card--theme-dark :is(.layout-option, .color-theme-option):hover { background: rgba(255,255,255,.065); }
+.quota-card--theme-dark .bar-edge-choice { border-color: rgba(255,255,255,.08); background: rgba(255,255,255,.025); }
+.quota-card--theme-dark .bar-edge-choice legend span { color: rgba(237,242,245,.72); }
+.quota-card--theme-dark .bar-edge-choice legend small { color: rgba(237,242,245,.45); }
+.quota-card--theme-dark .bar-edge-option { color: #edf2f5; border-color: rgba(255,255,255,.08); background: rgba(255,255,255,.035); }
+.quota-card--theme-dark .bar-edge-option:hover { background: rgba(255,255,255,.065); }
 
 /* Compact Float geometry; color is supplied by the selected theme below. */
 .quota-card--compact-float.quota-orb { overflow: visible; border: 0; border-radius: 0; background: transparent; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
@@ -1271,14 +1338,17 @@ select:focus-visible {
 .quota-card--compact-ring.quota-card--style-paper.quota-card--theme-dark { --ring-track: rgba(255,255,255,.09); --ring-surface: #1d1917; color: #f3eee8; }
 
 /* The Bar shares the same palette matrix as Float and the expanded card. */
-.quota-island.quota-card--style-aurora.quota-card--theme-light { color: #172432; border-color: rgba(47,68,86,.12); border-top-color: transparent; background: linear-gradient(145deg, rgba(230,240,248,.98), rgba(248,249,248,.985)); }
-.quota-island.quota-card--style-aurora.quota-card--theme-dark { color: #f4f7f8; background: linear-gradient(145deg, #19232f, #0d1117); }
-.quota-island.quota-card--style-graphite.quota-card--theme-light { color: #1a2530; border-color: rgba(50,76,98,.13); border-top-color: transparent; background: #edf2f5; }
-.quota-island.quota-card--style-graphite.quota-card--theme-dark { color: #f3f6f8; background: #10151d; }
-.quota-island.quota-card--style-paper.quota-card--theme-light { color: #332a22; border-color: rgba(111,80,52,.18); border-top-color: transparent; background: #f2e8d6; }
-.quota-island.quota-card--style-paper.quota-card--theme-dark { color: #f3eee8; border-color: rgba(210,188,164,.16); border-top-color: transparent; background: #1d1917; }
-.quota-island.quota-card--style-paper.quota-card--theme-light :is(.island-metric small, .island-reset, .island-freshness) { color: rgba(59,45,34,.58); }
-.quota-island.quota-card--style-paper.quota-card--theme-dark :is(.island-metric small, .island-reset, .island-freshness) { color: rgba(243,238,232,.56); }
+.quota-bar.quota-card--style-aurora.quota-card--theme-light { color: #172432; border-color: rgba(47,68,86,.12); background: linear-gradient(145deg, rgba(230,240,248,.98), rgba(248,249,248,.985)); }
+.quota-bar.quota-card--style-aurora.quota-card--theme-dark { color: #f4f7f8; background: linear-gradient(145deg, #19232f, #0d1117); }
+.quota-bar.quota-card--style-graphite.quota-card--theme-light { color: #1a2530; border-color: rgba(50,76,98,.13); background: #edf2f5; }
+.quota-bar.quota-card--style-graphite.quota-card--theme-dark { color: #f3f6f8; background: #10151d; }
+.quota-bar.quota-card--style-paper.quota-card--theme-light { color: #332a22; border-color: rgba(111,80,52,.18); background: #f2e8d6; }
+.quota-bar.quota-card--style-paper.quota-card--theme-dark { color: #f3eee8; border-color: rgba(210,188,164,.16); background: #1d1917; }
+.quota-bar.quota-card--style-paper.quota-card--theme-light :is(.bar-metric small, .bar-reset, .bar-freshness) { color: rgba(59,45,34,.58); }
+.quota-bar.quota-card--style-paper.quota-card--theme-dark :is(.bar-metric small, .bar-reset, .bar-freshness) { color: rgba(243,238,232,.56); }
+.quota-bar--top { border-top-color: transparent; }
+.quota-bar--left { border-left-color: transparent; }
+.quota-bar--right { border-right-color: transparent; }
 
 /* Expanded layout structure is independent from color theme. */
 .quota-card--expanded-provider-bar .provider-ledger { padding-left: 16px; }

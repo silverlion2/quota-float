@@ -30,7 +30,7 @@ Quota Float is an always-on-top **Codex quota monitor and coding-assistant usage
 
 - **All quotas in one place:** monitor Codex, Qoder, TRAE, WorkBuddy, Volcengine Ark Coding Plan, and Google Antigravity from one compact widget.
 - **Useful before a limit hits:** see healthy, caution, and critical states, quota pace guidance, reset timing, and configurable desktop alerts.
-- **Stays out of the way:** collapse to a floating orb, expand on hover, reorder providers, and choose compact, standard, or detailed layouts.
+- **Stays out of the way:** use a floating orb, Ring, or magnetic Bar attached to the top, left, or right work-area edge; expand inward on hover and keep the placement across restarts and display changes.
 - **Resilient by design:** transient failures are retried, while last-known-good values remain visible and clearly marked as stale.
 - **Private by default:** no telemetry, analytics, account modification, prompt collection, or third-party tracking.
 - **Desktop-native:** built with Tauri, Rust, React, and TypeScript, with signed in-app update artifacts and Stable/Beta channels.
@@ -65,6 +65,7 @@ Updater artifacts are signed with the project's Tauri update key. Windows Authen
 - Local quota timeline for resets, low-quota crossings, provider failures, recoveries, and updates.
 - Custom accent colors, hidden or condensed providers, reusable layout profiles, and system-login autostart.
 - Independent Float/Ring/Bar compact layouts and Dashboard/Provider-bar/Stacked expanded layouts, with Aurora, Graphite, or Paper colors shared across every layout plus System/Light/Dark appearance.
+- A magnetic Bar with a `400×38` top strip or `64×320` left/right rail, upright quota details, edge-aware inward expansion, and saved normalized placement.
 - Rotating recovery points before updates plus one-file export/import for settings, layouts, and history.
 - Redacted diagnostic reports that exclude tokens, account IDs, local auth paths, and raw provider responses.
 - A Provider Health Center showing each local source, freshness, recovery state, and bounded history count.
@@ -122,6 +123,8 @@ npm run tauri build
 ```
 
 After a Codex Desktop update, run `npm run check:codex`. See the [Codex update compatibility guide](docs/CODEX-UPDATE-CHECK.md) and [release checklist](docs/GITHUB-RELEASE-CHECKLIST.md) for maintainer workflows.
+
+Maintainers can start with the current [project summary](docs/PROJECT-SUMMARY.md), [architecture](docs/ARCHITECTURE.md), [roadmap](docs/ROADMAP.md), and [desktop development SOP](docs/DESKTOP-DEVELOPMENT-SOP.md).
 
 ## Contributing
 

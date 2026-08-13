@@ -3,6 +3,11 @@ export type SnapshotStatus = "ok" | "stale" | "loading" | "unavailable" | "signe
 export type Language = "zh-CN" | "en";
 export type LayoutMode = "compact" | "standard" | "detailed";
 export type CompactLayout = "float" | "ring" | "bar";
+export type BarEdge = "top" | "left" | "right";
+export interface BarPlacement {
+  edge: BarEdge;
+  offset: number;
+}
 export type ExpandedLayout = "dashboard" | "provider-bar" | "stacked";
 export type ColorTheme = "aurora" | "graphite" | "paper";
 export type AppearanceMode = "system" | "light" | "dark";
@@ -55,6 +60,8 @@ export interface WidgetPreferences {
   collapsedProviders: ProviderId[];
   layoutMode: LayoutMode;
   compactLayout: CompactLayout;
+  barEdge: BarEdge;
+  barOffset: number;
   expandedLayout: ExpandedLayout;
   colorTheme: ColorTheme;
   appearanceMode: AppearanceMode;
@@ -109,6 +116,8 @@ export interface SavedLayout {
   collapsedProviders: ProviderId[];
   layoutMode: LayoutMode;
   compactLayout: CompactLayout;
+  barEdge: BarEdge;
+  barOffset: number;
   expandedLayout: ExpandedLayout;
   colorTheme: ColorTheme;
   appearanceMode: AppearanceMode;

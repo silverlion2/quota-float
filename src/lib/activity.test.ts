@@ -337,6 +337,8 @@ describe("activity timeline and notification policy", () => {
         collapsedProviders: [],
         layoutMode: "standard",
         compactLayout: "ring",
+        barEdge: "right",
+        barOffset: 0.75,
         expandedLayout: "stacked",
         colorTheme: "paper",
         appearanceMode: "light",
@@ -351,11 +353,15 @@ describe("activity timeline and notification policy", () => {
       expandedLayout: "provider-bar",
       colorTheme: "aurora",
       appearanceMode: "dark",
+      barEdge: "top",
+      barOffset: 0.5,
     }));
     expect(normalized.savedLayouts[1]).toEqual(expect.objectContaining({
       compactLayout: "ring",
       expandedLayout: "stacked",
       colorTheme: "paper",
+      barEdge: "right",
+      barOffset: 0.75,
     }));
   });
 

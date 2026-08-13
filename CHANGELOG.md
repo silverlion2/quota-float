@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- feat: add magnetic Top/Left/Right Bar placement with normalized restart-safe offsets
+- feat: add upright side rails, edge previews, inward expansion and saved-layout persistence
+- fix: retain the current Bar edge on magnetic corner ties and preserve anchors during content resizing
+- test: cover Bar migration, bridge persistence, themes, accessibility, multi-monitor work areas and DPI geometry
+- docs: refresh the project summary, architecture, roadmap, READMEs, test matrix, limitations and feedback evidence
+
 ## 0.2.19 - 2026-08-12
 
 - fix: compact content-driven expanded panel

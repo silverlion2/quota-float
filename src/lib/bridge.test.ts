@@ -6,6 +6,7 @@ import {
   reconnectVolcengine,
   resizeWidgetToContent,
   setWidgetExpanded,
+  startDragging,
   updatePreferences,
   updateRuntimeState,
 } from "./bridge";
@@ -13,26 +14,31 @@ import { DEFAULT_WIDGET_PREFERENCES } from "./preferences";
 
 const api = vi.hoisted(() => ({
   calls: [] as string[],
-  invoke: vi.fn(async (command: string) => {
+  invoke: vi.fn(async (command: string): Promise<unknown> => {
     api.calls.push(`start:${command}`);
     await Promise.resolve();
     api.calls.push(`end:${command}`);
+    return undefined;
   }),
   currentMonitor: vi.fn(async () => ({
     workArea: { position: { x: 0, y: 0 }, size: { width: 1920, height: 1040 } },
   })),
+  currentWindow: {
+    startDragging: vi.fn(async () => undefined),
+    outerPosition: vi.fn(async () => ({ x: 12, y: 24 })),
+  },
 }));
 const events = vi.hoisted(() => ({ listen: vi.fn() }));
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: api.invoke }));
-vi.mock("@tauri-apps/api/window", () => ({ currentMonitor: api.currentMonitor }));
+vi.mock("@tauri-apps/api/window", () => ({ currentMonitor: api.currentMonitor, getCurrentWindow: () => api.currentWindow }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: events.listen }));
 
 beforeEach(() => {
   vi.clearAllMocks();
   api.calls.length = 0;
   events.listen.mockReset();
-  vi.stubGlobal("window", { __TAURI_INTERNALS__: {} });
+  vi.stubGlobal("window", { __TAURI_INTERNALS__: {}, setInterval, clearInterval });
 });
 
 describe("widget transitions", () => {
@@ -41,14 +47,29 @@ describe("widget transitions", () => {
     expect(api.invoke).toHaveBeenCalledWith("expand_widget", {
       workArea: { position: { x: 0, y: 0 }, size: { width: 1920, height: 1040 } },
       compactLayout: "float",
+      barEdge: "top",
+      barOffset: 0.5,
     });
   });
 
   it("passes bar sizing intent to both transition commands", async () => {
-    await setWidgetExpanded(true, "bar");
-    await setWidgetExpanded(false, "bar");
-    expect(api.invoke).toHaveBeenCalledWith("expand_widget", expect.objectContaining({ compactLayout: "bar" }));
-    expect(api.invoke).toHaveBeenCalledWith("collapse_widget", { compactLayout: "bar" });
+    await setWidgetExpanded(true, "bar", { edge: "right", offset: 0.75 });
+    await setWidgetExpanded(false, "bar", { edge: "right", offset: 0.75 });
+    const placement = expect.objectContaining({ compactLayout: "bar", barEdge: "right", barOffset: 0.75 });
+    expect(api.invoke).toHaveBeenCalledWith("expand_widget", placement);
+    expect(api.invoke).toHaveBeenCalledWith("collapse_widget", placement);
+  });
+
+  it("returns the magnetic placement resolved by Rust after drag stability", async () => {
+    api.invoke.mockImplementation(async (command: string) => {
+      api.calls.push(`start:${command}`);
+      api.calls.push(`end:${command}`);
+      return command === "finish_widget_drag" ? { edge: "left", offset: 0.25 } : undefined;
+    });
+    await expect(startDragging()).resolves.toEqual({ edge: "left", offset: 0.25 });
+    expect(api.invoke).toHaveBeenCalledWith("finish_widget_drag", {
+      workArea: { position: { x: 0, y: 0 }, size: { width: 1920, height: 1040 } },
+    });
   });
 
   it("serializes rapid expand and collapse requests", async () => {

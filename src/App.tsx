@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { QuotaCard, QuotaIsland, QuotaOrb } from "./components/QuotaCard";
+import { QuotaBar, QuotaCard, QuotaOrb } from "./components/QuotaCard";
 import { ControlCenter } from "./components/ControlCenter";
 import { EMPTY_UPDATE_STATE } from "./components/UpdatePanel";
 import type { UpdateViewState } from "./components/UpdatePanel";
@@ -346,6 +346,19 @@ export default function App() {
       });
   }, []);
 
+  const handleDrag = useCallback(() => {
+    setOperationError(null);
+    void startDragging()
+      .then((placement) => {
+        if (!placement) return;
+        const currentPreferences = preferencesRef.current;
+        if (currentPreferences.compactLayout !== "bar"
+          || (currentPreferences.barEdge === placement.edge && Math.abs(currentPreferences.barOffset - placement.offset) < 0.0001)) return;
+        savePreferences({ ...currentPreferences, barEdge: placement.edge, barOffset: placement.offset });
+      })
+      .catch(() => setOperationError("Widget drag failed."));
+  }, [savePreferences]);
+
   const handleUpdateOpen = useCallback(() => {
     setDiagnosticsOpen(false);
     setControlOpen(false);
@@ -450,7 +463,7 @@ export default function App() {
     if (value) void refresh(true);
     if (value) {
       const sequence = ++hoverSequence.current;
-      void setWidgetExpanded(true, preferences.compactLayout)
+      void setWidgetExpanded(true, preferences.compactLayout, { edge: preferences.barEdge, offset: preferences.barOffset })
         .then(() => { if (hoverSequence.current === sequence) setCompact(false); })
         .catch(() => {
           setCompact(false);
@@ -462,21 +475,21 @@ export default function App() {
     collapseTimer.current = window.setTimeout(() => {
       if (hoverSequence.current !== sequence) return;
       setCompact(true);
-      void setWidgetExpanded(false, preferences.compactLayout).catch(() => setOperationError("Widget collapse failed."));
+      void setWidgetExpanded(false, preferences.compactLayout, { edge: preferences.barEdge, offset: preferences.barOffset }).catch(() => setOperationError("Widget collapse failed."));
     }, 180);
-  }, [preferences.compactLayout, preferences.stayExpanded, refresh]);
+  }, [preferences.barEdge, preferences.barOffset, preferences.compactLayout, preferences.stayExpanded, refresh]);
 
   useEffect(() => {
     if (!preferences.stayExpanded) return;
     if (collapseTimer.current !== null) window.clearTimeout(collapseTimer.current);
     setCompact(false);
-    void setWidgetExpanded(true, preferences.compactLayout).catch(() => setOperationError("Widget expand failed."));
-  }, [preferences.compactLayout, preferences.stayExpanded]);
+    void setWidgetExpanded(true, preferences.compactLayout, { edge: preferences.barEdge, offset: preferences.barOffset }).catch(() => setOperationError("Widget expand failed."));
+  }, [preferences.barEdge, preferences.barOffset, preferences.compactLayout, preferences.stayExpanded]);
 
   useEffect(() => {
     if (!compact || preferences.stayExpanded) return;
-    void setWidgetExpanded(false, preferences.compactLayout).catch(() => setOperationError("Widget layout resize failed."));
-  }, [compact, preferences.compactLayout, preferences.stayExpanded]);
+    void setWidgetExpanded(false, preferences.compactLayout, { edge: preferences.barEdge, offset: preferences.barOffset }).catch(() => setOperationError("Widget layout resize failed."));
+  }, [compact, preferences.barEdge, preferences.barOffset, preferences.compactLayout, preferences.stayExpanded]);
 
   useEffect(() => {
     if (compact) return;
@@ -512,15 +525,16 @@ export default function App() {
       if (index >= 0) setActiveIndex(index);
     };
     return preferences.compactLayout === "bar" ? (
-      <QuotaIsland
+      <QuotaBar
         snapshot={current}
         snapshots={orderedSnapshots}
         language={language}
         colorTheme={preferences.colorTheme}
         accentColor={preferences.accentColor}
         resolvedAppearance={resolvedAppearance}
+        edge={preferences.barEdge}
         onSelectProvider={selectCompactProvider}
-        onDrag={() => { void startDragging().catch(() => setOperationError("Widget drag failed.")); }}
+        onDrag={handleDrag}
         onHover={handleHover}
       />
     ) : (
@@ -531,7 +545,7 @@ export default function App() {
         colorTheme={preferences.colorTheme}
         accentColor={preferences.accentColor}
         resolvedAppearance={resolvedAppearance}
-        onDrag={() => { void startDragging().catch(() => setOperationError("Widget drag failed.")); }}
+        onDrag={handleDrag}
         onHover={handleHover}
       />
     );
@@ -558,7 +572,7 @@ export default function App() {
         savePreferences({ ...preferences, providerOrder });
       }}
       onLock={() => { setOperationError(null); void setAlwaysOnTop(!preferences.alwaysOnTop).then((value) => { const normalized = normalizeWidgetPreferences(value); ++preferenceSaveSequence.current; preferencesRef.current = normalized; confirmedPreferencesRef.current = normalized; setPreferences(normalized); }).catch(() => setOperationError("Always-on-top toggle failed.")); }}
-      onDrag={() => { void startDragging().catch(() => setOperationError("Widget drag failed.")); }}
+      onDrag={handleDrag}
       onHover={handleHover}
       onRefresh={() => refresh(true)}
       onDiagnostics={openVolcengineDiagnostics}

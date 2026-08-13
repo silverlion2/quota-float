@@ -14,6 +14,8 @@ export const DEFAULT_WIDGET_PREFERENCES: WidgetPreferences = {
   collapsedProviders: [],
   layoutMode: "standard",
   compactLayout: "float",
+  barEdge: "top",
+  barOffset: 0.5,
   expandedLayout: "dashboard",
   colorTheme: "aurora",
   appearanceMode: "system",
@@ -64,6 +66,12 @@ export function normalizeWidgetPreferences(value: LegacyWidgetPreferences | null
   const compactLayout = candidate.compactLayout === "bar" || candidate.compactLayout === "ring" || candidate.compactLayout === "float"
     ? candidate.compactLayout
     : candidate.visualStyle === "island" ? "bar" : "float";
+  const barEdge = candidate.barEdge === "left" || candidate.barEdge === "right" || candidate.barEdge === "top"
+    ? candidate.barEdge
+    : "top";
+  const barOffset = typeof candidate.barOffset === "number" && Number.isFinite(candidate.barOffset)
+    ? Math.max(0, Math.min(1, candidate.barOffset))
+    : 0.5;
   const expandedLayout = candidate.expandedLayout === "provider-bar" || candidate.expandedLayout === "stacked" || candidate.expandedLayout === "dashboard"
     ? candidate.expandedLayout
     : candidate.visualStyle === "island" ? "provider-bar" : "dashboard";
@@ -91,6 +99,8 @@ export function normalizeWidgetPreferences(value: LegacyWidgetPreferences | null
     collapsedProviders: providerList(candidate.collapsedProviders),
     layoutMode,
     compactLayout,
+    barEdge,
+    barOffset,
     expandedLayout,
     colorTheme,
     appearanceMode,

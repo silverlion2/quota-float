@@ -79,6 +79,10 @@ pub struct WidgetPreferences {
     pub layout_mode: String,
     #[serde(default = "default_compact_layout")]
     pub compact_layout: String,
+    #[serde(default = "default_bar_edge")]
+    pub bar_edge: String,
+    #[serde(default = "default_bar_offset")]
+    pub bar_offset: f64,
     #[serde(default = "default_expanded_layout")]
     pub expanded_layout: String,
     #[serde(default = "default_color_theme")]
@@ -138,6 +142,12 @@ fn default_layout_mode() -> String {
 fn default_compact_layout() -> String {
     "float".into()
 }
+fn default_bar_edge() -> String {
+    "top".into()
+}
+fn default_bar_offset() -> f64 {
+    0.5
+}
 fn default_expanded_layout() -> String {
     "dashboard".into()
 }
@@ -184,6 +194,8 @@ impl Default for WidgetPreferences {
             collapsed_providers: Vec::new(),
             layout_mode: default_layout_mode(),
             compact_layout: default_compact_layout(),
+            bar_edge: default_bar_edge(),
+            bar_offset: default_bar_offset(),
             expanded_layout: default_expanded_layout(),
             color_theme: default_color_theme(),
             visual_style: None,
@@ -280,6 +292,14 @@ impl WidgetPreferences {
         if !matches!(self.compact_layout.as_str(), "float" | "ring" | "bar") {
             self.compact_layout = default_compact_layout();
         }
+        if !matches!(self.bar_edge.as_str(), "top" | "left" | "right") {
+            self.bar_edge = default_bar_edge();
+        }
+        self.bar_offset = if self.bar_offset.is_finite() {
+            self.bar_offset.clamp(0.0, 1.0)
+        } else {
+            default_bar_offset()
+        };
         if !matches!(
             self.expanded_layout.as_str(),
             "dashboard" | "provider-bar" | "stacked"
@@ -400,6 +420,8 @@ mod tests {
         .expect("legacy preferences should remain readable");
         let legacy = legacy.normalized();
         assert_eq!(legacy.compact_layout, "bar");
+        assert_eq!(legacy.bar_edge, "top");
+        assert_eq!(legacy.bar_offset, 0.5);
         assert_eq!(legacy.expanded_layout, "provider-bar");
         assert_eq!(legacy.color_theme, "aurora");
         assert_eq!(legacy.appearance_mode, "system");
@@ -423,6 +445,8 @@ mod tests {
 
         let preferences = WidgetPreferences {
             compact_layout: "bar".into(),
+            bar_edge: "left".into(),
+            bar_offset: 0.25,
             expanded_layout: "provider-bar".into(),
             color_theme: "paper".into(),
             appearance_mode: "dark".into(),
@@ -430,6 +454,8 @@ mod tests {
         };
         let normalized = preferences.normalized();
         assert_eq!(normalized.compact_layout, "bar");
+        assert_eq!(normalized.bar_edge, "left");
+        assert_eq!(normalized.bar_offset, 0.25);
         assert_eq!(normalized.expanded_layout, "provider-bar");
         assert_eq!(normalized.color_theme, "paper");
         assert_eq!(normalized.appearance_mode, "dark");
@@ -448,5 +474,20 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(preferences.normalized().appearance_mode, "system");
+
+        let preferences = WidgetPreferences {
+            bar_edge: "bottom".into(),
+            bar_offset: 4.0,
+            ..Default::default()
+        };
+        let normalized = preferences.normalized();
+        assert_eq!(normalized.bar_edge, "top");
+        assert_eq!(normalized.bar_offset, 1.0);
+
+        let preferences = WidgetPreferences {
+            bar_offset: f64::NAN,
+            ..Default::default()
+        };
+        assert_eq!(preferences.normalized().bar_offset, 0.5);
     }
 }

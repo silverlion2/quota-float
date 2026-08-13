@@ -7,7 +7,7 @@ import { normalizeProviderOrder, PROVIDER_CATALOG, type ProviderDefinition } fro
 import { recentPercentageHistory, sortProviderIdsByRisk } from "../lib/providerPresentation";
 import { calculateQuotaPace, paceBaselineKey, trackedQuotaWindows, type NamedQuotaWindow, type QuotaPace, type QuotaPeriod } from "../lib/quotaPace";
 import type { RecentCodexReset } from "../lib/resetDetection";
-import type { ColorTheme, CompactLayout, DailyPaceBaseline, DailyUsageSummary, Language, ProviderId, ProviderSnapshot, QuotaHistoryPoint, ResetForecast, ResolvedAppearance, VolcengineDiagnostics, WidgetPreferences } from "../types";
+import type { BarEdge, ColorTheme, CompactLayout, DailyPaceBaseline, DailyUsageSummary, Language, ProviderId, ProviderSnapshot, QuotaHistoryPoint, ResetForecast, ResolvedAppearance, VolcengineDiagnostics, WidgetPreferences } from "../types";
 import { ProviderMark } from "./ProviderMark";
 import { ProviderLogoSlider } from "./ProviderLogoSlider";
 import { EMPTY_UPDATE_STATE, UpdatePanel, type UpdateViewState } from "./UpdatePanel";
@@ -919,9 +919,10 @@ function compactFreshness(value: string, now = new Date()): string {
   return `${Math.floor(minutes / 60)}h`;
 }
 
-interface QuotaIslandProps {
+interface QuotaBarProps {
   snapshot: ProviderSnapshot;
   snapshots: ProviderSnapshot[];
+  edge: BarEdge;
   language?: Language;
   colorTheme?: ColorTheme;
   accentColor?: string;
@@ -931,9 +932,10 @@ interface QuotaIslandProps {
   onHover: (hovered: boolean) => void;
 }
 
-export const QuotaIsland = memo(function QuotaIsland({
+export const QuotaBar = memo(function QuotaBar({
   snapshot,
   snapshots,
+  edge,
   language = "zh-CN",
   colorTheme = "aurora",
   accentColor = "#397ae0",
@@ -941,7 +943,7 @@ export const QuotaIsland = memo(function QuotaIsland({
   onSelectProvider,
   onDrag,
   onHover,
-}: QuotaIslandProps) {
+}: QuotaBarProps) {
   const hoverTimer = useRef<number | null>(null);
   const activeLanguage = normalizeLanguage(language);
   const quotaWindows = trackedQuotaWindows(snapshot);
@@ -978,8 +980,8 @@ export const QuotaIsland = memo(function QuotaIsland({
 
   return (
     <main
-      className={`quota-island quota-card--${snapshot.status} quota-card--${quotaTier(remaining)} quota-card--compact-bar quota-card--style-${colorTheme} quota-card--theme-${resolvedAppearance}`}
-      style={{ "--accent-color": accentColor } as CSSProperties}
+      className={`quota-bar quota-bar--${edge} quota-card--${snapshot.status} quota-card--${quotaTier(remaining)} quota-card--compact-bar quota-card--style-${colorTheme} quota-card--theme-${resolvedAppearance}`}
+      style={{ "--accent-color": accentColor, "--bar-progress": `${progress}%` } as CSSProperties}
       onMouseEnter={() => {
         cancelHover();
         hoverTimer.current = window.setTimeout(() => onHover(true), 650);
@@ -1000,17 +1002,18 @@ export const QuotaIsland = memo(function QuotaIsland({
         }}
         ariaLabel={activeLanguage === "en" ? "Choose provider" : "选择平台"}
         compact
+        orientation={edge === "top" ? "horizontal" : "vertical"}
       />
-      <span className="island-divider" aria-hidden="true" />
-      <section className="island-metric">
+      <span className="bar-divider" aria-hidden="true" />
+      <section className="bar-metric">
         <strong>{snapshot.displayName}</strong>
         <b>{value}</b>
         {suffix ? <small>{suffix}</small> : null}
       </section>
-      <span className="island-reset">{quota ? compactResetTime(quota.window.resetsAt) : snapshot.balanceUnit ?? "—"}</span>
-      <span className={`island-status island-status--${healthy ? "ok" : "attention"}`}><i />{status}</span>
-      <span className="island-freshness">{compactFreshness(snapshot.updatedAt)}</span>
-      <span className="island-progress" aria-hidden="true"><i style={{ width: `${progress}%` }} /></span>
+      <span className="bar-reset">{quota ? compactResetTime(quota.window.resetsAt) : snapshot.balanceUnit ?? "—"}</span>
+      <span className={`bar-status bar-status--${healthy ? "ok" : "attention"}`}><i />{status}</span>
+      <span className="bar-freshness">{compactFreshness(snapshot.updatedAt)}</span>
+      <span className="bar-progress" aria-hidden="true"><i /></span>
     </main>
   );
 });

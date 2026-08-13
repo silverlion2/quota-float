@@ -8,23 +8,27 @@ interface Props {
   onSelect: (provider: ProviderId) => void;
   ariaLabel: string;
   compact?: boolean;
+  orientation?: "horizontal" | "vertical";
 }
 
-export function ProviderLogoSlider({ providers, selected, onSelect, ariaLabel, compact = false }: Props) {
+export function ProviderLogoSlider({ providers, selected, onSelect, ariaLabel, compact = false, orientation = "horizontal" }: Props) {
   const dragging = useRef(false);
 
   const selectAt = (event: ReactPointerEvent<HTMLDivElement>) => {
     const bounds = event.currentTarget.getBoundingClientRect();
-    if (bounds.width <= 0 || providers.length === 0) return;
-    const progress = Math.max(0, Math.min(0.9999, (event.clientX - bounds.left) / bounds.width));
+    const length = orientation === "vertical" ? bounds.height : bounds.width;
+    if (length <= 0 || providers.length === 0) return;
+    const pointer = orientation === "vertical" ? event.clientY - bounds.top : event.clientX - bounds.left;
+    const progress = Math.max(0, Math.min(0.9999, pointer / length));
     onSelect(providers[Math.floor(progress * providers.length)].id);
   };
 
   return (
     <div
-      className={`provider-logo-slider${compact ? " provider-logo-slider--compact" : ""}`}
+      className={`provider-logo-slider provider-logo-slider--${orientation}${compact ? " provider-logo-slider--compact" : ""}`}
       role="radiogroup"
       aria-label={ariaLabel}
+      aria-orientation={orientation}
       onPointerDown={(event) => {
         if (event.button !== 0) return;
         event.preventDefault();

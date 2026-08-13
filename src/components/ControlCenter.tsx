@@ -127,8 +127,6 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
     graphiteHint: "深色高对比工作台",
     paper: "纸面",
     paperHint: "温暖、克制、低干扰",
-    island: "Island",
-    islandHint: "顶部吸附与平台滑动",
     riskFirst: "优先显示需要关注的平台",
     riskFirstHint: "按状态与最低剩余额度排序；关闭后恢复自定义顺序",
     history: "显示最近额度轨迹",
@@ -148,8 +146,6 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
     graphiteHint: "Dark, high-contrast workstation",
     paper: "Paper",
     paperHint: "Warm, restrained, low-distraction",
-    island: "Island",
-    islandHint: "Top edge with provider slider",
     riskFirst: "Put attention-needed providers first",
     riskFirstHint: "Sort by status and lowest quota; disable to restore custom order",
     history: "Show recent quota trails",
@@ -165,7 +161,12 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
     ring: "圆环",
     ringHint: "环形进度指标",
     bar: "横条",
-    barHint: "顶部横条与平台滑块",
+    barHint: "可磁吸顶部或左右边缘",
+    barEdge: "横条吸附边缘",
+    barEdgeHint: "拖动横条靠近另一边缘也会更新此选项",
+    top: "顶部",
+    left: "左侧",
+    right: "右侧",
     dashboard: "仪表板",
     dashboardHint: "指标与平台列表",
     providerBar: "平台栏",
@@ -192,7 +193,12 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
     ring: "Ring",
     ringHint: "Circular progress metric",
     bar: "Bar",
-    barHint: "Top bar with provider slider",
+    barHint: "Magnetic top or side rail",
+    barEdge: "Bar attachment edge",
+    barEdgeHint: "Dragging the Bar near another edge updates this choice",
+    top: "Top",
+    left: "Left",
+    right: "Right",
     dashboard: "Dashboard",
     dashboardHint: "Metric and provider ledger",
     providerBar: "Provider bar",
@@ -221,7 +227,7 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
     const saved: SavedLayout = {
       id: crypto.randomUUID(), name, createdAt: new Date().toISOString(), providerOrder: preferences.providerOrder ?? DEFAULT_PROVIDER_ORDER,
       hiddenProviders: preferences.hiddenProviders, collapsedProviders: preferences.collapsedProviders, layoutMode: preferences.layoutMode, accentColor: preferences.accentColor,
-      compactLayout: preferences.compactLayout, expandedLayout: preferences.expandedLayout, colorTheme: preferences.colorTheme,
+      compactLayout: preferences.compactLayout, barEdge: preferences.barEdge, barOffset: preferences.barOffset, expandedLayout: preferences.expandedLayout, colorTheme: preferences.colorTheme,
       appearanceMode: preferences.appearanceMode, riskFirst: preferences.riskFirst, showHistorySparklines: preferences.showHistorySparklines,
     };
     onRuntimeState({ ...runtimeState, savedLayouts: [...runtimeState.savedLayouts, saved].slice(-12) });
@@ -279,6 +285,18 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
               </div>
             </fieldset>
           </div>
+          {preferences.compactLayout === "bar" ? (
+            <fieldset className="bar-edge-choice">
+              <legend><span>{customizationLabels.barEdge}</span><small>{customizationLabels.barEdgeHint}</small></legend>
+              <div className="bar-edge-options" role="radiogroup" aria-label={customizationLabels.barEdge}>
+                {(["top", "left", "right"] as const).map((edge) => (
+                  <button key={edge} type="button" role="radio" aria-checked={preferences.barEdge === edge} className={`bar-edge-option bar-edge-option--${edge}${preferences.barEdge === edge ? " is-active" : ""}`} onClick={() => onPreferences({ ...preferences, barEdge: edge })}>
+                    <i aria-hidden="true"><span /><b /></i><strong>{customizationLabels[edge]}</strong>
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+          ) : null}
           <div className="control-section-title control-section-title--appearance"><span>{customizationLabels.colorSection}</span><small>{customizationLabels.colorHint}</small></div>
           <div className="appearance-options" role="radiogroup" aria-label={appearanceLabels.appearance}>
             {([
@@ -333,7 +351,7 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
           </div>
           <div className="control-section-title"><span>{labels.savedLayouts}</span></div>
           <div className="layout-save"><input value={layoutName} onChange={(event) => setLayoutName(event.target.value)} placeholder={zh ? "方案名称" : "Profile name"} /><button type="button" onClick={saveLayout}><Plus />{labels.saveLayout}</button></div>
-          <div className="saved-layouts">{runtimeState.savedLayouts.length === 0 ? <p>{labels.noLayouts}</p> : runtimeState.savedLayouts.map((layout) => <div key={layout.id}><button type="button" onClick={() => onPreferences({ ...preferences, providerOrder: layout.providerOrder, hiddenProviders: layout.hiddenProviders, collapsedProviders: layout.collapsedProviders, layoutMode: layout.layoutMode, compactLayout: layout.compactLayout, expandedLayout: layout.expandedLayout, colorTheme: layout.colorTheme, appearanceMode: layout.appearanceMode, riskFirst: layout.riskFirst, showHistorySparklines: layout.showHistorySparklines, accentColor: layout.accentColor })}><strong>{layout.name}</strong><small>{layout.compactLayout} · {layout.expandedLayout} · {layout.colorTheme} · {layout.layoutMode}</small></button><button type="button" aria-label="Delete" onClick={() => onRuntimeState({ ...runtimeState, savedLayouts: runtimeState.savedLayouts.filter((item) => item.id !== layout.id) })}><Trash /></button></div>)}</div>
+          <div className="saved-layouts">{runtimeState.savedLayouts.length === 0 ? <p>{labels.noLayouts}</p> : runtimeState.savedLayouts.map((layout) => <div key={layout.id}><button type="button" onClick={() => onPreferences({ ...preferences, providerOrder: layout.providerOrder, hiddenProviders: layout.hiddenProviders, collapsedProviders: layout.collapsedProviders, layoutMode: layout.layoutMode, compactLayout: layout.compactLayout, barEdge: layout.barEdge, barOffset: layout.barOffset, expandedLayout: layout.expandedLayout, colorTheme: layout.colorTheme, appearanceMode: layout.appearanceMode, riskFirst: layout.riskFirst, showHistorySparklines: layout.showHistorySparklines, accentColor: layout.accentColor })}><strong>{layout.name}</strong><small>{layout.compactLayout}{layout.compactLayout === "bar" ? `/${layout.barEdge}` : ""} · {layout.expandedLayout} · {layout.colorTheme} · {layout.layoutMode}</small></button><button type="button" aria-label="Delete" onClick={() => onRuntimeState({ ...runtimeState, savedLayouts: runtimeState.savedLayouts.filter((item) => item.id !== layout.id) })}><Trash /></button></div>)}</div>
         </> : null}
 
         {tab === "health" ? <>
