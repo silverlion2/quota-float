@@ -1,6 +1,19 @@
 # GitHub 发布清单
 
-## 最省事的发布方式
+## 推荐：GitHub Actions 在线发布
+
+打开 **Actions → Release → Run workflow**，Branch 选择 `main`：
+
+1. 先填写 `version` 并保持 `publish=false`，运行云端 dry run。
+2. 检查变更列表、版本目标、前端/Rust 测试与生产构建。
+3. 再次运行相同版本输入并设置 `publish=true`。
+4. 如已保护 `release` Environment，在第一次远端写入前批准 deployment。
+
+`version` 支持 `patch`、`minor`、`major`、`beta`、`stable` 或明确的 `x.y.z[-beta.n]`。工作流会拒绝非 `main` 手动运行、旧版本、重复 tag、没有新增 commit、验证后发生变化的 `main`，以及缺少任一平台产物的发布。
+
+在线流程使用 atomic push 同时提交 release commit/tag；Windows/macOS 各构建一次，先上传为 draft，Windows Defender 扫描实际待发布文件，所有附件齐全后才公开 Release。Stable 版本随后运行升级烟测。
+
+## 本地发布回退
 
 在干净、已同步远端的 `main` 分支运行：
 
@@ -39,6 +52,7 @@ npm run release -- patch --no-push
 - GitHub Actions 已启用。
 - 仓库 Secrets 已配置 `TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。
 - 准备发布的代码已经合入并推送到 `main`。
+- `release` Environment 已创建；建议配置 required reviewer，并确认 Actions bot 可按仓库保护策略写入 release commit/tag。
 
 macOS Universal target 会由 GitHub Actions 自动安装，本地 Windows 不需要配置 macOS 工具链。
 
@@ -48,9 +62,14 @@ macOS Universal target 会由 GitHub Actions 自动安装，本地 Windows 不�
 
 - Windows `.exe` 或 `.msi` 安装包。
 - macOS Universal `.dmg`。
-- Windows 更新器归档及签名。
+- Windows 安装/更新器及 `.sig`。
+- macOS updater archive 及 `.sig`。
 - `latest.json`。
 - 根据提交自动生成的版本说明。
+- `verify`、Defender 预检、全部平台 `publish` 和 `upgrade-smoke` job 均成功。
+- Release 不是 draft；Beta tag 应为 prerelease，Stable tag 不应为 prerelease。
+
+每次发布应在项目内保存一份简短 evidence record，记录 release/tag/commit、工作流链接、产物清单、自动化结果以及仍待完成的手动平台验证。格式可参考 [RELEASE-0.2.20.md](RELEASE-0.2.20.md)。
 
 应用内更新中心会静默检查新版本。Windows 会后台下载签名更新，用户可选择稍后重启安装；macOS 会打开对应的 GitHub Releases 下载页。
 

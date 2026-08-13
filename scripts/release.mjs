@@ -192,13 +192,25 @@ async function main() {
   }
 
   const spec = args.find((arg) => !arg.startsWith("--"));
-  if (!spec) throw new Error("Usage: npm run release -- patch|minor|major|beta|stable|x.y.z[-beta.n] [--dry-run] [--no-push] [--yes]");
+  if (!spec) throw new Error("Usage: npm run release -- patch|minor|major|beta|stable|x.y.z[-beta.n] [--dry-run] [--no-push] [--yes] [--print-target] [--verified-by-ci]");
   const dryRun = args.includes("--dry-run");
   const noPush = args.includes("--no-push");
   const assumeYes = args.includes("--yes");
+  const printTarget = args.includes("--print-target");
+  const verifiedByCi = args.includes("--verified-by-ci");
   const current = assertVersionSync(readVersionState());
   const target = nextVersion(current, spec);
   if (target === current) throw new Error(`Target version ${target} is already current.`);
+  if (printTarget) {
+    console.log(target);
+    return;
+  }
+  if (verifiedByCi && process.env.GITHUB_ACTIONS !== "true") {
+    throw new Error("--verified-by-ci is restricted to GitHub Actions after the workflow verification gate.");
+  }
+  if (verifiedByCi && (dryRun || !noPush || !assumeYes)) {
+    throw new Error("--verified-by-ci requires --no-push and --yes and cannot be combined with --dry-run.");
+  }
 
   const branch = run("git", ["branch", "--show-current"], { capture: true });
   if (branch !== "main") throw new Error(`Releases must be prepared from main, not ${branch || "detached HEAD"}.`);
@@ -227,9 +239,13 @@ async function main() {
     return;
   }
 
-  run("npm", ["test"]);
-  run("npm", ["run", "build"]);
-  run("cargo", ["test", "--manifest-path", "src-tauri/Cargo.toml"]);
+  if (verifiedByCi) {
+    console.log("Using the completed GitHub Actions verification gate; duplicate tests and frontend build are skipped.");
+  } else {
+    run("npm", ["test"]);
+    run("npm", ["run", "build"]);
+    run("cargo", ["test", "--manifest-path", "src-tauri/Cargo.toml"]);
+  }
   if (dryRun) {
     console.log(`Dry run complete. v${target} is ready to prepare.`);
     return;

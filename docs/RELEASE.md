@@ -4,23 +4,54 @@
 
 Quota Float 使用同一套 React/CSS/Tauri 代码构建 Windows 和 macOS 版本。视觉效果、悬浮球、展开卡片、透明度、圆角和动画参数都应保持在共享前端代码中，避免维护 Windows/macOS 两套 UI。
 
-当前发布默认输出 unsigned 包：
+当前发布输出公开安装包和带 Tauri updater 签名的更新产物：
 
-- `quota-float-windows-unsigned.zip`
-- `quota-float-macos-universal-unsigned.zip`
+- Windows x64 NSIS `*-setup.exe` 及其 `.sig`。
+- macOS Universal `.dmg`、`.app.tar.gz` 及其 `.sig`。
+- Stable 更新清单 `latest.json`。
 
-macOS 包使用 Universal 构建，同时支持 Apple Silicon 和 Intel Mac。
+macOS 包使用 Universal 构建，同时支持 Apple Silicon 和 Intel Mac。Tauri updater 签名不等同于 Windows Authenticode 或 macOS Developer ID/notarization；未补齐操作系统信任证书时仍可能出现 SmartScreen 或 Gatekeeper 提示。
 
 ## 发布一个 GitHub 下载版本
 
-推送 `v*` tag 会触发 `.github/workflows/release.yml`，构建 Windows unsigned 包和 macOS Universal unsigned 包，并上传到草稿 GitHub Release。
+### 在线一键发布（推荐）
+
+在 GitHub 仓库打开 **Actions → Release → Run workflow**：
+
+1. Branch 选择 `main`。
+2. `version` 填写 `patch`、`minor`、`major`、`beta`、`stable` 或明确的 `x.y.z[-beta.n]`。
+3. 保持 `publish=false` 时只在线执行只读 dry run、测试和构建，不创建 commit、tag 或 Release。
+4. 确认验证结果后重新运行并设置 `publish=true`；如果 `release` Environment 配置了 required reviewer，工作流会在第一次远端写入前等待批准。
+
+正式在线发布会在同一工作流中完成：
+
+- 验证 `main`、版本、变更列表、前端测试/构建和 Rust 测试。
+- 确认验证后 `main` 未变化，再创建 release commit 与 tag，并通过一次 atomic push 同时写入远端。
+- Windows/macOS 并行构建草稿产物；Windows Defender 扫描实际待发布的 Windows executable 与 installer，不重复编译预检包。
+- 检查 `latest.json`、Windows installer/签名、macOS DMG/updater archive/签名齐全后，才将草稿 Release 转为公开。
+- Stable 版本公开后执行 Windows previous-to-current upgrade smoke。
+
+同一时间只允许一个 Release workflow 运行。GitHub Actions 使用默认 `GITHUB_TOKEN` 创建的 commit/tag 不依赖第二条 tag workflow 被触发，后续构建和发布都在当前 workflow 内继续。
+
+### 本地发布回退
+
+需要从本地发布时，仍可在干净且已同步的 `main` 上使用发布脚本：
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+npm run release -- patch --dry-run
+npm run release -- patch
 ```
 
-工作流完成后，到 GitHub Releases 检查草稿发布，确认说明和附件后手动发布。
+脚本会校验版本、测试并构建，随后创建 release commit 与 `v*` tag，并在获得授权后推送 `main` 和 tag。外部推送的 tag 仍兼容 `.github/workflows/release.yml`；它会验证 tag/版本、构建 Windows/macOS 草稿产物、执行 Defender 扫描、检查附件完整性、公开 Release，并运行 Stable 升级烟测。
+
+工作流完成后必须检查公开 Release、完整产物和所有 job 的最终结论。当前流程及授权边界见 [GITHUB-RELEASE-CHECKLIST.md](GITHUB-RELEASE-CHECKLIST.md)；最近一次完整证据见 [RELEASE-0.2.20.md](RELEASE-0.2.20.md)。
+
+### GitHub 配置
+
+- Repository Secrets：`TAURI_SIGNING_PRIVATE_KEY`、`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。
+- Repository Settings → Environments：创建或打开 `release`，建议配置 required reviewer；该审批发生在在线流程创建 release commit/tag 之前。
+- Actions 必须允许 workflow 使用 `contents: write`；工作流默认仅有只读权限，只有创建 release ref、上传/公开 Release 的 job 会提升权限。
+- 如果 `main` 的 branch protection 禁止 GitHub Actions bot 直接推送，在线发布会安全失败且 atomic push 不会只留下 commit 或 tag；此时需要明确允许该 workflow，或继续使用本地发布回退。
 
 ## CI 与构建
 
@@ -41,13 +72,13 @@ macOS CI/release 会显式安装：
 npm run tauri -- build --target universal-apple-darwin
 ```
 
-## macOS unsigned 包使用说明
+## macOS 未公证包使用说明
 
 因为当前 macOS 包未签名、未公证，首次打开时 Gatekeeper 可能会阻止启动。小范围测试用户可以使用以下方式打开：
 
-1. 解压下载的 macOS zip。
-2. 将应用移动到 Applications 或任意测试目录。
-3. 右键点击应用，选择 Open。
+1. 下载并打开 Universal `.dmg`。
+2. 将应用移动到 Applications。
+3. 如果首次启动被阻止，右键点击应用并选择 Open。
 4. 在系统提示中再次选择 Open。
 
 如果系统仍然阻止，可以在 System Settings -> Privacy & Security 中允许打开该应用。
@@ -62,7 +93,7 @@ npm run tauri -- build --target universal-apple-darwin
 - GitHub Actions 只通过仓库 Secret `TAURI_SIGNING_PRIVATE_KEY` 读取私钥；无需将私钥写入任何源码或配置文件。
 - 丢失私钥不会泄露用户的 Codex 数据，但会使已经发布的应用无法信任由新密钥签名的自动更新；届时需要让用户手动安装一次新版。
 
-Unsigned 包可以用于内部测试或小范围分发，但公开分发建议补齐签名与公证：
+带 Tauri updater 签名的包可以验证应用更新完整性，但公开分发仍建议补齐操作系统代码签名与公证：
 
 - Windows：代码签名证书，避免 SmartScreen 或未知发布者提示。
 - macOS：Apple Developer ID Application 证书、Team ID、app-specific password，并完成 notarization。

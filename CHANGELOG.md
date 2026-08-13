@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- feat: add a guarded GitHub Actions one-click release entry with cloud dry runs and optional publishing
+- ci: build Windows release artifacts once, scan the exact draft files, and publish only after the cross-platform artifact set is complete
+- docs: document online release approvals, inputs, failure behavior, and local fallback
+
 ## 0.2.20 - 2026-08-13
 
 - feat: add magnetic Top/Left/Right Bar placement with normalized restart-safe offsets

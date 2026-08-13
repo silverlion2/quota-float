@@ -1,35 +1,43 @@
 name: Release
 
+run-name: Release ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+
 on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: patch, minor, major, beta, stable, or an explicit x.y.z[-beta.n]
+        required: true
+        default: patch
+        type: string
+      publish:
+        description: Create the release commit/tag and publish after verification
+        required: true
+        default: false
+        type: boolean
   push:
     tags:
       - "v*"
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: quota-float-release
+  cancel-in-progress: false
 
 jobs:
   verify:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release_context.outputs.version }}
+      tag: ${{ steps.release_context.outputs.tag }}
+      source_sha: ${{ steps.release_context.outputs.source_sha }}
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Verify release version matches tag
-        run: npm run version:check -- --tag "$GITHUB_REF_NAME"
-      - run: npm test
-      - run: npm run build
-
-  defender-preflight:
-    needs: verify
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -39,22 +47,100 @@ jobs:
         with:
           workspaces: src-tauri
       - run: npm ci
-      - name: Build Windows Defender preflight artifacts
-        run: >-
-          npm run tauri -- build --bundles nsis
-          --config src-tauri/tauri.ci.conf.json
-      - name: Scan Windows release artifacts with Microsoft Defender
-        shell: powershell
+      - name: Verify or plan the release
+        id: release_context
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          VERSION_SPEC: ${{ inputs.version }}
         run: |
-          $installer = Get-ChildItem "src-tauri/target/release/bundle/nsis" -Filter "*x64-setup.exe" |
-            Select-Object -ExpandProperty FullName -First 1
-          ./scripts/verify-windows-defender.ps1 -EnableRealTimeProtection -Path @(
-            "src-tauri/target/release/quota-float.exe",
-            $installer
-          )
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            if [[ "$REF_NAME" != "main" ]]; then
+              echo "Manual releases must be dispatched from main, not $REF_NAME." >&2
+              exit 1
+            fi
+            git switch -C main "$GITHUB_SHA"
+            target="$(npm run --silent release -- "$VERSION_SPEC" --print-target)"
+            npm run release -- "$VERSION_SPEC" --dry-run --yes
+            tag="v${target}"
+          else
+            npm run version:check -- --tag "$REF_NAME"
+            previous_tag="$(git describe --tags --abbrev=0 "${GITHUB_SHA}^" 2>/dev/null || true)"
+            echo "Changes included in $REF_NAME:"
+            if [[ -n "$previous_tag" ]]; then
+              git log "${previous_tag}..${GITHUB_SHA}" --pretty='  - %s'
+            else
+              git log "${GITHUB_SHA}" --pretty='  - %s'
+            fi
+            npm test
+            npm run build
+            cargo test --manifest-path src-tauri/Cargo.toml
+            target="${REF_NAME#v}"
+            tag="$REF_NAME"
+          fi
+          echo "version=$target" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          echo "Verified release candidate $tag at $GITHUB_SHA."
 
-  publish:
-    needs: [verify, defender-preflight]
+  create-release-ref:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    environment:
+      name: release
+    outputs:
+      release_sha: ${{ steps.release_ref.outputs.release_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Create and push the release commit and tag
+        id: release_ref
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ needs.verify.outputs.source_sha }}
+          VERSION_SPEC: ${{ inputs.version }}
+          RELEASE_TAG: ${{ needs.verify.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git fetch origin main --tags
+          current_sha="$(git rev-parse HEAD)"
+          remote_sha="$(git rev-parse origin/main)"
+          if [[ "$current_sha" != "$EXPECTED_SHA" || "$remote_sha" != "$EXPECTED_SHA" ]]; then
+            echo "main changed after verification; rerun the release workflow." >&2
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          npm run release -- "$VERSION_SPEC" --verified-by-ci --no-push --yes
+          release_sha="$(git rev-parse HEAD)"
+          git push --atomic origin HEAD:refs/heads/main "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+          echo "release_sha=$release_sha" >> "$GITHUB_OUTPUT"
+          echo "Pushed $RELEASE_TAG at $release_sha."
+
+  publish-draft:
+    if: >-
+      ${{
+        always() &&
+        needs.verify.result == 'success' &&
+        (
+          github.event_name == 'push' ||
+          (inputs.publish && needs.create-release-ref.result == 'success')
+        )
+      }}
+    needs: [verify, create-release-ref]
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -67,6 +153,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event_name == 'push' && github.sha || needs.create-release-ref.outputs.release_sha }}
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
@@ -80,41 +167,109 @@ jobs:
         with:
           workspaces: src-tauri
       - run: npm ci
-      - run: cargo test --manifest-path src-tauri/Cargo.toml
+      - name: Verify the checked-out release ref
+        shell: bash
+        run: npm run version:check -- --tag "${{ needs.verify.outputs.tag }}"
       - name: Generate release notes
         id: release_notes
         uses: actions/github-script@v7
+        env:
+          RELEASE_TAG: ${{ needs.verify.outputs.tag }}
+          RELEASE_SHA: ${{ github.event_name == 'push' && github.sha || needs.create-release-ref.outputs.release_sha }}
         with:
           result-encoding: string
           script: |
-            const tag = context.ref.replace("refs/tags/", "");
             const { data } = await github.rest.repos.generateReleaseNotes({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              tag_name: tag,
+              tag_name: process.env.RELEASE_TAG,
+              target_commitish: process.env.RELEASE_SHA,
             });
             return `${data.body}\n\n## Privacy\n\nQuota Float remains local-first: it reads existing local sign-in state only for quota requests and does not upload prompts, chats, raw quota responses, or local credentials.`;
-      - uses: tauri-apps/tauri-action@v0
+      - name: Build and upload draft release artifacts
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: v__VERSION__
-          releaseName: Quota Float v__VERSION__
+          tagName: ${{ needs.verify.outputs.tag }}
+          releaseName: Quota Float ${{ needs.verify.outputs.tag }}
           releaseBody: ${{ steps.release_notes.outputs.result }}
-          releaseDraft: false
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          releaseDraft: true
+          prerelease: ${{ contains(needs.verify.outputs.tag, '-') }}
           args: ${{ matrix.args }}
+      - name: Scan the exact Windows release artifacts with Microsoft Defender
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $installer = Get-ChildItem "src-tauri/target/release/bundle/nsis" -Filter "*x64-setup.exe" |
+            Select-Object -ExpandProperty FullName -First 1
+          ./scripts/verify-windows-defender.ps1 -EnableRealTimeProtection -Path @(
+            "src-tauri/target/release/quota-float.exe",
+            $installer
+          )
+
+  finalize:
+    needs: [verify, create-release-ref, publish-draft]
+    if: ${{ always() && needs.publish-draft.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      release_url: ${{ steps.publish.outputs.release_url }}
+    steps:
+      - name: Verify the artifact set and publish the draft
+        id: publish
+        uses: actions/github-script@v7
+        env:
+          RELEASE_TAG: ${{ needs.verify.outputs.tag }}
+        with:
+          script: |
+            const tag = process.env.RELEASE_TAG;
+            const { data: release } = await github.rest.repos.getReleaseByTag({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag,
+            });
+            if (!release.draft) {
+              core.setFailed(`${tag} is already public; refusing to overwrite it.`);
+              return;
+            }
+            const names = release.assets.map((asset) => asset.name);
+            const required = [
+              ["updater manifest", (name) => name === "latest.json"],
+              ["Windows installer", (name) => /_x64-setup\.exe$/.test(name)],
+              ["Windows updater signature", (name) => /_x64-setup\.exe\.sig$/.test(name)],
+              ["macOS Universal DMG", (name) => /_universal\.dmg$/.test(name)],
+              ["macOS updater archive", (name) => /_universal\.app\.tar\.gz$/.test(name)],
+              ["macOS updater signature", (name) => /_universal\.app\.tar\.gz\.sig$/.test(name)],
+            ];
+            const missing = required.filter(([, matches]) => !names.some(matches)).map(([label]) => label);
+            if (missing.length > 0) {
+              core.setFailed(`Refusing to publish ${tag}; missing: ${missing.join(", ")}. Uploaded: ${names.join(", ")}`);
+              return;
+            }
+            const { data: published } = await github.rest.repos.updateRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: release.id,
+              draft: false,
+              prerelease: tag.includes("-"),
+            });
+            core.setOutput("release_url", published.html_url);
+            core.info(`Published ${tag} with ${names.length} verified assets: ${published.html_url}`);
 
   upgrade-smoke:
-    if: ${{ !contains(github.ref_name, '-') }}
-    needs: publish
+    if: ${{ !contains(needs.verify.outputs.tag, '-') }}
+    needs: [verify, finalize]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.verify.outputs.tag }}
       - name: Verify previous-to-current per-user upgrade
         shell: powershell
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./scripts/verify-windows-upgrade.ps1 -Repository "${{ github.repository }}" -CurrentTag "${{ github.ref_name }}"
+        run: ./scripts/verify-windows-upgrade.ps1 -Repository "${{ github.repository }}" -CurrentTag "${{ needs.verify.outputs.tag }}"

@@ -20,7 +20,7 @@ Quota Float 是一款 Windows/macOS Tauri 桌面悬浮窗：它只读复用本�
 - Vitest + Testing Library：纯函数、组件、偏好迁移和桥接回归测试。
 - Rust 单元测试、`fmt`、`check` 与 `clippy`：平台解析、偏好迁移和物理像素窗口几何验证。
 
-详细分层和数据流见 [ARCHITECTURE.md](ARCHITECTURE.md)，维护提案见 [ROADMAP.md](ROADMAP.md)。
+详细分层和数据流见 [ARCHITECTURE.md](ARCHITECTURE.md)，维护提案见 [ROADMAP.md](ROADMAP.md)，已发布版本证据见 [RELEASE-0.2.20.md](RELEASE-0.2.20.md)。
 
 ## 关键文件
 
@@ -33,6 +33,7 @@ Quota Float 是一款 Windows/macOS Tauri 桌面悬浮窗：它只读复用本�
 - `src-tauri/src/models.rs`：Rust 侧偏好与平台快照模型及安全归一化。
 - `src-tauri/src/{codex,qoder,trae,workbuddy,volcengine,antigravity}.rs`：相互隔离的平台读取器。
 - `docs/DESKTOP-DEVELOPMENT-SOP.md`：实现与快速交付门槛。
+- `.github/workflows/release.yml`、`scripts/release.mjs`：线上一键/本地回退发布、版本同步、草稿产物扫描与公开发布门槛。
 
 ## 数据与安全边界
 
@@ -61,9 +62,12 @@ npm run tauri dev
 
 提交交付前必须执行 [桌面开发 SOP](DESKTOP-DEVELOPMENT-SOP.md) 的完整 fast handoff gate。浏览器模式不能验证真实额度或系统窗口行为；Windows 多屏/缩放和 macOS 透明窗口仍需真实桌面环境按 [TEST-MATRIX.md](TEST-MATRIX.md) 验收。
 
+`v0.2.20` 已发布到 GitHub Releases；本地 132 个前端测试、45 个 Rust 测试及完整 fast handoff gate 均通过，GitHub `verify`、Defender 预检、Windows/macOS 发布和 Windows 升级烟测任务也全部成功。产物清单、提交和工作流链接记录在 [RELEASE-0.2.20.md](RELEASE-0.2.20.md)。
+
 ## 当前维护重点
 
 - 完成 Top/Left/Right Bar 在 Windows 100%、125%、150% 缩放和多显示器环境下的实机烟测。
 - 使用真实 Mac artifact 验证透明背景、边缘展开、置顶、锁定和菜单栏行为；Windows 结果不能替代 macOS 运行验证。
 - 平台应用或 CLI 更新后优先验证适配器解析与失败降级，不对缺失字段猜测额度。
 - 提交、推送、打包、签名、标签和发布均是独立授权边界，不由路线图或测试结果自动触发。
+- 日常发布优先通过 GitHub Actions `Release` 手动入口先运行 `publish=false` dry run，再通过受保护的 `release` Environment 批准 `publish=true`；本地脚本保留为回退路径。

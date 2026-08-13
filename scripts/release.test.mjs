@@ -50,21 +50,38 @@ describe("release automation", () => {
     const workflow = readFileSync(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
     expect(workflow).toMatch(/platform: windows-latest\s+args: "--bundles nsis"/);
     expect(workflow).toMatch(/platform: macos-latest\s+args: "--target universal-apple-darwin --bundles app,dmg"/);
-    expect(workflow).toMatch(/prerelease:.*contains\(github\.ref_name, '-'/);
+    expect(workflow).toMatch(/prerelease:.*contains\(needs\.verify\.outputs\.tag, '-'/);
     expect(workflow).toContain("verify-windows-upgrade.ps1");
   });
 
-  it("blocks release publishing until Defender accepts the Windows artifacts", () => {
+  it("supports guarded online release preparation", () => {
+    const workflow = readFileSync(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
+    const releaseScript = readFileSync(new URL("./release.mjs", import.meta.url), "utf8");
+
+    expect(workflow).toContain("workflow_dispatch:");
+    expect(workflow).toMatch(/publish:\s+description: Create the release commit\/tag and publish after verification\s+required: true\s+default: false/);
+    expect(workflow).toContain("group: quota-float-release");
+    expect(workflow).toContain("name: release");
+    expect(workflow).toContain("--dry-run --yes");
+    expect(workflow).toContain("--verified-by-ci --no-push --yes");
+    expect(workflow).toContain("git push --atomic origin");
+    expect(releaseScript).toContain('process.env.GITHUB_ACTIONS !== "true"');
+  });
+
+  it("blocks public release publishing until Defender accepts the exact Windows artifacts", () => {
     const releaseWorkflow = readFileSync(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
     const ciWorkflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
     const defenderScript = readFileSync(new URL("./verify-windows-defender.ps1", import.meta.url), "utf8");
     const ciConfig = JSON.parse(readFileSync(new URL("../src-tauri/tauri.ci.conf.json", import.meta.url), "utf8"));
 
-    expect(releaseWorkflow).toContain("defender-preflight:");
-    expect(releaseWorkflow).toMatch(/publish:\s+needs: \[verify, defender-preflight\]/);
-    expect(releaseWorkflow).toContain("--config src-tauri/tauri.ci.conf.json");
+    expect(releaseWorkflow).not.toContain("defender-preflight:");
+    expect(releaseWorkflow).toContain("publish-draft:");
+    expect(releaseWorkflow).toContain("releaseDraft: true");
     expect(releaseWorkflow).toContain("verify-windows-defender.ps1 -EnableRealTimeProtection -Path");
     expect(releaseWorkflow).not.toContain("verify-windows-defender.ps1 -UpdateSignatures");
+    expect(releaseWorkflow.indexOf("tauri-apps/tauri-action@v0")).toBeLessThan(releaseWorkflow.indexOf("verify-windows-defender.ps1 -EnableRealTimeProtection"));
+    expect(releaseWorkflow).toContain("Verify the artifact set and publish the draft");
+    expect(releaseWorkflow).toContain("missing: ${missing.join");
     expect(ciWorkflow).toContain("--config src-tauri/tauri.ci.conf.json");
     expect(ciWorkflow).toContain("verify-windows-defender.ps1 -EnableRealTimeProtection -Path");
     expect(defenderScript).toContain("RealTimeProtectionEnabled");

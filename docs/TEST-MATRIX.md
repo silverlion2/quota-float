@@ -22,6 +22,15 @@
 
 交付时执行 `docs/DESKTOP-DEVELOPMENT-SOP.md` 的完整 fast handoff gate；本轮实际测试数量和命令结果记录在任务交付说明中，避免文档数字随测试增删而失真。
 
+## v0.2.20 自动发布证据
+
+- 本地发布门槛：132 个前端测试、45 个 Rust 测试、生产构建、`fmt`、`check`、严格 `clippy`、diff 与版本一致性检查全部通过。
+- GitHub Actions：`verify`、Windows Defender 预检、Windows NSIS 发布、macOS Universal 发布和 Windows `upgrade-smoke` 全部成功。
+- 公开 Release：`latest.json`、Windows 安装包及签名、macOS Universal DMG、macOS updater archive 及签名均已上传。
+- 完整证据、链接和产物清单见 [RELEASE-0.2.20.md](RELEASE-0.2.20.md)。
+
+这些结果证明构建、扫描、打包、更新签名和自动升级路径成功；它们不替代下列原生窗口视觉/交互矩阵。
+
 ## Windows 手动烟测
 
 在 100%、125%、150% 缩放和至少一个多显示器/负坐标布局上执行：
