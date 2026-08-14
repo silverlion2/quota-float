@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.21 - 2026-08-14
 
 - feat: add a guarded GitHub Actions one-click release entry with cloud dry runs and optional publishing
 - ci: build Windows release artifacts once, scan the exact draft files, and publish only after the cross-platform artifact set is complete
