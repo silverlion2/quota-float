@@ -231,11 +231,16 @@ jobs:
         with:
           script: |
             const tag = process.env.RELEASE_TAG;
-            const { data: release } = await github.rest.repos.getReleaseByTag({
+            const releases = await github.paginate(github.rest.repos.listReleases, {
               owner: context.repo.owner,
               repo: context.repo.repo,
-              tag,
+              per_page: 100,
             });
+            const release = releases.find((candidate) => candidate.tag_name === tag);
+            if (!release) {
+              core.setFailed(`Refusing to publish ${tag}; no matching release draft was found.`);
+              return;
+            }
             if (!release.draft) {
               core.setFailed(`${tag} is already public; refusing to overwrite it.`);
               return;
