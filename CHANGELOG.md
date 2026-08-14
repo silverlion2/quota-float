@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.22 - 2026-08-14
+
+- ci: install Linux release dependencies
+
 ## 0.2.21 - 2026-08-14
 
 - feat: add a guarded GitHub Actions one-click release entry with cloud dry runs and optional publishing
