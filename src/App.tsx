@@ -35,6 +35,7 @@ export default function App() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [hovered, setHovered] = useState(false);
   const [compact, setCompact] = useState(true);
+  const [collapsing, setCollapsing] = useState(false);
   const [consumingProviders, setConsumingProviders] = useState<Set<string>>(() => new Set());
   const [operationError, setOperationError] = useState<string | null>(null);
   const [updateState, setUpdateState] = useState<UpdateViewState>(EMPTY_UPDATE_STATE);
@@ -53,6 +54,7 @@ export default function App() {
   const previousMetric = useRef(new Map<string, number>());
   const consumptionTimers = useRef(new Map<string, number>());
   const collapseTimer = useRef<number | null>(null);
+  const collapseContentTimer = useRef<number | null>(null);
   const hoverSequence = useRef(0);
   const updateSequence = useRef(0);
   const refreshSequence = useRef(0);
@@ -276,6 +278,7 @@ export default function App() {
       for (const timer of consumptionTimers.current.values()) window.clearTimeout(timer);
       consumptionTimers.current.clear();
       if (collapseTimer.current !== null) window.clearTimeout(collapseTimer.current);
+      if (collapseContentTimer.current !== null) window.clearTimeout(collapseContentTimer.current);
     };
   }, [refresh]);
 
@@ -458,6 +461,11 @@ export default function App() {
       window.clearTimeout(collapseTimer.current);
       collapseTimer.current = null;
     }
+    if (collapseContentTimer.current !== null) {
+      window.clearTimeout(collapseContentTimer.current);
+      collapseContentTimer.current = null;
+    }
+    setCollapsing(false);
     setHovered(value);
     if (!value && preferences.stayExpanded) return;
     if (value) void refresh(true);
@@ -474,14 +482,22 @@ export default function App() {
     const sequence = ++hoverSequence.current;
     collapseTimer.current = window.setTimeout(() => {
       if (hoverSequence.current !== sequence) return;
-      setCompact(true);
-      void setWidgetExpanded(false, preferences.compactLayout, { edge: preferences.barEdge, offset: preferences.barOffset }).catch(() => setOperationError("Widget collapse failed."));
+      const reducedMotion = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      setCollapsing(!reducedMotion);
+      collapseContentTimer.current = window.setTimeout(() => {
+        if (hoverSequence.current !== sequence) return;
+        setCompact(true);
+        setCollapsing(false);
+        void setWidgetExpanded(false, preferences.compactLayout, { edge: preferences.barEdge, offset: preferences.barOffset }).catch(() => setOperationError("Widget collapse failed."));
+      }, reducedMotion ? 0 : 140);
     }, 180);
   }, [preferences.barEdge, preferences.barOffset, preferences.compactLayout, preferences.stayExpanded, refresh]);
 
   useEffect(() => {
     if (!preferences.stayExpanded) return;
     if (collapseTimer.current !== null) window.clearTimeout(collapseTimer.current);
+    if (collapseContentTimer.current !== null) window.clearTimeout(collapseContentTimer.current);
+    setCollapsing(false);
     setCompact(false);
     void setWidgetExpanded(true, preferences.compactLayout, { edge: preferences.barEdge, offset: preferences.barOffset }).catch(() => setOperationError("Widget expand failed."));
   }, [preferences.barEdge, preferences.barOffset, preferences.compactLayout, preferences.stayExpanded]);
@@ -631,6 +647,7 @@ export default function App() {
       isConsuming={consumingProviders.has(current.provider)}
       consumingProviders={consumingProviders}
       notice={operationError}
+      collapsing={collapsing}
     />
   );
 }

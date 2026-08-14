@@ -1555,3 +1555,193 @@ button.usage-stat-card:hover { border-color: color-mix(in srgb, var(--accent-col
 /* Keep the multi-state design review legible at the desktop preview viewport. */
 .screenshot-stage--states { width: 100%; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; padding: 24px; box-sizing: border-box; }
 .screenshot-stage--states .design-card-frame { justify-self: center; transform: scale(.68); transform-origin: center; }
+
+/* Motion system: one restrained rhythm for shell morphs, view changes, and controls. */
+:root {
+  --motion-emphasized: cubic-bezier(.22, 1, .36, 1);
+  --motion-standard: cubic-bezier(.2, .72, .28, 1);
+  --motion-snappy: cubic-bezier(.3, .8, .35, 1);
+  --motion-fast: 140ms;
+  --motion-medium: 220ms;
+  --motion-slow: 320ms;
+}
+
+.quota-card {
+  --shell-enter-x: 0px;
+  --shell-enter-y: 6px;
+  --shell-exit-x: 0px;
+  --shell-exit-y: 4px;
+  --shell-clip: inset(37% 41% round 999px);
+  animation: shell-enter var(--motion-medium) var(--motion-emphasized) both;
+  transform-origin: center;
+  transition:
+    color var(--motion-medium) var(--motion-standard),
+    border-color var(--motion-medium) var(--motion-standard),
+    border-radius var(--motion-medium) var(--motion-standard),
+    background-color var(--motion-medium) var(--motion-standard),
+    box-shadow var(--motion-medium) var(--motion-standard);
+}
+.quota-card--origin-top { --shell-enter-y: -10px; --shell-exit-y: -6px; --shell-clip: inset(0 12% 88% round 0 0 16px 16px); transform-origin: top center; }
+.quota-card--origin-left { --shell-enter-x: -10px; --shell-enter-y: 0px; --shell-exit-x: -6px; --shell-exit-y: 0px; --shell-clip: inset(8% 88% 8% 0 round 0 16px 16px 0); transform-origin: center left; }
+.quota-card--origin-right { --shell-enter-x: 10px; --shell-enter-y: 0px; --shell-exit-x: 6px; --shell-exit-y: 0px; --shell-clip: inset(8% 0 8% 88% round 16px 0 0 16px); transform-origin: center right; }
+.quota-card--collapsing { animation: shell-exit var(--motion-fast) cubic-bezier(.4, 0, 1, 1) both; }
+
+@keyframes shell-enter {
+  from { opacity: 0; clip-path: var(--shell-clip); transform: translate3d(var(--shell-enter-x), var(--shell-enter-y), 0) scale(.975); }
+  65% { opacity: 1; }
+  to { opacity: 1; clip-path: inset(0 round var(--card-radius, 28px)); transform: translate3d(0, 0, 0) scale(1); }
+}
+@keyframes shell-exit {
+  from { opacity: 1; clip-path: inset(0 round var(--card-radius, 28px)); transform: translate3d(0, 0, 0) scale(1); }
+  to { opacity: 0; clip-path: var(--shell-clip); transform: translate3d(var(--shell-exit-x), var(--shell-exit-y), 0) scale(.982); }
+}
+
+.quota-orb,
+.quota-bar {
+  animation: compact-enter 190ms var(--motion-emphasized) both;
+  transition:
+    opacity var(--motion-slow) var(--motion-standard),
+    color var(--motion-medium) var(--motion-standard),
+    border-color var(--motion-medium) var(--motion-standard),
+    border-radius var(--motion-medium) var(--motion-standard),
+    background-color var(--motion-medium) var(--motion-standard),
+    box-shadow var(--motion-medium) var(--motion-standard),
+    backdrop-filter var(--motion-slow) var(--motion-standard),
+    -webkit-backdrop-filter var(--motion-slow) var(--motion-standard);
+}
+.quota-bar--top { transform-origin: top center; }
+.quota-bar--left { transform-origin: center left; }
+.quota-bar--right { transform-origin: center right; }
+@keyframes compact-enter {
+  from { opacity: .18; transform: scale(.94); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.primary-pane,
+.quota-tab-panel:not([hidden]),
+.control-view {
+  animation: view-enter var(--motion-medium) var(--motion-standard) both;
+}
+@keyframes view-enter {
+  from { opacity: 0; transform: translate3d(0, 5px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+.diagnostics-panel,
+.update-panel,
+.control-center,
+.usage-insights-panel {
+  animation: overlay-enter 210ms var(--motion-emphasized) both;
+  transform-origin: center;
+}
+@keyframes overlay-enter {
+  from { opacity: 0; transform: translate3d(0, 7px, 0) scale(.975); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+
+.reset-credit-tip,
+.operation-notice {
+  animation: popover-enter 180ms var(--motion-emphasized) both;
+  transform-origin: bottom left;
+}
+@keyframes popover-enter {
+  from { opacity: 0; transform: translate3d(0, 4px, 0) scale(.97); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+
+.aurora {
+  transition: opacity var(--motion-slow) var(--motion-standard), filter var(--motion-slow) var(--motion-standard);
+}
+.progress span,
+.quota-window-progress span {
+  transition: width 520ms var(--motion-emphasized);
+}
+.bar-progress i {
+  transition: width var(--motion-slow) var(--motion-emphasized), height var(--motion-slow) var(--motion-emphasized);
+}
+
+.provider-row-shell {
+  transition: opacity var(--motion-fast) var(--motion-standard), transform var(--motion-fast) var(--motion-standard), background-color var(--motion-fast) var(--motion-standard), box-shadow var(--motion-fast) var(--motion-standard);
+}
+.provider-row {
+  transition: border-color var(--motion-fast) var(--motion-standard), background-color var(--motion-fast) var(--motion-standard), box-shadow var(--motion-fast) var(--motion-standard), transform var(--motion-fast) var(--motion-emphasized);
+}
+.provider-row.is-selected { transform: translateX(2px); }
+.provider-row:active:not(:disabled) { transform: translateX(2px) scale(.985); }
+
+.provider-logo-slider button,
+.provider-logo-slider .provider-mark,
+.card-actions button,
+.control-tabs button,
+.appearance-options button,
+.layout-option,
+.color-theme-option,
+.bar-edge-option,
+.display-feature-option,
+.provider-settings button,
+.saved-layouts button,
+.diagnostics-header > button,
+.update-header > button,
+.usage-insights-header > button,
+.error-refresh-button {
+  transition:
+    color var(--motion-fast) var(--motion-standard),
+    border-color var(--motion-fast) var(--motion-standard),
+    background-color var(--motion-fast) var(--motion-standard),
+    box-shadow var(--motion-fast) var(--motion-standard),
+    opacity var(--motion-fast) var(--motion-standard),
+    transform var(--motion-fast) var(--motion-emphasized);
+}
+.card-actions button:hover,
+.diagnostics-header > button:hover,
+.update-header > button:hover,
+.usage-insights-header > button:hover { transform: translateY(-1px); }
+.card-actions button:active,
+.diagnostics-header > button:active,
+.update-header > button:active,
+.usage-insights-header > button:active { transform: translateY(0) scale(.94); }
+
+.provider-logo-slider button::after {
+  opacity: 0;
+  transform: scaleX(.35);
+  transition: opacity var(--motion-fast) var(--motion-standard), transform var(--motion-medium) var(--motion-emphasized);
+}
+.provider-logo-slider button.is-active::after { opacity: 1; transform: scaleX(1); }
+.provider-logo-slider--vertical button::after { transform: scaleY(.35); }
+.provider-logo-slider--vertical button.is-active::after { transform: scaleY(1); }
+
+.quota-panel-tabs button {
+  transition: color var(--motion-fast) var(--motion-standard), transform var(--motion-fast) var(--motion-emphasized);
+}
+.quota-panel-tabs button::after {
+  background: currentColor;
+  opacity: 0;
+  transform: scaleX(.25);
+  transform-origin: center;
+  transition: opacity var(--motion-fast) var(--motion-standard), transform var(--motion-medium) var(--motion-emphasized);
+}
+.quota-panel-tabs button:hover { transform: translateY(-1px); }
+.quota-panel-tabs button.is-active::after { background: currentColor; opacity: 1; transform: scaleX(1); }
+
+.switch i { transition: background-color var(--motion-medium) var(--motion-standard), box-shadow var(--motion-medium) var(--motion-standard); }
+.switch i::after { transition: transform var(--motion-medium) var(--motion-emphasized), box-shadow var(--motion-medium) var(--motion-standard); }
+.switch input:checked + i::after { box-shadow: 0 3px 8px rgba(31,55,89,.24); }
+
+.control-field select,
+.control-field input,
+.layout-save input {
+  transition: border-color var(--motion-fast) var(--motion-standard), background-color var(--motion-fast) var(--motion-standard), box-shadow var(--motion-fast) var(--motion-standard);
+}
+
+.browser-preview-shell { interpolate-size: allow-keywords; }
+.browser-widget-frame { transition: width var(--motion-slow) var(--motion-emphasized), height var(--motion-slow) var(--motion-emphasized); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    transition-delay: 0ms !important;
+  }
+}

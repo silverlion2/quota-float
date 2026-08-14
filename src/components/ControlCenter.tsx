@@ -247,7 +247,8 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
       </nav>
 
       <div className="control-body">
-        {tab === "display" ? <>
+        <div className="control-view" key={tab}>
+          {tab === "display" ? <>
           <div className="control-grid">
             <label className="control-field"><span>{labels.layout}</span><select value={preferences.layoutMode} onChange={(event) => onPreferences({ ...preferences, layoutMode: event.target.value as WidgetPreferences['layoutMode'] })}><option value="compact">{labels.compact}</option><option value="standard">{labels.standard}</option><option value="detailed">{labels.detailed}</option></select></label>
             <label className="control-field"><span>{labels.rotate} · {preferences.autoRotateSeconds}s</span><input type="range" min="5" max="60" step="1" value={preferences.autoRotateSeconds} onChange={(event) => onPreferences({ ...preferences, autoRotateSeconds: Number(event.target.value) })} /></label>
@@ -354,7 +355,7 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
           <div className="saved-layouts">{runtimeState.savedLayouts.length === 0 ? <p>{labels.noLayouts}</p> : runtimeState.savedLayouts.map((layout) => <div key={layout.id}><button type="button" onClick={() => onPreferences({ ...preferences, providerOrder: layout.providerOrder, hiddenProviders: layout.hiddenProviders, collapsedProviders: layout.collapsedProviders, layoutMode: layout.layoutMode, compactLayout: layout.compactLayout, barEdge: layout.barEdge, barOffset: layout.barOffset, expandedLayout: layout.expandedLayout, colorTheme: layout.colorTheme, appearanceMode: layout.appearanceMode, riskFirst: layout.riskFirst, showHistorySparklines: layout.showHistorySparklines, accentColor: layout.accentColor })}><strong>{layout.name}</strong><small>{layout.compactLayout}{layout.compactLayout === "bar" ? `/${layout.barEdge}` : ""} · {layout.expandedLayout} · {layout.colorTheme} · {layout.layoutMode}</small></button><button type="button" aria-label="Delete" onClick={() => onRuntimeState({ ...runtimeState, savedLayouts: runtimeState.savedLayouts.filter((item) => item.id !== layout.id) })}><Trash /></button></div>)}</div>
         </> : null}
 
-        {tab === "health" ? <>
+          {tab === "health" ? <>
           <div className="provider-health-summary" role="status">
             <Heartbeat weight="duotone" />
             <div>
@@ -386,7 +387,7 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
           </div>
         </> : null}
 
-        {tab === "alerts" ? <>
+          {tab === "alerts" ? <>
           <div className="control-section-title"><span>{labels.notifications}</span><label className="switch"><input type="checkbox" checked={preferences.notificationsEnabled} onChange={(event) => onPreferences({ ...preferences, notificationsEnabled: event.target.checked })} /><i /></label></div>
           <div className="control-grid">
             <label className="control-field control-field--wide"><span>{labels.threshold} · {preferences.alertThreshold}%</span><input type="range" min="1" max="50" value={preferences.alertThreshold} onChange={(event) => onPreferences({ ...preferences, alertThreshold: Number(event.target.value) })} /></label>
@@ -397,12 +398,12 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
           </div>
         </> : null}
 
-        {tab === "activity" ? <>
+          {tab === "activity" ? <>
           <div className="control-section-title"><span>{labels.events}</span><small>{runtimeState.history.length} {labels.samples}</small></div>
           <div className="activity-list">{runtimeState.events.length === 0 ? <p>{labels.noEvents}</p> : runtimeState.events.map((item) => <article key={item.id} className={`activity-item activity-item--${item.kind}`}><i /><div><strong>{item.title}</strong><p>{item.detail}</p></div><time>{new Intl.DateTimeFormat(language === "en" ? "en" : "zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(item.occurredAt))}</time></article>)}</div>
         </> : null}
 
-        {tab === "system" ? <>
+          {tab === "system" ? <>
           <div className="control-section-title"><span>{labels.update}</span></div>
           <div className="control-grid">
             <label className="control-field"><span>{labels.channel}</span><select value={preferences.updateChannel} onChange={(event) => onPreferences({ ...preferences, updateChannel: event.target.value as WidgetPreferences['updateChannel'] })}><option value="stable">{labels.stable}</option><option value="beta">{labels.beta}</option></select></label>
@@ -413,7 +414,8 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
           <div className="diagnostic-summary"><Heartbeat /><div><strong>Quota Float {diagnostics?.appVersion ?? "…"}</strong><p>{diagnostics?.platform ?? "…"} · {diagnostics?.preferencesBackupAvailable || diagnostics?.runtimeBackupAvailable ? (zh ? "恢复点可用" : "Recovery point available") : (zh ? "等待首次备份" : "Awaiting first backup")}</p></div><button type="button" onClick={onCopyDiagnostics}>{labels.copy}</button></div>
           <div className="control-section-title"><span>{labels.backup}</span></div>
           <div className="backup-actions"><button type="button" onClick={onExport}><DownloadSimple />{labels.export}</button><button type="button" onClick={onImport}><UploadSimple />{labels.import}</button><button type="button" onClick={onRestore}><ArrowCounterClockwise />{labels.restore}</button></div>
-        </> : null}
+          </> : null}
+        </div>
       </div>
     </section>
   );

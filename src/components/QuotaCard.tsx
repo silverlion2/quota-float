@@ -18,6 +18,7 @@ interface Props {
   snapshots: ProviderSnapshot[];
   preferences: WidgetPreferences;
   resolvedAppearance?: ResolvedAppearance;
+  collapsing?: boolean;
   onSelectProvider: (provider: ProviderId) => void;
   onReorderProviders?: (order: ProviderId[]) => void;
   onLock: () => void;
@@ -422,6 +423,7 @@ export const QuotaCard = memo(function QuotaCard({
   onControlOpen = () => undefined,
   initialShowCreditTip = false,
   initialInsightsOpen = false,
+  collapsing = false,
 }: Props) {
   const [showCreditTip, setShowCreditTip] = useState(initialShowCreditTip);
   const [insightsOpen, setInsightsOpen] = useState(initialInsightsOpen);
@@ -569,7 +571,7 @@ export const QuotaCard = memo(function QuotaCard({
 
   return (
     <main
-      className={`quota-card quota-card--${snapshot.status} quota-card--${tier} quota-card--layout-${preferences.layoutMode} quota-card--expanded-${preferences.expandedLayout} quota-card--style-${preferences.colorTheme} quota-card--theme-${resolvedAppearance}${overlayOpen ? " quota-card--overlay-open" : ""}${insightsOpen ? " quota-card--insights-open" : ""}`}
+      className={`quota-card quota-card--${snapshot.status} quota-card--${tier} quota-card--layout-${preferences.layoutMode} quota-card--expanded-${preferences.expandedLayout} quota-card--style-${preferences.colorTheme} quota-card--theme-${resolvedAppearance} quota-card--origin-${preferences.compactLayout === "bar" ? preferences.barEdge : "center"}${overlayOpen ? " quota-card--overlay-open" : ""}${insightsOpen ? " quota-card--insights-open" : ""}${collapsing ? " quota-card--collapsing" : ""}`}
       style={{ "--accent-color": preferences.accentColor } as CSSProperties}
       onMouseEnter={() => onHover(true)}
       onMouseLeave={() => onHover(false)}
@@ -675,7 +677,7 @@ export const QuotaCard = memo(function QuotaCard({
         aria-hidden={overlayOpen || undefined}
         inert={overlayOpen || undefined}
       >
-      <section className="primary-pane">
+      <section className="primary-pane" key={snapshot.provider}>
         <header className="card-header">
           <div>
             <p className="eyebrow">{snapshot.displayName} · {snapshot.plan ?? t.accountFallback}</p>
