@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.23 - 2026-08-14
+
+- ci: publish tag-triggered release drafts
+
 ## 0.2.22 - 2026-08-14
 
 - ci: install Linux release dependencies
