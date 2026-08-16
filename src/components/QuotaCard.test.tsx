@@ -243,14 +243,16 @@ describe("QuotaCard platform ledger", () => {
     expect(insightsTab).toHaveAttribute("aria-selected", "true");
     expect(quotaTab).toHaveAttribute("aria-selected", "false");
     expect(screen.getByRole("region", { name: "Usage insights" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "30D" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("API equivalent")).toBeInTheDocument();
+    expect(screen.getByText("Total Token")).toBeInTheDocument();
     expect(screen.getByText("Used this cycle")).toBeInTheDocument();
-    expect(screen.getByText("Today observed")).toBeInTheDocument();
+    expect(screen.getByText("Range observed")).toBeInTheDocument();
     expect(screen.getByText("Daily guide")).toBeInTheDocument();
     expect(screen.getByText("Unofficial outlook")).toBeInTheDocument();
-    expect(screen.getByText("Reset outlook")).toBeInTheDocument();
-    expect(screen.getByText("within 48h · unofficial estimate")).toBeInTheDocument();
-    expect(screen.getByText("Last 90 days")).toBeInTheDocument();
-    expect(screen.getByText(/no prompt or token content/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reset outlook 92% · 48h" })).toBeInTheDocument();
+    expect(screen.getByText("WEEKDAY × HOUR")).toBeInTheDocument();
+    expect(screen.getByText(/prompt and response content is not parsed or stored/i)).toBeInTheDocument();
 
     fireEvent.click(quotaTab);
     expect(quotaTab).toHaveAttribute("aria-selected", "true");

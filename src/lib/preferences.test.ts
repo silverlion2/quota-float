@@ -15,6 +15,8 @@ describe("widget preference migration", () => {
     expect(value.riskFirst).toBe(false);
     expect(value.showHistorySparklines).toBe(true);
     expect(value.notificationsEnabled).toBe(true);
+    expect(value.monthlyApiBudgetUsd).toBe(500);
+    expect(value.apiBudgetAlertsEnabled).toBe(true);
   });
 
   it("normalizes persisted bar placement", () => {
@@ -57,11 +59,18 @@ describe("widget preference migration", () => {
       notificationsEnabled: "false" as never,
       quietHoursStart: -100,
       notificationCooldownMinutes: Number.POSITIVE_INFINITY,
+      monthlyApiBudgetUsd: Number.POSITIVE_INFINITY,
     });
     expect(value.alertThreshold).toBe(15);
     expect(value.autoRotateSeconds).toBe(12);
     expect(value.notificationsEnabled).toBe(true);
     expect(value.quietHoursStart).toBe(0);
     expect(value.notificationCooldownMinutes).toBe(120);
+    expect(value.monthlyApiBudgetUsd).toBe(500);
+  });
+
+  it("bounds API-equivalent budget preferences", () => {
+    expect(normalizeWidgetPreferences({ monthlyApiBudgetUsd: 123.456, apiBudgetAlertsEnabled: false })).toEqual(expect.objectContaining({ monthlyApiBudgetUsd: 123.46, apiBudgetAlertsEnabled: false }));
+    expect(normalizeWidgetPreferences({ monthlyApiBudgetUsd: -20 })).toEqual(expect.objectContaining({ monthlyApiBudgetUsd: 0 }));
   });
 });

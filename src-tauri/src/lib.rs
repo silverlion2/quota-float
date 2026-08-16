@@ -1,5 +1,6 @@
 mod antigravity;
 mod codex;
+mod codex_usage;
 mod models;
 mod qoder;
 mod reset_forecast;
@@ -192,6 +193,9 @@ struct AppState {
     runtime_state_path: PathBuf,
     fetch_lock: tokio::sync::Mutex<()>,
     snapshot_cache: Mutex<Option<(Instant, Vec<ProviderSnapshot>)>>,
+    codex_usage_fetch_lock: tokio::sync::Mutex<()>,
+    codex_usage_cache: Mutex<Option<(Instant, codex_usage::CodexTokenUsageReport)>>,
+    codex_usage_index_path: PathBuf,
     #[cfg(debug_assertions)]
     simulate_short_window_for_testing: Mutex<bool>,
     geometry: Mutex<Option<WidgetGeometryState>>,
@@ -403,6 +407,27 @@ fn export_app_data(path: String, bundle: serde_json::Value) -> Result<(), String
 }
 
 #[tauri::command]
+fn export_usage_data(path: String, content: String) -> Result<(), String> {
+    const MAX_EXPORT_BYTES: usize = 20 * 1024 * 1024;
+    if content.len() > MAX_EXPORT_BYTES {
+        return Err("usage export is too large".into());
+    }
+    let target = PathBuf::from(path);
+    let extension = target
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(str::to_ascii_lowercase);
+    if !matches!(extension.as_deref(), Some("csv" | "json" | "svg")) {
+        return Err("usage export must use .csv, .json, or .svg".into());
+    }
+    let mut file =
+        fs::File::create(target).map_err(|_| "failed to create usage export".to_string())?;
+    file.write_all(content.as_bytes())
+        .and_then(|_| file.sync_all())
+        .map_err(|_| "failed to write usage export".to_string())
+}
+
+#[tauri::command]
 fn import_app_data(path: String) -> Result<serde_json::Value, String> {
     let target = PathBuf::from(path);
     let raw = fs::read_to_string(target).map_err(|_| "failed to read backup file".to_string())?;
@@ -524,6 +549,44 @@ async fn get_codex_reset_forecast(
     state: State<'_, AppState>,
 ) -> Result<Option<reset_forecast::ResetForecast>, String> {
     Ok(reset_forecast::fetch(&state.client).await)
+}
+
+#[tauri::command]
+async fn get_codex_token_usage(
+    force: bool,
+    rebuild: bool,
+    state: State<'_, AppState>,
+) -> Result<codex_usage::CodexTokenUsageReport, String> {
+    const CACHE_TTL: Duration = Duration::from_secs(5 * 60);
+    if !force && !rebuild {
+        if let Ok(cache) = state.codex_usage_cache.lock() {
+            if let Some((time, report)) = &*cache {
+                if time.elapsed() < CACHE_TTL {
+                    return Ok(report.clone());
+                }
+            }
+        }
+    }
+    let _guard = state.codex_usage_fetch_lock.lock().await;
+    if !force && !rebuild {
+        if let Ok(cache) = state.codex_usage_cache.lock() {
+            if let Some((time, report)) = &*cache {
+                if time.elapsed() < CACHE_TTL {
+                    return Ok(report.clone());
+                }
+            }
+        }
+    }
+    let index_path = state.codex_usage_index_path.clone();
+    let report = tauri::async_runtime::spawn_blocking(move || {
+        codex_usage::collect(90, &index_path, rebuild)
+    })
+    .await
+    .map_err(|_| "Codex token metadata scan failed.".to_string())??;
+    if let Ok(mut cache) = state.codex_usage_cache.lock() {
+        *cache = Some((Instant::now(), report.clone()));
+    }
+    Ok(report)
 }
 
 #[tauri::command]
@@ -2097,6 +2160,7 @@ pub fn run() {
             let data_dir = app.path().app_config_dir()?;
             let preferences_path = data_dir.join("preferences.json");
             let runtime_state_path = data_dir.join("runtime-state.json");
+            let codex_usage_index_path = data_dir.join("codex-usage-index.json");
             let preferences = load_preferences(&preferences_path);
             let client = reqwest::Client::builder()
                 .timeout(Duration::from_secs(12))
@@ -2111,6 +2175,9 @@ pub fn run() {
                 runtime_state_path,
                 fetch_lock: tokio::sync::Mutex::new(()),
                 snapshot_cache: Mutex::new(None),
+                codex_usage_fetch_lock: tokio::sync::Mutex::new(()),
+                codex_usage_cache: Mutex::new(None),
+                codex_usage_index_path,
                 #[cfg(debug_assertions)]
                 simulate_short_window_for_testing: Mutex::new(false),
                 geometry: Mutex::new(None),
@@ -2134,6 +2201,7 @@ pub fn run() {
             get_snapshots,
             refresh_snapshots,
             get_codex_reset_forecast,
+            get_codex_token_usage,
             get_volcengine_diagnostics,
             reconnect_volcengine,
             expand_widget,
@@ -2150,6 +2218,7 @@ pub fn run() {
             get_runtime_state,
             set_runtime_state,
             export_app_data,
+            export_usage_data,
             import_app_data,
             create_automatic_backup,
             restore_latest_backup,

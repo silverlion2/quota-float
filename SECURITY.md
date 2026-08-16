@@ -14,6 +14,9 @@ Please do not open public issues containing tokens, account IDs, raw backend res
 - The app does not log request headers or raw quota responses.
 - The app caps local auth/cache reads and quota responses; HTTP and Ark CLI quota payloads are rejected above 1 MB.
 - The app does not follow redirects for quota HTTP requests.
+- The Codex usage scanner stays under the local `sessions` directory, ignores symlinks, parses only typed session/model/Token metadata records, caps retained metadata lines at 64 KiB, discovery at 2,048 files, selected files at 512, scan depth at 6, and actual bytes read at 2 GiB per 90-day scan.
+- The persisted incremental index is capped at 64 MiB on read and contains only sanitized cursors/context and numeric aggregates. Reports never include full session paths, raw thread IDs, prompts, responses, tool names or payloads, account data, or raw JSONL records.
+- Usage exports are capped at 20 MiB and limited to `.csv`, `.json`, or `.svg`; the frontend anonymizes projects and omits session keys before invoking the native save command.
 - The app does not redeem reset credits or change account settings.
 - Diagnostic reports and migration backups exclude credentials, raw provider responses, account IDs, and provider authentication paths.
 

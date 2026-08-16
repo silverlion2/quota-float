@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { EMPTY_RUNTIME_STATE } from "./activity";
 import {
+  fetchCodexTokenUsage,
   getVolcengineDiagnostics,
   listenDesktopEvents,
   reconnectVolcengine,
@@ -101,6 +102,13 @@ describe("widget transitions", () => {
     await reconnectVolcengine();
     expect(api.invoke).toHaveBeenCalledWith("get_volcengine_diagnostics");
     expect(api.invoke).toHaveBeenCalledWith("reconnect_volcengine");
+  });
+
+  it("requests the bounded Codex token metadata report with an explicit refresh flag", async () => {
+    await fetchCodexTokenUsage(true);
+    expect(api.invoke).toHaveBeenCalledWith("get_codex_token_usage", { force: true, rebuild: false });
+    await fetchCodexTokenUsage(true, true);
+    expect(api.invoke).toHaveBeenCalledWith("get_codex_token_usage", { force: true, rebuild: true });
   });
 
   it("serializes rapid preference writes so the newest state cannot be overwritten", async () => {

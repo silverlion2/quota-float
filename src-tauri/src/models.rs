@@ -115,6 +115,10 @@ pub struct WidgetPreferences {
     pub update_channel: String,
     #[serde(default = "default_true")]
     pub automatic_updates: bool,
+    #[serde(default = "default_monthly_api_budget")]
+    pub monthly_api_budget_usd: f64,
+    #[serde(default = "default_true")]
+    pub api_budget_alerts_enabled: bool,
 }
 
 fn default_always_on_top() -> bool {
@@ -178,6 +182,9 @@ fn default_notification_cooldown() -> u16 {
 fn default_update_channel() -> String {
     "stable".into()
 }
+fn default_monthly_api_budget() -> f64 {
+    500.0
+}
 
 impl Default for WidgetPreferences {
     fn default() -> Self {
@@ -212,6 +219,8 @@ impl Default for WidgetPreferences {
             notification_cooldown_minutes: default_notification_cooldown(),
             update_channel: default_update_channel(),
             automatic_updates: true,
+            monthly_api_budget_usd: default_monthly_api_budget(),
+            api_budget_alerts_enabled: true,
         }
     }
 }
@@ -322,6 +331,11 @@ impl WidgetPreferences {
         if !matches!(self.update_channel.as_str(), "stable" | "beta") {
             self.update_channel = default_update_channel();
         }
+        self.monthly_api_budget_usd = if self.monthly_api_budget_usd.is_finite() {
+            (self.monthly_api_budget_usd.clamp(0.0, 1_000_000.0) * 100.0).round() / 100.0
+        } else {
+            default_monthly_api_budget()
+        };
         self
     }
 }

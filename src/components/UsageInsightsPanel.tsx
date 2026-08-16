@@ -1,35 +1,146 @@
-import { CalendarDots, ChartLineUp, Gauge, X } from "@phosphor-icons/react";
-import { useMemo } from "react";
-import { clampPercent, formatResetTime } from "../lib/format";
 import {
-  buildQuotaTrendGeometry,
-  buildUsageCalendar,
-  mondayWeekdayIndex,
-  observedTrendUse,
-  recentQuotaTrend,
-  usageSummary,
-} from "../lib/usageInsights";
+  ArrowClockwise,
+  Bell,
+  BellSlash,
+  CalendarDots,
+  ChartBar,
+  CurrencyDollar,
+  Database,
+  DownloadSimple,
+  Gauge,
+  ShareNetwork,
+  SpinnerGap,
+  Wrench,
+  X,
+} from "@phosphor-icons/react";
+import { type CSSProperties, useCallback, useEffect, useMemo, useState } from "react";
+import { exportUsageData, fetchCodexTokenUsage, sendDesktopNotification } from "../lib/bridge";
+import { clampPercent, formatResetTime } from "../lib/format";
+import { OPENAI_PRICING_CATALOG } from "../lib/openaiPricing";
 import { calculateQuotaPace, paceBaselineKey, trackedQuotaWindows } from "../lib/quotaPace";
-import type { DailyPaceBaseline, DailyUsageSummary, Language, ProviderSnapshot, QuotaHistoryPoint, ResetForecast } from "../types";
+import {
+  buildApiBudgetForecast,
+  buildModelBreakdown,
+  buildTokenFilterOptions,
+  buildTokenHeatmap,
+  buildTokenSeries,
+  OPENAI_PRICING_SOURCE,
+  OPENAI_PRICING_UPDATED_AT,
+  OPENAI_PRICING_VERSION,
+  relativeChange,
+  summarizeTokenReport,
+  type TokenUsageFilters,
+  type UsageRange,
+} from "../lib/tokenUsage";
+import { buildPricingCatalogJson, buildUsageCsv, buildUsageJson, buildUsageShareSvg } from "../lib/usageExport";
+import { buildUsageCalendar, observedTrendUse, recentQuotaTrend, usageSummary } from "../lib/usageInsights";
+import type {
+  CodexTokenUsageReport,
+  DailyPaceBaseline,
+  DailyUsageSummary,
+  Language,
+  ProviderId,
+  ProviderSnapshot,
+  QuotaHistoryPoint,
+  ResetForecast,
+  WidgetPreferences,
+} from "../types";
 
 interface Props {
   snapshot: ProviderSnapshot;
+  snapshots: ProviderSnapshot[];
   history: QuotaHistoryPoint[];
   dailyUsage: DailyUsageSummary[];
   paceBaselines: Record<string, DailyPaceBaseline>;
   language: Language;
+  preferences: WidgetPreferences;
   resetForecast?: ResetForecast | null;
+  onSelectProvider?: (provider: ProviderId) => void;
+  onPreferences?: (preferences: WidgetPreferences) => void;
   onOpenResetForecast?: (url: string) => void;
   onClose?: () => void;
 }
+
+type ChartMode = "token" | "cost";
+type UsageExport = "csv" | "json" | "svg" | "pricing";
+const RANGE_OPTIONS: UsageRange[] = ["today", "24h", "7d", "30d", "90d"];
 
 function percent(value: number | null, digits = 1): string {
   return value === null ? "—" : `${value.toFixed(digits).replace(/\.0$/, "")}%`;
 }
 
-export function UsageInsightsPanel({ snapshot, history, dailyUsage, paceBaselines, language, resetForecast = null, onOpenResetForecast, onClose }: Props) {
+function compactNumber(value: number, language: Language): string {
+  return new Intl.NumberFormat(language === "en" ? "en-US" : "zh-CN", { notation: "compact", maximumFractionDigits: 1 }).format(value);
+}
+
+function money(value: number): string {
+  if (value >= 1000) return `$${new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 2 }).format(value)}`;
+  if (value >= 10) return `$${value.toFixed(2)}`;
+  if (value >= 1) return `$${value.toFixed(3)}`;
+  return `$${value.toFixed(4)}`;
+}
+
+function bytes(value: number): string {
+  if (value >= 1024 ** 3) return `${(value / 1024 ** 3).toFixed(2)} GiB`;
+  if (value >= 1024 ** 2) return `${(value / 1024 ** 2).toFixed(1)} MiB`;
+  return `${Math.round(value / 1024)} KiB`;
+}
+
+function changeLabel(value: number | null): string | null {
+  if (value === null || !Number.isFinite(value)) return null;
+  return `${value >= 0 ? "+" : ""}${value.toFixed(Math.abs(value) >= 100 ? 0 : 1)}%`;
+}
+
+function rangeDayCount(range: UsageRange): number {
+  return range === "today" ? 1 : range === "24h" ? 2 : range === "7d" ? 7 : range === "30d" ? 30 : 90;
+}
+
+function rangeLabel(range: UsageRange, english: boolean): string {
+  if (range === "today") return english ? "Today" : "今天";
+  return range.toUpperCase();
+}
+
+function heatLevel(value: number, maximum: number): 0 | 1 | 2 | 3 | 4 {
+  if (value <= 0 || maximum <= 0) return 0;
+  const ratio = value / maximum;
+  if (ratio < .12) return 1;
+  if (ratio < .34) return 2;
+  if (ratio < .62) return 3;
+  return 4;
+}
+
+export function UsageInsightsPanel({
+  snapshot,
+  snapshots,
+  history,
+  dailyUsage,
+  paceBaselines,
+  language,
+  preferences,
+  resetForecast = null,
+  onSelectProvider,
+  onPreferences,
+  onOpenResetForecast,
+  onClose,
+}: Props) {
   const english = language === "en";
+  const [range, setRange] = useState<UsageRange>("30d");
+  const [chartMode, setChartMode] = useState<ChartMode>("token");
+  const [modelFilter, setModelFilter] = useState("");
+  const [projectFilter, setProjectFilter] = useState("");
+  const [terminalFilter, setTerminalFilter] = useState("");
+  const [tokenReport, setTokenReport] = useState<CodexTokenUsageReport | null>(null);
+  const [tokenLoading, setTokenLoading] = useState(false);
+  const [tokenError, setTokenError] = useState<string | null>(null);
+  const [operationMessage, setOperationMessage] = useState<string | null>(null);
+  const [budgetDraft, setBudgetDraft] = useState(String(preferences.monthlyApiBudgetUsd));
   const now = new Date();
+  const filters = useMemo<TokenUsageFilters>(() => ({
+    model: modelFilter || undefined,
+    project: projectFilter || undefined,
+    terminal: terminalFilter || undefined,
+  }), [modelFilter, projectFilter, terminalFilter]);
+
   const windows = trackedQuotaWindows(snapshot);
   const primaryWindow = windows.find((item) => item.period === "weekly") ?? windows[0] ?? null;
   const remaining = primaryWindow ? clampPercent(primaryWindow.window.remainingPercent) : null;
@@ -37,107 +148,212 @@ export function UsageInsightsPanel({ snapshot, history, dailyUsage, paceBaseline
     ? calculateQuotaPace(primaryWindow.window, now, paceBaselines[paceBaselineKey(snapshot.provider, primaryWindow.period)] ?? null)
     : null;
   const calendar = useMemo(
-    () => buildUsageCalendar(dailyUsage, history, snapshot.provider, now),
-    [dailyUsage, history, snapshot.provider],
+    () => buildUsageCalendar(dailyUsage, history, snapshot.provider, now, rangeDayCount(range)),
+    [dailyUsage, history, range, snapshot.provider],
   );
-  const summary = useMemo(() => usageSummary(calendar), [calendar]);
-  const trend = useMemo(
-    () => recentQuotaTrend(history, snapshot.provider, remaining, now),
-    [history, remaining, snapshot.provider],
-  );
-  const geometry = buildQuotaTrendGeometry(trend, now);
-  const trendUse = observedTrendUse(trend);
-  const guide = pace ? pace.averageRate : null;
-  const guideLabel = pace?.unit === "hour"
-    ? (english ? "Hourly guide" : "每小时建议")
-    : (english ? "Daily guide" : "每日建议");
+  const quotaSummary = useMemo(() => usageSummary(calendar), [calendar]);
+  const trend24h = useMemo(() => recentQuotaTrend(history, snapshot.provider, remaining, now), [history, remaining, snapshot.provider]);
+  const rangeObserved = range === "24h" ? observedTrendUse(trend24h) : quotaSummary.observedUsedPercent;
   const cycleUsed = remaining === null ? null : 100 - remaining;
-  const leadingCells = calendar[0] ? mondayWeekdayIndex(calendar[0].date) : 0;
-  const dateFormatter = new Intl.DateTimeFormat(english ? "en-US" : "zh-CN", { month: "short", day: "numeric" });
+
+  const loadTokenUsage = useCallback((force = false, rebuild = false) => {
+    if (snapshot.provider !== "codex") return;
+    setTokenLoading(true);
+    setTokenError(null);
+    setOperationMessage(null);
+    void fetchCodexTokenUsage(force, rebuild)
+      .then((report) => {
+        setTokenReport(report);
+        if (rebuild) setOperationMessage(english ? "Local usage index rebuilt." : "本地用量索引已重建。");
+      })
+      .catch(() => setTokenError(english ? "Token metadata is unavailable." : "Token 元数据不可用。"))
+      .finally(() => setTokenLoading(false));
+  }, [english, snapshot.provider]);
+
+  useEffect(() => { loadTokenUsage(false, false); }, [loadTokenUsage]);
+  useEffect(() => { setBudgetDraft(String(preferences.monthlyApiBudgetUsd)); }, [preferences.monthlyApiBudgetUsd]);
+
+  const filterOptions = useMemo(
+    () => tokenReport && snapshot.provider === "codex" ? buildTokenFilterOptions(tokenReport, range, now) : { models: [], projects: [], terminals: [] },
+    [range, snapshot.provider, tokenReport],
+  );
+  useEffect(() => { if (modelFilter && !filterOptions.models.includes(modelFilter)) setModelFilter(""); }, [filterOptions.models, modelFilter]);
+  useEffect(() => { if (projectFilter && !filterOptions.projects.includes(projectFilter)) setProjectFilter(""); }, [filterOptions.projects, projectFilter]);
+  useEffect(() => { if (terminalFilter && !filterOptions.terminals.includes(terminalFilter)) setTerminalFilter(""); }, [filterOptions.terminals, terminalFilter]);
+
+  const tokenComparison = useMemo(
+    () => snapshot.provider === "codex" && tokenReport ? summarizeTokenReport(tokenReport, range, now, filters) : null,
+    [filters, range, snapshot.provider, tokenReport],
+  );
+  const tokenSummary = tokenComparison?.current ?? null;
+  const tokenSeries = useMemo(
+    () => snapshot.provider === "codex" && tokenReport ? buildTokenSeries(tokenReport, range, now, filters) : [],
+    [filters, range, snapshot.provider, tokenReport],
+  );
+  const heatmap = useMemo(
+    () => snapshot.provider === "codex" && tokenReport ? buildTokenHeatmap(tokenReport, range, now, filters) : [],
+    [filters, range, snapshot.provider, tokenReport],
+  );
+  const modelBreakdown = useMemo(
+    () => snapshot.provider === "codex" && tokenReport ? buildModelBreakdown(tokenReport, range, now, filters) : [],
+    [filters, range, snapshot.provider, tokenReport],
+  );
+  const budget = useMemo(
+    () => tokenSummary ? buildApiBudgetForecast(tokenSummary, range, preferences.monthlyApiBudgetUsd, now) : null,
+    [preferences.monthlyApiBudgetUsd, range, tokenSummary],
+  );
+
+  useEffect(() => {
+    if (!budget || budget.status !== "over" || !preferences.apiBudgetAlertsEnabled || snapshot.provider !== "codex") return;
+    const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const key = `quota-float:api-budget-alert:${month}`;
+    if (window.localStorage.getItem(key)) return;
+    window.localStorage.setItem(key, new Date().toISOString());
+    void sendDesktopNotification(
+      english ? "API-equivalent budget outlook" : "API 等价预算展望",
+      english ? `Projected ${money(budget.projectedMonthlyUsd)} this month against a ${money(budget.budgetUsd)} plan.` : `本月预计 ${money(budget.projectedMonthlyUsd)}，已超过 ${money(budget.budgetUsd)} 的预算。`,
+    );
+  }, [budget, english, preferences.apiBudgetAlertsEnabled, snapshot.provider]);
+
+  const totalChange = tokenComparison ? relativeChange(tokenComparison.current.totalTokens, tokenComparison.previous.totalTokens) : null;
+  const costChange = tokenComparison ? relativeChange(tokenComparison.current.cost.totalUsd, tokenComparison.previous.cost.totalUsd) : null;
+  const inputChange = tokenComparison ? relativeChange(tokenComparison.current.inputTokens, tokenComparison.previous.inputTokens) : null;
+  const outputChange = tokenComparison ? relativeChange(tokenComparison.current.outputTokens, tokenComparison.previous.outputTokens) : null;
+  const cachedChange = tokenComparison ? relativeChange(tokenComparison.current.cachedInputTokens, tokenComparison.previous.cachedInputTokens) : null;
+  const chartMaximum = Math.max(0, ...tokenSeries.map((point) => chartMode === "cost" ? point.costUsd : point.totalTokens));
+  const heatMaximum = Math.max(0, ...heatmap.map((cell) => chartMode === "cost" ? cell.costUsd : cell.tokens));
+  const knownTokenData = snapshot.provider === "codex" && tokenSummary !== null && tokenSummary.totalTokens > 0;
+  const weekdayLabels = english ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] : ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+  const rangeText = rangeLabel(range, english);
   const forecastWindow = resetForecast?.windowHours ?? 48;
   const forecastMeta = resetForecast?.resetAnnounced
     ? (english ? "Provider reset announced" : "平台已宣布重置")
-    : (english ? `within ${forecastWindow}h · unofficial estimate` : `${forecastWindow} 小时内 · 非官方估计`);
+    : (english ? `Reset outlook ${Math.round(resetForecast?.score ?? 0)}% · ${forecastWindow}h` : `重置展望 ${Math.round(resetForecast?.score ?? 0)}% · ${forecastWindow} 小时`);
+  const tokenValue = (value: number): string => tokenLoading && !tokenReport ? "…" : knownTokenData ? compactNumber(value, language) : "—";
+  const activeDays = knownTokenData ? tokenSummary.activeDays : quotaSummary.activeDays;
+  const averageActiveDay = knownTokenData && tokenSummary.activeDays > 0 ? `${compactNumber(tokenSummary.totalTokens / tokenSummary.activeDays, language)} Token` : percent(quotaSummary.averageActiveDayPercent);
+
+  const commitBudget = () => {
+    const parsed = Number(budgetDraft);
+    const value = Number.isFinite(parsed) ? Math.max(0, Math.min(1_000_000, Math.round(parsed * 100) / 100)) : preferences.monthlyApiBudgetUsd;
+    setBudgetDraft(String(value));
+    onPreferences?.({ ...preferences, monthlyApiBudgetUsd: value });
+  };
+
+  const handleExport = async (kind: UsageExport) => {
+    if (!tokenReport || !tokenSummary || !budget) return;
+    setOperationMessage(null);
+    try {
+      const content = kind === "csv" ? buildUsageCsv(tokenReport, range, filters, now)
+        : kind === "json" ? buildUsageJson(tokenReport, range, filters, now)
+          : kind === "svg" ? buildUsageShareSvg(tokenSummary, modelBreakdown, budget, range, language, now)
+            : buildPricingCatalogJson();
+      const format = kind === "pricing" ? "json" : kind;
+      const path = await exportUsageData(content, format);
+      if (path) setOperationMessage(english ? `Saved ${format.toUpperCase()} export.` : `已保存 ${format.toUpperCase()} 文件。`);
+    } catch {
+      setOperationMessage(english ? "Export failed." : "导出失败。");
+    }
+  };
 
   return (
     <section className="usage-insights-panel" aria-label={english ? "Usage insights" : "用量洞察"} onMouseDown={(event) => event.stopPropagation()}>
       <header className="usage-insights-header">
         <div>
-          <p><ChartLineUp weight="bold" />{english ? "LOCAL SIGNAL" : "本地信号"}</p>
-          <h2>{snapshot.displayName} {english ? "usage rhythm" : "用量节奏"}</h2>
-          <small>{english ? "Provider quota + local observations" : "平台额度 + 本地观测"}</small>
+          <p><ChartBar weight="fill" />VIBE USAGE · LOCAL FIRST</p>
+          <h2>{snapshot.displayName} {english ? "usage panorama" : "用量全景"}</h2>
+          <small>{snapshot.provider === "codex" ? (english ? "Quota signals + indexed local Codex metadata" : "额度信号 + 增量索引的本地 Codex 元数据") : (english ? "Quota signals · Token metadata is available for Codex" : "额度信号 · Token 元数据目前仅支持 Codex")}</small>
         </div>
-        {onClose ? <button type="button" onClick={onClose} aria-label={english ? "Close usage insights" : "关闭用量洞察"}><X /></button> : null}
+        <div className="usage-header-actions">
+          {knownTokenData ? <>
+            <button type="button" className="usage-icon-action" onClick={() => void handleExport("csv")} aria-label={english ? "Export anonymized CSV" : "导出脱敏 CSV"} title={english ? "Export anonymized CSV" : "导出脱敏 CSV"}><DownloadSimple /></button>
+            <button type="button" className="usage-icon-action" onClick={() => void handleExport("svg")} aria-label={english ? "Share SVG summary" : "生成分享卡片"} title={english ? "Share SVG summary" : "生成分享卡片"}><ShareNetwork /></button>
+          </> : null}
+          {resetForecast && snapshot.provider === "codex" ? <button type="button" className="usage-reset-badge" onClick={() => onOpenResetForecast?.(resetForecast.sourceUrl)} aria-label={forecastMeta} title={forecastMeta}><Gauge weight="bold" />{resetForecast.resetAnnounced ? (english ? "Announced" : "已宣布") : `${Math.round(resetForecast.score)}%`}</button> : null}
+          {onClose ? <button type="button" className="usage-close" onClick={onClose} aria-label={english ? "Close usage insights" : "关闭用量洞察"}><X /></button> : null}
+        </div>
       </header>
 
-      <div className={`usage-summary-strip${resetForecast ? " usage-summary-strip--forecast" : ""}`}>
-        <article className="usage-stat-card">
-          <span>{english ? "Remaining" : "剩余额度"}</span>
-          <strong>{percent(remaining, 0)}</strong>
-          <small>{primaryWindow ? formatResetTime(primaryWindow.window.resetsAt, now, language) : (english ? "Quota unavailable" : "暂无额度")}</small>
-        </article>
-        <article className="usage-stat-card">
-          <span>{english ? "Used this cycle" : "本周期已用"}</span>
-          <strong>{percent(cycleUsed, 0)}</strong>
-          <small>{english ? "provider quota" : "平台额度"}</small>
-        </article>
-        <article className="usage-stat-card">
-          <span>{english ? "Today observed" : "今日观测"}</span>
-          <strong>{percent(summary.todayUsedPercent)}</strong>
-          <small>{english ? "local history" : "本地历史"}</small>
-        </article>
-        <article className="usage-stat-card">
-          <span>{guideLabel}</span>
-          <strong>{percent(guide)}</strong>
-          <small>{pace?.status === "over_pace" ? (english ? "currently over guide" : "当前高于建议") : (english ? "based on this cycle" : "按本周期计算")}</small>
-        </article>
-        {resetForecast ? (
-          <button
-            type="button"
-            className={`usage-stat-card usage-stat-card--forecast${resetForecast.resetAnnounced ? " usage-stat-card--announced" : ""}`}
-            onClick={() => onOpenResetForecast?.(resetForecast.sourceUrl)}
-            title={english ? "Unofficial reset likelihood. Open source." : "非官方重置可能性。打开来源。"}
-          >
-            <span><Gauge weight="bold" />{english ? "Reset outlook" : "重置展望"}</span>
-            <strong>{resetForecast.resetAnnounced ? (english ? "Announced" : "已宣布") : `${Math.round(resetForecast.score)}%`}</strong>
-            <small>{forecastMeta}</small>
-          </button>
-        ) : null}
+      <div className="usage-toolbar">
+        <div className="usage-range-tabs" role="group" aria-label={english ? "Usage range" : "用量区间"}>
+          {RANGE_OPTIONS.map((option) => <button type="button" key={option} className={range === option ? "is-active" : ""} aria-pressed={range === option} onClick={() => setRange(option)}>{rangeLabel(option, english)}</button>)}
+        </div>
+        <label className="usage-provider-filter"><span>{english ? "Provider" : "平台"}</span><select value={snapshot.provider} onChange={(event) => onSelectProvider?.(event.target.value as ProviderId)}>{snapshots.map((item) => <option key={item.provider} value={item.provider}>{item.displayName}</option>)}</select></label>
+        {snapshot.provider === "codex" ? <button type="button" className="usage-refresh" disabled={tokenLoading} onClick={() => loadTokenUsage(true, false)} aria-label={english ? "Refresh token metadata" : "刷新 Token 元数据"} title={english ? "Refresh token metadata" : "刷新 Token 元数据"}>{tokenLoading ? <SpinnerGap /> : <ArrowClockwise />}</button> : null}
       </div>
+
+      {snapshot.provider === "codex" ? <div className="usage-dimension-filters" aria-label={english ? "Token dimensions" : "Token 维度筛选"}>
+        <label><span>{english ? "Model" : "模型"}</span><select value={modelFilter} onChange={(event) => setModelFilter(event.target.value)}><option value="">{english ? "All models" : "全部模型"}</option>{filterOptions.models.map((value) => <option key={value}>{value}</option>)}</select></label>
+        <label><span>{english ? "Project" : "项目"}</span><select value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)}><option value="">{english ? "All projects" : "全部项目"}</option>{filterOptions.projects.map((value) => <option key={value}>{value}</option>)}</select></label>
+        <label><span>{english ? "Terminal" : "终端"}</span><select value={terminalFilter} onChange={(event) => setTerminalFilter(event.target.value)}><option value="">{english ? "All sources" : "全部来源"}</option>{filterOptions.terminals.map((value) => <option key={value}>{value}</option>)}</select></label>
+        <small>{english ? "Tool names stay excluded to preserve the no-content boundary." : "为保持不解析正文的边界，工具名称不进入索引。"}</small>
+      </div> : null}
+
+      <div className="usage-summary-grid usage-summary-grid--extended">
+        <article className="usage-stat-card usage-stat-card--cost"><span>{english ? "API equivalent" : "API 等价费用"}{changeLabel(costChange) ? <em>{changeLabel(costChange)}</em> : null}</span><strong>{tokenLoading && !tokenReport ? "…" : knownTokenData ? money(tokenSummary.cost.totalUsd) : "—"}</strong><small>{knownTokenData ? `${Math.round(tokenSummary.pricedTokenCoverage * 100)}% ${english ? "priced coverage" : "已定价覆盖"}` : (english ? "Codex metadata only" : "仅 Codex 元数据")}</small></article>
+        <article className="usage-stat-card"><span>{english ? "Total Token" : "总 Token"}{changeLabel(totalChange) ? <em>{changeLabel(totalChange)}</em> : null}</span><strong>{tokenValue(tokenSummary?.totalTokens ?? 0)}</strong><small>{rangeText} · {tokenSummary ? `${tokenSummary.models} ${english ? "models" : "个模型"}` : (english ? "awaiting metadata" : "等待元数据")}</small></article>
+        <article className="usage-stat-card"><span>{english ? "Input Token" : "输入 Token"}{changeLabel(inputChange) ? <em>{changeLabel(inputChange)}</em> : null}</span><strong>{tokenValue(tokenSummary?.inputTokens ?? 0)}</strong><small>{tokenSummary ? `${tokenSummary.inputOutputRatio.toFixed(1)}:1 ${english ? "input/output" : "输入/输出"}` : (english ? "includes cached input" : "包含缓存输入")}</small></article>
+        <article className="usage-stat-card"><span>{english ? "Output Token" : "输出 Token"}{changeLabel(outputChange) ? <em>{changeLabel(outputChange)}</em> : null}</span><strong>{tokenValue(tokenSummary?.outputTokens ?? 0)}</strong><small>{tokenSummary ? `${compactNumber(tokenSummary.reasoningOutputTokens, language)} ${english ? "reasoning" : "推理"}` : (english ? "model output" : "模型输出")}</small></article>
+        <article className="usage-stat-card usage-stat-card--cached"><span>{english ? "Cached Token" : "缓存 Token"}{changeLabel(cachedChange) ? <em>{changeLabel(cachedChange)}</em> : null}</span><strong>{tokenValue(tokenSummary?.cachedInputTokens ?? 0)}</strong><small>{tokenSummary ? `${Math.round(tokenSummary.cacheHitRate * 100)}% ${english ? "cache hit" : "缓存命中"}` : (english ? "cache reads" : "缓存读取")}</small></article>
+        <article className="usage-stat-card"><span>{english ? "Sessions" : "会话数"}</span><strong>{tokenValue(tokenSummary?.sessions ?? 0)}</strong><small>{tokenSummary ? `${compactNumber(tokenSummary.averageTokensPerSession, language)} ${english ? "avg/session" : "平均/会话"}` : "—"}</small></article>
+        <article className="usage-stat-card"><span>{english ? "Model responses" : "模型响应数"}</span><strong>{tokenValue(tokenSummary?.requests ?? 0)}</strong><small>{pace ? <><span>{pace.unit === "hour" ? (english ? "Hourly guide" : "每小时建议") : (english ? "Daily guide" : "每日建议")}</span> {percent(pace.averageRate)}{tokenSummary ? ` · ${compactNumber(tokenSummary.averageTokensPerResponse, language)} ${english ? "avg/response" : "平均/响应"}` : ""}</> : tokenSummary ? `${compactNumber(tokenSummary.averageTokensPerResponse, language)} ${english ? "avg/response" : "平均/响应"}` : (english ? "token_count events" : "token_count 事件")}</small></article>
+        <article className="usage-stat-card"><span>{english ? "Active days" : "活跃天数"}</span><strong>{activeDays}</strong><small>{english ? `${averageActiveDay} avg active day` : `活跃日均 ${averageActiveDay}`}</small></article>
+        <article className="usage-stat-card"><span>{english ? "Active streak" : "连续活跃"}</span><strong>{knownTokenData ? tokenSummary.consecutiveActiveDays : "—"}</strong><small>{english ? "consecutive days" : "连续天数"}</small></article>
+        <article className="usage-stat-card"><span>{english ? "Peak hour" : "峰值时段"}</span><strong>{knownTokenData && tokenSummary.peakHour !== null ? `${String(tokenSummary.peakHour).padStart(2, "0")}:00` : "—"}</strong><small>{knownTokenData ? `${compactNumber(tokenSummary.longContextTokens, language)} ${english ? "long-context" : "长上下文"}` : "—"}</small></article>
+        <article className="usage-stat-card"><span>{english ? "Remaining" : "剩余额度"}</span><strong>{percent(remaining, 0)}</strong><small>{primaryWindow ? formatResetTime(primaryWindow.window.resetsAt, now, language) : (english ? "Quota unavailable" : "暂无额度")}</small></article>
+        <article className="usage-stat-card"><span>{english ? "Used this cycle" : "本周期已用"}</span><strong>{percent(cycleUsed, 0)}</strong><small>{english ? "provider-reported quota" : "平台额度"}</small></article>
+        <article className="usage-stat-card"><span>{english ? "Range observed" : "区间观测"}</span><strong>{percent(rangeObserved)}</strong><small>{rangeText} · {english ? "quota decrease" : "额度下降"}</small></article>
+        <article className="usage-stat-card usage-stat-card--forecast"><span>{english ? "Monthly outlook" : "月度费用预测"}</span><strong>{budget ? money(budget.projectedMonthlyUsd) : "—"}</strong><small>{budget ? `${money(budget.dailyAverageUsd)} ${english ? "daily avg" : "日均"}` : "—"}</small></article>
+        <article className={`usage-stat-card usage-stat-card--budget usage-stat-card--${budget?.status ?? "disabled"}`}><span>{english ? "Budget status" : "预算状态"}</span><strong>{budget ? percent(budget.utilization * 100, 0) : "—"}</strong><small>{budget ? `${money(budget.budgetUsd)} ${english ? "monthly plan" : "月度预算"}` : "—"}</small></article>
+      </div>
+
+      {knownTokenData && budget ? <section className={`usage-budget-panel usage-budget-panel--${budget.status}`} aria-label={english ? "API-equivalent budget" : "API 等价预算"}>
+        <div><CurrencyDollar weight="bold" /><span>{english ? "Monthly API-equivalent plan" : "月度 API 等价预算"}</span><strong>{money(budget.projectedMonthlyUsd)} / {money(budget.budgetUsd)}</strong></div>
+        <div className="usage-budget-track"><span style={{ width: `${Math.min(100, budget.utilization * 100)}%` }} /></div>
+        <label><span>{english ? "Budget USD" : "预算 USD"}</span><input type="number" min="0" max="1000000" step="10" value={budgetDraft} onChange={(event) => setBudgetDraft(event.target.value)} onBlur={commitBudget} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} /></label>
+        <button type="button" className={preferences.apiBudgetAlertsEnabled ? "is-active" : ""} aria-pressed={preferences.apiBudgetAlertsEnabled} onClick={() => onPreferences?.({ ...preferences, apiBudgetAlertsEnabled: !preferences.apiBudgetAlertsEnabled })}>{preferences.apiBudgetAlertsEnabled ? <Bell /> : <BellSlash />}{english ? "Alert" : "提醒"}</button>
+      </section> : null}
+
+      <div className="usage-chart-controls"><div><ChartBar weight="duotone" /><span>{english ? "Usage distribution" : "用量分布"}</span></div><div role="group" aria-label={english ? "Chart metric" : "图表指标"}><button type="button" className={chartMode === "token" ? "is-active" : ""} aria-pressed={chartMode === "token"} onClick={() => setChartMode("token")}>Token</button><button type="button" className={chartMode === "cost" ? "is-active" : ""} aria-pressed={chartMode === "cost"} onClick={() => setChartMode("cost")}>{english ? "Cost" : "费用"}</button></div></div>
 
       <div className="usage-insights-detail-grid">
-        <article className="usage-trend-card">
-          <header><span>{english ? "24H QUOTA TRAJECTORY" : "24 小时额度轨迹"}</span><strong>{trend.length > 1 ? `${trendUse.toFixed(1)}%` : "—"}</strong></header>
-          <svg viewBox="0 0 220 74" preserveAspectRatio="none" role="img" aria-label={english ? "Remaining quota trajectory" : "剩余额度轨迹"}>
-            <defs><linearGradient id="usage-area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="currentColor" stopOpacity=".24" /><stop offset="1" stopColor="currentColor" stopOpacity="0" /></linearGradient></defs>
-            <path className="usage-trend-grid" d="M 4 14 H 216 M 4 42 H 216 M 4 70 H 216" />
-            {geometry ? <><path className="usage-trend-area" d={geometry.area} /><path className="usage-trend-line" d={geometry.line} /></> : null}
-          </svg>
-          <footer><span>{english ? "24h ago" : "24 小时前"}</span><span>{english ? "now" : "现在"}</span></footer>
+        <article className="usage-daily-card">
+          <header><span>{range === "today" || range === "24h" ? (english ? "HOURLY TREND" : "小时趋势") : (english ? "DAILY TREND" : "每日趋势")}</span><strong>{knownTokenData ? (chartMode === "cost" ? money(tokenSummary.cost.totalUsd) : compactNumber(tokenSummary.totalTokens, language)) : "—"}</strong></header>
+          {knownTokenData ? <div className={`usage-bars usage-bars--${tokenSeries.length > 40 ? "dense" : "regular"}`} role="img" aria-label={english ? `${rangeText} token usage trend` : `${rangeText} Token 用量趋势`}>
+            {tokenSeries.map((point, index) => {
+              const value = chartMode === "cost" ? point.costUsd : point.totalTokens;
+              const height = chartMaximum > 0 ? Math.max(value > 0 ? 3 : 0, value / chartMaximum * 100) : 0;
+              const uncached = Math.max(0, point.inputTokens - point.cachedInputTokens);
+              const total = Math.max(1, uncached + point.cachedInputTokens + point.outputTokens);
+              const showLabel = index === 0 || index === tokenSeries.length - 1 || index % Math.max(1, Math.ceil(tokenSeries.length / 6)) === 0;
+              return <span className="usage-bar-slot" key={point.key} title={`${point.label} · ${chartMode === "cost" ? money(point.costUsd) : compactNumber(point.totalTokens, language)}`}><i className={`usage-bar${chartMode === "cost" ? " usage-bar--cost" : ""}`} style={{ "--bar-height": `${height}%` } as CSSProperties}>{chartMode === "token" ? <><b className="usage-bar-output" style={{ flexBasis: `${point.outputTokens / total * 100}%` }} /><b className="usage-bar-input" style={{ flexBasis: `${uncached / total * 100}%` }} /><b className="usage-bar-cached" style={{ flexBasis: `${point.cachedInputTokens / total * 100}%` }} /></> : null}</i>{showLabel ? <small>{point.label}</small> : null}</span>;
+            })}
+          </div> : <div className="usage-chart-empty">{tokenLoading ? <><SpinnerGap />{english ? "Scanning local token metadata…" : "正在扫描本地 Token 元数据…"}</> : tokenError ?? (english ? "Token metadata is currently available for Codex only." : "目前仅 Codex 提供 Token 元数据。")}</div>}
+          <footer><span className="usage-legend-input" />{english ? "uncached input" : "非缓存输入"}<span className="usage-legend-cached" />{english ? "cached" : "缓存"}<span className="usage-legend-output" />{english ? "output" : "输出"}</footer>
         </article>
 
-        <article className="usage-calendar-card">
-          <header>
-            <span><CalendarDots weight="duotone" />{english ? "Last 90 days" : "近 90 天"}</span>
-            <small>{english ? `${summary.activeDays} active days · ${percent(summary.averageActiveDayPercent)} avg` : `${summary.activeDays} 个活跃日 · 日均 ${percent(summary.averageActiveDayPercent)}`}</small>
-          </header>
-          <div className="usage-calendar-body">
-            <div className="usage-weekdays" aria-hidden="true"><span>{english ? "M" : "一"}</span><span>{english ? "W" : "三"}</span><span>{english ? "F" : "五"}</span><span>{english ? "S" : "日"}</span></div>
-            <div className="usage-calendar-grid" role="img" aria-label={english ? "90 day observed usage heatmap" : "90 天已观测用量热力图"}>
-              {Array.from({ length: leadingCells }, (_, index) => <i className="usage-day usage-day--spacer" key={`spacer-${index}`} />)}
-              {calendar.map((day) => (
-                <i
-                  className={`usage-day usage-day--${day.level}${day.observedUsedPercent === null ? " usage-day--unknown" : ""}`}
-                  key={day.localDate}
-                  title={`${dateFormatter.format(day.date)} · ${day.observedUsedPercent === null ? (english ? "no local sample" : "无本地样本") : percent(day.observedUsedPercent)}`}
-                />
-              ))}
-            </div>
-            <div className="usage-calendar-legend" aria-hidden="true"><span>{english ? "less" : "少"}</span>{[0, 1, 2, 3, 4].map((level) => <i className={`usage-day usage-day--${level}`} key={level} />)}<span>{english ? "more" : "多"}</span></div>
-          </div>
+        <article className="usage-hourly-card">
+          <header><span><CalendarDots weight="duotone" />{english ? "WEEKDAY × HOUR" : "星期 × 小时"}</span><small>{rangeText} · {chartMode === "cost" ? (english ? "API equivalent" : "API 等价费用") : "Token"}</small></header>
+          {knownTokenData ? <div className="usage-hourly-matrix" role="img" aria-label={english ? "Hourly token activity heatmap" : "分时 Token 活跃热力图"}>{weekdayLabels.map((label, weekday) => <div className="usage-hour-row" key={label}><span>{label}</span><div>{heatmap.slice(weekday * 24, weekday * 24 + 24).map((cell) => { const value = chartMode === "cost" ? cell.costUsd : cell.tokens; return <i className={`usage-hour-cell usage-hour-cell--${heatLevel(value, heatMaximum)}`} key={cell.hour} title={`${label} ${String(cell.hour).padStart(2, "0")}:00 · ${chartMode === "cost" ? money(cell.costUsd) : compactNumber(cell.tokens, language)}`} />; })}</div></div>)}<div className="usage-hour-axis"><span>00</span><span>03</span><span>06</span><span>09</span><span>12</span><span>15</span><span>18</span><span>21</span></div></div> : <div className="usage-chart-empty usage-chart-empty--heat">{tokenLoading ? (english ? "Building hourly map…" : "正在生成分时图…") : (english ? "No hourly Token signal for this provider." : "该平台暂无分时 Token 信号。")}</div>}
         </article>
       </div>
-      <footer className="usage-insights-footnote">{english ? "Local history only · no prompt or token content is collected" : "仅使用本地历史 · 不收集提示词或 token 内容"}</footer>
+
+      {knownTokenData ? <section className="usage-model-breakdown" aria-label={english ? "Model cost breakdown" : "模型费用明细"}>
+        <header><div><Database weight="duotone" /><span>{english ? "MODEL COST LEDGER" : "模型费用账本"}</span></div><small>{modelBreakdown.length} {english ? "models · filtered view" : "个模型 · 当前筛选"}</small></header>
+        <div className="usage-model-table" role="table">
+          <div className="usage-model-row usage-model-row--head" role="row"><span>{english ? "Model" : "模型"}</span><span>Token</span><span>{english ? "Sessions" : "会话"}</span><span>{english ? "Cache" : "缓存"}</span><span>{english ? "API equivalent" : "API 等价费用"}</span></div>
+          {modelBreakdown.map((model) => <div className="usage-model-row" role="row" key={model.model}><span><strong>{model.label}</strong><small>{model.model}</small></span><span><strong>{compactNumber(model.totalTokens, language)}</strong><small>{percent(model.share * 100, 0)} {english ? "share" : "占比"}</small></span><span>{model.sessions}</span><span>{percent(model.cacheHitRate * 100, 0)}</span><span className={model.pricedTokenCoverage < 1 ? "is-unpriced" : ""}>{model.pricedTokenCoverage > 0 ? money(model.cost.totalUsd) : (english ? "Unpriced" : "未定价")}</span></div>)}
+        </div>
+      </section> : null}
+
+      {snapshot.provider === "codex" ? <section className="usage-maintenance-panel" aria-label={english ? "Local index and pricing maintenance" : "本地索引与价格维护"}>
+        <div><Wrench weight="duotone" /><span>{english ? "LOCAL INDEX" : "本地索引"}</span><strong>{tokenReport ? `${tokenReport.cacheStatus.toUpperCase()} · ${tokenReport.scanDurationMs}ms` : "—"}</strong><small>{tokenReport ? `${tokenReport.indexedFiles} ${english ? "files indexed" : "个索引文件"} · ${tokenReport.reusedFiles} ${english ? "reused" : "复用"} · ${bytes(tokenReport.scannedBytes)} ${english ? "read" : "读取"}` : (english ? "Waiting for metadata" : "等待元数据")}</small></div>
+        <div><CurrencyDollar weight="duotone" /><span>{english ? "PRICE CATALOG" : "价格目录"}</span><strong>v{OPENAI_PRICING_VERSION}</strong><small>{OPENAI_PRICING_CATALOG.models.length} {english ? "models · standard API rates" : "个模型 · 标准 API 单价"}</small></div>
+        <div className="usage-maintenance-actions"><button type="button" disabled={tokenLoading} onClick={() => loadTokenUsage(true, true)}><ArrowClockwise />{english ? "Rebuild index" : "重建索引"}</button><button type="button" disabled={!knownTokenData} onClick={() => void handleExport("json")}><DownloadSimple />JSON</button><button type="button" disabled={!knownTokenData} onClick={() => void handleExport("pricing")}><DownloadSimple />{english ? "Prices" : "价格表"}</button></div>
+      </section> : null}
+
+      {operationMessage ? <div className="usage-operation-message" role="status">{operationMessage}</div> : null}
+      <footer className="usage-insights-footnote"><CurrencyDollar weight="bold" /><span>{english ? "Token counts come from indexed local Codex metadata. Prompt and response content is not parsed or stored. Cost is an OpenAI API standard-price equivalent—not a subscription bill. Exports anonymize projects and omit session IDs and tool names." : "Token 来自增量索引的本地 Codex 元数据；提示词和回复正文不会被解析或保存；费用按 OpenAI API 标准价等价估算，并非订阅账单；导出会匿名化项目，并排除会话标识和工具名称。"}</span><button type="button" onClick={() => onOpenResetForecast?.(OPENAI_PRICING_SOURCE)}>{english ? `Pricing · ${OPENAI_PRICING_UPDATED_AT}` : `定价来源 · ${OPENAI_PRICING_UPDATED_AT}`}</button>{tokenReport?.truncated ? <em>{english ? `Partial index · ${tokenReport.skippedFiles} files skipped` : `部分索引 · 跳过 ${tokenReport.skippedFiles} 个文件`}</em> : null}</footer>
     </section>
   );
 }

@@ -31,6 +31,8 @@ export const DEFAULT_WIDGET_PREFERENCES: WidgetPreferences = {
   notificationCooldownMinutes: 120,
   updateChannel: "stable",
   automaticUpdates: true,
+  monthlyApiBudgetUsd: 500,
+  apiBudgetAlertsEnabled: true,
 };
 
 const providerSet = new Set<ProviderId>(DEFAULT_PROVIDER_ORDER);
@@ -48,6 +50,12 @@ function boundedInteger(value: unknown, fallback: number, min: number, max: numb
 
 function booleanValue(value: unknown, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
+}
+
+function boundedNumber(value: unknown, fallback: number, min: number, max: number): number {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(min, Math.min(max, Math.round(value * 100) / 100))
+    : fallback;
 }
 
 function safeSkippedVersion(value: unknown): string | null {
@@ -116,5 +124,7 @@ export function normalizeWidgetPreferences(value: LegacyWidgetPreferences | null
     notificationCooldownMinutes: boundedInteger(candidate.notificationCooldownMinutes, DEFAULT_WIDGET_PREFERENCES.notificationCooldownMinutes, 5, 1440),
     updateChannel: candidate.updateChannel === "beta" ? "beta" : "stable",
     automaticUpdates: booleanValue(candidate.automaticUpdates, DEFAULT_WIDGET_PREFERENCES.automaticUpdates),
+    monthlyApiBudgetUsd: boundedNumber(candidate.monthlyApiBudgetUsd, DEFAULT_WIDGET_PREFERENCES.monthlyApiBudgetUsd, 0, 1_000_000),
+    apiBudgetAlertsEnabled: booleanValue(candidate.apiBudgetAlertsEnabled, DEFAULT_WIDGET_PREFERENCES.apiBudgetAlertsEnabled),
   };
 }

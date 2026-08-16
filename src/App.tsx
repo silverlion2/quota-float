@@ -579,6 +579,7 @@ export default function App() {
         setActiveIndex(index);
         if (preferences.pinnedProvider) savePreferences({ ...preferences, pinnedProvider: provider });
       }}
+      onPreferences={savePreferences}
       onLanguage={() => savePreferences({ ...preferences, language: nextLanguage(language) })}
       onToggleStayExpanded={() => savePreferences({ ...preferences, stayExpanded: !preferences.stayExpanded })}
       onReorderProviders={(providerOrder) => {

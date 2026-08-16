@@ -20,6 +20,7 @@ interface Props {
   resolvedAppearance?: ResolvedAppearance;
   collapsing?: boolean;
   onSelectProvider: (provider: ProviderId) => void;
+  onPreferences?: (preferences: WidgetPreferences) => void;
   onReorderProviders?: (order: ProviderId[]) => void;
   onLock: () => void;
   onToggleStayExpanded?: () => void;
@@ -385,6 +386,7 @@ export const QuotaCard = memo(function QuotaCard({
   preferences,
   resolvedAppearance = "light",
   onSelectProvider,
+  onPreferences = () => undefined,
   onReorderProviders = () => undefined,
   onLock,
   onToggleStayExpanded = () => undefined,
@@ -821,15 +823,19 @@ export const QuotaCard = memo(function QuotaCard({
         aria-hidden={overlayOpen || undefined}
         inert={overlayOpen || undefined}
       >
-        <UsageInsightsPanel
+        {insightsOpen ? <UsageInsightsPanel
           snapshot={snapshot}
+          snapshots={snapshots}
           history={history}
           dailyUsage={dailyUsage}
           paceBaselines={paceBaselines}
           language={language}
+          preferences={preferences}
           resetForecast={visibleResetForecast}
+          onSelectProvider={onSelectProvider}
+          onPreferences={onPreferences}
           onOpenResetForecast={onOpenResetForecast}
-        />
+        /> : null}
       </div>
     </main>
   );

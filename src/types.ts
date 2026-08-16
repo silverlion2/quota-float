@@ -77,6 +77,8 @@ export interface WidgetPreferences {
   notificationCooldownMinutes: number;
   updateChannel: UpdateChannel;
   automaticUpdates: boolean;
+  monthlyApiBudgetUsd: number;
+  apiBudgetAlertsEnabled: boolean;
 }
 
 export type ActivityKind = "quota" | "reset" | "warning" | "recovered" | "update";
@@ -105,6 +107,40 @@ export interface DailyUsageSummary {
   observedUsedPercent: number;
   sampleCount: number;
   updatedAt: string;
+}
+
+export type TokenContextTier = "short" | "long";
+
+export interface CodexTokenUsageBucket {
+  bucketStart: string;
+  model: string;
+  contextTier: TokenContextTier;
+  project: string;
+  terminal: string;
+  sessionKey: string;
+  inputTokens: number;
+  cachedInputTokens: number;
+  cacheWriteInputTokens: number;
+  outputTokens: number;
+  reasoningOutputTokens: number;
+  totalTokens: number;
+  requests: number;
+}
+
+export interface CodexTokenUsageReport {
+  generatedAt: string;
+  rangeDays: number;
+  scannedFiles: number;
+  indexedFiles: number;
+  reusedFiles: number;
+  incrementalFiles: number;
+  skippedFiles: number;
+  scannedBytes: number;
+  matchedEvents: number;
+  scanDurationMs: number;
+  cacheStatus: "rebuilt" | "incremental" | "reused" | "volatile";
+  truncated: boolean;
+  buckets: CodexTokenUsageBucket[];
 }
 
 export interface SavedLayout {

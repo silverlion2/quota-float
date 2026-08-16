@@ -20,7 +20,7 @@ Quota Float 是一款 Windows/macOS Tauri 桌面悬浮窗：它只读复用本�
 - Vitest + Testing Library：纯函数、组件、偏好迁移和桥接回归测试。
 - Rust 单元测试、`fmt`、`check` 与 `clippy`：平台解析、偏好迁移和物理像素窗口几何验证。
 
-详细分层和数据流见 [ARCHITECTURE.md](ARCHITECTURE.md)，维护提案见 [ROADMAP.md](ROADMAP.md)，已发布版本证据见 [RELEASE-0.2.20.md](RELEASE-0.2.20.md)。
+详细分层和数据流见 [ARCHITECTURE.md](ARCHITECTURE.md)，维护提案见 [ROADMAP.md](ROADMAP.md)，长期协作约定见 [PROJECT-MEMO.md](PROJECT-MEMO.md)，已发布版本证据见 [RELEASE-0.2.20.md](RELEASE-0.2.20.md)。
 
 ## 关键文件
 

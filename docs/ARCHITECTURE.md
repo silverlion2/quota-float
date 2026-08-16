@@ -11,7 +11,7 @@ Quota Float is a local-first Tauri desktop application. React renders the widget
 | Presentation | `src/App.tsx`, `src/components/*`, `src/styles.css` | Compact/expanded layouts, provider selection, alerts, status center, accessibility, themes |
 | Frontend domain | `src/lib/*` | Preference/runtime normalization, quota pace, reset detection, history, update state, last-known-good merging |
 | Desktop bridge | `src/lib/bridge.ts` | Typed Tauri commands/events, serialized writes, drag stability detection, browser mocks |
-| Native orchestration | `src-tauri/src/lib.rs`, `src-tauri/src/models.rs` | Commands, window state, physical-pixel geometry, persistence, backups, tray, lifecycle |
+| Native orchestration | `src-tauri/src/lib.rs`, `src-tauri/src/models.rs`, `src-tauri/src/codex_usage.rs` | Commands, window state, physical-pixel geometry, persistence, bounded local Token aggregation, backups, tray, lifecycle |
 | Provider adapters | `src-tauri/src/{codex,qoder,trae,workbuddy,volcengine,antigravity}.rs` | Read-only discovery, request/parsing, provider-specific error isolation |
 
 ## Data flow
@@ -21,6 +21,10 @@ Quota Float is a local-first Tauri desktop application. React renders the widget
 3. Rust returns normalized `ProviderSnapshot` values without exposing credentials or raw provider payloads.
 4. React merges new values with last-known-good values, derives pace/reset events, and persists bounded runtime history.
 5. Rendering selects Float, Ring, or Bar for compact mode and one of three expanded layouts.
+
+The Insights tab lazily requests a separate 90-day Codex Token report. Rust streams bounded local session files, skips oversized/content records without deserializing them, and persists a sanitized, versioned per-file cursor index in the application config directory. Index entries use full SHA-256 file identities rather than relative paths or raw filenames. Unchanged files reuse indexed aggregates; append-only files resume from the saved byte cursor; truncation, metadata changes, or a manual rebuild reparses the affected scope. The UI receives only hourly numeric aggregates grouped by model, context tier, project basename, normalized terminal category, and a one-way hashed session key.
+
+React applies range and dimension filters, derives session/activity/cache metrics, and evaluates each model against the versioned standard-API price catalog in `src/lib/openaiPricing.ts`. It then builds comparisons, charts, per-model cost rows, and a local monthly budget outlook. CSV/JSON exports aggregate away session keys and alias projects; the SVG share card exports summary metrics only. Native export writes only an explicitly selected `.csv`, `.json`, or `.svg` target.
 
 Provider failures are partial: one unavailable adapter must not erase healthy providers. A transient failure retains the last valid value with a stale status; signed-out and malformed responses receive explicit non-secret errors.
 
@@ -55,7 +59,7 @@ The bridge waits for native drag position stability, asks Rust to resolve the ed
 
 - Provider credential access remains inside `src-tauri`.
 - Credentials go only to the corresponding official provider endpoint or a documented loopback-only local service.
-- Tokens, account identifiers, auth paths, prompts, chats, and raw provider responses are neither persisted nor included in diagnostics.
+- Provider credentials, account identifiers, auth paths, prompts, chats, raw session records, and raw provider responses are neither persisted nor included in diagnostics. Only the documented sanitized Token cursor/index is persisted locally.
 - Provider reads are non-mutating: no reset redemption, account updates, or provider configuration writes.
 - Browser preview and tests use synthetic or fixture data.
 
@@ -63,9 +67,9 @@ See `PRIVACY.md`, `SECURITY.md`, and `docs/DESKTOP-DEVELOPMENT-SOP.md` for the c
 
 ## Verification architecture
 
-- TypeScript pure-function tests cover migration, clamping, pace, reset and history behavior.
-- Component tests cover compact/expanded layouts, themes, provider selection, accessibility, hover timing and saved layouts.
+- TypeScript pure-function tests cover migration, clamping, pace, reset/history behavior, price calculation, filtering, budget forecasting, and anonymized exports.
+- Component tests cover compact/expanded layouts, themes, provider selection, Insights tab behavior, accessibility, hover timing and saved layouts.
 - Bridge tests cover command payloads, serialized writes and drag-result persistence.
-- Rust tests cover provider parsing, preference normalization and multi-monitor/DPI/work-area geometry.
+- Rust tests cover provider parsing, preference normalization, bounded/incremental Token indexing, and multi-monitor/DPI/work-area geometry.
 - The desktop fast handoff gate adds production build, Rust formatting, `check`, strict `clippy`, and diff validation.
 - Real Windows/macOS smoke tests remain necessary for WebView transparency, native dragging, always-on-top, pointer pass-through and tray/menu behavior.

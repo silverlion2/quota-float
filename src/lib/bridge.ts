@@ -1,4 +1,4 @@
-import type { AppDiagnostics, BarPlacement, CompactLayout, ProviderSnapshot, ResetForecast, RuntimeState, VolcengineDiagnostics, WidgetPreferences } from "../types";
+import type { AppDiagnostics, BarPlacement, CodexTokenUsageReport, CompactLayout, ProviderSnapshot, ResetForecast, RuntimeState, VolcengineDiagnostics, WidgetPreferences } from "../types";
 import { EMPTY_RUNTIME_STATE, normalizeRuntimeState } from "./activity";
 import { DEFAULT_WIDGET_PREFERENCES } from "./preferences";
 
@@ -89,6 +89,49 @@ const mockVolcengineDiagnostics: VolcengineDiagnostics = {
   lastError: null,
 };
 
+function mockCodexTokenUsage(): CodexTokenUsageReport {
+  const now = new Date();
+  const buckets = Array.from({ length: 90 * 3 }, (_, index) => {
+    const bucket = new Date(now.getTime() - (90 * 3 - index) * 8 * 3_600_000);
+    bucket.setMinutes(0, 0, 0);
+    const pulse = 0.72 + ((index * 17) % 13) / 10;
+    const inputTokens = Math.round(1_450_000 * pulse);
+    const cachedInputTokens = Math.round(inputTokens * (0.62 + (index % 4) * 0.05));
+    const cacheWriteInputTokens = index % 9 === 0 ? Math.round(inputTokens * 0.035) : 0;
+    const outputTokens = Math.round(74_000 * pulse);
+    return {
+      bucketStart: bucket.toISOString(),
+      model: index < 90 ? "gpt-5.4" : index < 180 ? "gpt-5.5" : "gpt-5.6-sol",
+      contextTier: index % 11 === 0 ? "long" as const : "short" as const,
+      project: ["quota-float", "atlas", "research-lab"][index % 3],
+      terminal: ["Desktop", "CLI", "VS Code"][index % 3],
+      sessionKey: `s-mock-${index % 24}`,
+      inputTokens,
+      cachedInputTokens,
+      cacheWriteInputTokens,
+      outputTokens,
+      reasoningOutputTokens: Math.round(outputTokens * 0.46),
+      totalTokens: inputTokens + outputTokens,
+      requests: 5 + (index % 8),
+    };
+  });
+  return {
+    generatedAt: now.toISOString(),
+    rangeDays: 90,
+    scannedFiles: 42,
+    indexedFiles: 42,
+    reusedFiles: 38,
+    incrementalFiles: 4,
+    skippedFiles: 0,
+    scannedBytes: 384_000_000,
+    matchedEvents: buckets.reduce((total, bucket) => total + bucket.requests, 0),
+    scanDurationMs: 184,
+    cacheStatus: "incremental",
+    truncated: false,
+    buckets,
+  };
+}
+
 let widgetTransition: Promise<void> = Promise.resolve();
 let preferenceWrite: Promise<void> = Promise.resolve();
 let runtimeWrite: Promise<void> = Promise.resolve();
@@ -130,6 +173,34 @@ export async function fetchCodexResetForecast(): Promise<ResetForecast | null> {
   };
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<ResetForecast | null>("get_codex_reset_forecast");
+}
+
+export async function fetchCodexTokenUsage(force = false, rebuild = false): Promise<CodexTokenUsageReport> {
+  if (!isTauri()) return mockCodexTokenUsage();
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<CodexTokenUsageReport>("get_codex_token_usage", { force, rebuild });
+}
+
+export type UsageExportFormat = "csv" | "json" | "svg";
+
+export async function exportUsageData(content: string, format: UsageExportFormat): Promise<string | null> {
+  const filename = `quota-float-usage-${new Date().toISOString().slice(0, 10)}.${format}`;
+  if (!isTauri()) {
+    const blob = new Blob([content], { type: format === "svg" ? "image/svg+xml" : format === "csv" ? "text/csv" : "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+    return filename;
+  }
+  const { save } = await import("@tauri-apps/plugin-dialog");
+  const path = await save({ defaultPath: filename, filters: [{ name: "Quota Float usage", extensions: [format] }] });
+  if (!path) return null;
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("export_usage_data", { path, content });
+  return path;
 }
 
 export async function openExternalUrl(url: string): Promise<void> {

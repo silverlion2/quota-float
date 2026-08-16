@@ -63,6 +63,8 @@ Updater artifacts are signed with the project's Tauri update key. Windows Authen
 - Daily quota pace guidance and alerts, configurable thresholds, quiet hours, and notification cooldowns.
 - Floating orb, persistent expansion, always-on-top control, provider rotation, drag-to-reorder, and localized tray actions.
 - Local quota timeline for resets, low-quota crossings, provider failures, recoveries, and updates.
+- A Vibe Usage dashboard with incremental local Codex indexing, model/project/terminal filters, session and activity metrics, trend charts, an hourly heatmap, and per-model API-equivalent cost estimates.
+- A configurable monthly API-equivalent budget outlook with local alerts, plus anonymized CSV/JSON exports, an SVG share card, and an exportable versioned price catalog.
 - Custom accent colors, hidden or condensed providers, reusable layout profiles, and system-login autostart.
 - Independent Float/Ring/Bar compact layouts and Dashboard/Provider-bar/Stacked expanded layouts, with Aurora, Graphite, or Paper colors shared across every layout plus System/Light/Dark appearance.
 - A magnetic Bar with a `400×38` top strip or `64×320` left/right rail, upright quota details, edge-aware inward expansion, and saved normalized placement.
@@ -79,7 +81,7 @@ Updater artifacts are signed with the project's Tauri update key. Windows Authen
 
 ## Privacy and Security
 
-Quota Float sends each provider's existing token only to that provider's official quota service; Volcengine access stays inside Ark CLI, and Antigravity is queried through its loopback-only local quota service. The app stores only its own preferences, bounded quota samples, event summaries, layout profiles, and recovery points.
+Quota Float sends each provider's existing token only to that provider's official quota service; Volcengine access stays inside Ark CLI, and Antigravity is queried through its loopback-only local quota service. The app stores only its own preferences, bounded quota samples, event summaries, layout profiles, recovery points, and a sanitized incremental Codex usage index.
 
 It does **not** store provider tokens, account IDs, prompts, chat history, raw quota responses, or local auth paths. It does not redeem reset credits or change provider account settings. See [Privacy](PRIVACY.md) and [Security](SECURITY.md) for the complete boundary.
 
@@ -89,9 +91,13 @@ It does **not** store provider tokens, account IDs, prompts, chat history, raw q
 
 Install Quota Float on the same computer where Codex Desktop or Codex CLI is already signed in. The widget reads that existing local session and shows the available Codex usage windows and reset times.
 
-### Does Quota Float calculate usage from local token counts?
+### Does Quota Float calculate quota from local Token counts?
 
-No. It displays provider-reported quota data or a supported local account cache. It does not estimate quota from prompts or local token counts.
+No. Quota remains provider-reported or comes from a supported local account cache. Separately, the Insights view can aggregate numeric `token_count` metadata already written by Codex; it does not use those counts to invent missing quota.
+
+### Is the estimated cost my Codex bill?
+
+No. It is an API-equivalent estimate using an embedded snapshot of official OpenAI standard token prices. Codex subscription usage, API billing, tool fees, regional processing, and special service tiers can differ.
 
 ### Do I need to enter an API key or copy a token?
 
