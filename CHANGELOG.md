@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.24 - 2026-08-16
+
+- ci: install release preparation dependencies
+- feat: expand local Codex usage insights
+
 ## 0.2.23 - 2026-08-14
 
 - ci: publish tag-triggered release drafts
