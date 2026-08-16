@@ -57,6 +57,7 @@ describe("release automation", () => {
   it("supports guarded online release preparation", () => {
     const workflow = readFileSync(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
     const releaseScript = readFileSync(new URL("./release.mjs", import.meta.url), "utf8");
+    const createReleaseRefJob = workflow.match(/\n  create-release-ref:\n[\s\S]*?\n  publish-draft:/)?.[0] ?? "";
 
     expect(workflow).toContain("workflow_dispatch:");
     expect(workflow).toMatch(/publish:\s+description: Create the release commit\/tag and publish after verification\s+required: true\s+default: false/);
@@ -65,6 +66,10 @@ describe("release automation", () => {
     expect(workflow).toContain("--dry-run --yes");
     expect(workflow).toContain("--verified-by-ci --no-push --yes");
     expect(workflow).toContain("git push --atomic origin");
+    expect(createReleaseRefJob).toContain("Install Linux desktop dependencies");
+    expect(createReleaseRefJob).toContain("libwebkit2gtk-4.1-dev");
+    expect(createReleaseRefJob).toContain("libappindicator3-dev");
+    expect(createReleaseRefJob).toContain("librsvg2-dev");
     expect(releaseScript).toContain('process.env.GITHUB_ACTIONS !== "true"');
   });
 
