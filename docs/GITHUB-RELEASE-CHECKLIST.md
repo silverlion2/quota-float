@@ -69,7 +69,7 @@ macOS Universal target 会由 GitHub Actions 自动安装，本地 Windows 不�
 - `verify`、Defender 预检、全部平台 `publish` 和 `upgrade-smoke` job 均成功。
 - Release 不是 draft；Beta tag 应为 prerelease，Stable tag 不应为 prerelease。
 
-每次发布应在项目内保存一份简短 evidence record，记录 release/tag/commit、工作流链接、产物清单、自动化结果以及仍待完成的手动平台验证。格式可参考 [RELEASE-0.2.20.md](RELEASE-0.2.20.md)。
+每次发布应在项目内保存一份简短 evidence record，记录 release/tag/commit、工作流链接、产物清单、自动化结果以及仍待完成的手动平台验证。格式可参考 [RELEASE-0.2.24.md](RELEASE-0.2.24.md)。
 
 应用内更新中心会静默检查新版本。Windows 会后台下载签名更新，用户可选择稍后重启安装；macOS 会打开对应的 GitHub Releases 下载页。
 

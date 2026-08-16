@@ -33,7 +33,7 @@
 - 本地发布门槛：132 个前端测试、45 个 Rust 测试、生产构建、`fmt`、`check`、严格 `clippy`、diff 与版本一致性检查全部通过。
 - GitHub Actions：`verify`、Windows Defender 预检、Windows NSIS 发布、macOS Universal 发布和 Windows `upgrade-smoke` 全部成功。
 - 公开 Release：`latest.json`、Windows 安装包及签名、macOS Universal DMG、macOS updater archive 及签名均已上传。
-- 完整证据、链接和产物清单见 [RELEASE-0.2.20.md](RELEASE-0.2.20.md)。
+- 最新完整证据、链接和产物清单见 [RELEASE-0.2.24.md](RELEASE-0.2.24.md)。
 
 这些结果证明构建、扫描、打包、更新签名和自动升级路径成功；它们不替代下列原生窗口视觉/交互矩阵。
 

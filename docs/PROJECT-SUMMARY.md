@@ -20,7 +20,7 @@ Quota Float 是一款 Windows/macOS Tauri 桌面悬浮窗：它只读复用本�
 - Vitest + Testing Library：纯函数、组件、偏好迁移和桥接回归测试。
 - Rust 单元测试、`fmt`、`check` 与 `clippy`：平台解析、偏好迁移和物理像素窗口几何验证。
 
-详细分层和数据流见 [ARCHITECTURE.md](ARCHITECTURE.md)，维护提案见 [ROADMAP.md](ROADMAP.md)，长期协作约定见 [PROJECT-MEMO.md](PROJECT-MEMO.md)，已发布版本证据见 [RELEASE-0.2.20.md](RELEASE-0.2.20.md)。
+详细分层和数据流见 [ARCHITECTURE.md](ARCHITECTURE.md)，维护提案见 [ROADMAP.md](ROADMAP.md)，长期协作约定见 [PROJECT-MEMO.md](PROJECT-MEMO.md)，最新发布证据见 [RELEASE-0.2.24.md](RELEASE-0.2.24.md)。
 
 ## 关键文件
 
@@ -62,7 +62,7 @@ npm run tauri dev
 
 提交交付前必须执行 [桌面开发 SOP](DESKTOP-DEVELOPMENT-SOP.md) 的完整 fast handoff gate。浏览器模式不能验证真实额度或系统窗口行为；Windows 多屏/缩放和 macOS 透明窗口仍需真实桌面环境按 [TEST-MATRIX.md](TEST-MATRIX.md) 验收。
 
-`v0.2.20` 已发布到 GitHub Releases；本地 132 个前端测试、45 个 Rust 测试及完整 fast handoff gate 均通过，GitHub `verify`、Defender 预检、Windows/macOS 发布和 Windows 升级烟测任务也全部成功。产物清单、提交和工作流链接记录在 [RELEASE-0.2.20.md](RELEASE-0.2.20.md)。
+`v0.2.24` 已发布到 GitHub Releases；云端 dry run、跨平台 push CI、Windows/macOS 发布、实际 Windows 产物 Defender 扫描、附件完整性检查和 Windows 升级烟测均成功。产物清单、digest、提交和工作流链接记录在 [RELEASE-0.2.24.md](RELEASE-0.2.24.md)。
 
 ## 当前维护重点
 
