@@ -274,7 +274,7 @@ jobs:
             core.info(`Published ${tag} with ${names.length} verified assets: ${published.html_url}`);
 
   upgrade-smoke:
-    if: ${{ !contains(needs.verify.outputs.tag, '-') }}
+    if: ${{ always() && needs.finalize.result == 'success' && !contains(needs.verify.outputs.tag, '-') }}
     needs: [verify, finalize]
     runs-on: windows-latest
     steps:
