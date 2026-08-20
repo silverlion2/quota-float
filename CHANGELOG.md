@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.25 - 2026-08-20
+
+- feat: unify themes and retain usage history
+- ci: run upgrade smoke after tag releases
+- docs: record v0.2.24 release evidence
+
 ## 0.2.24 - 2026-08-16
 
 - ci: install release preparation dependencies
