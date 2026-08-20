@@ -10,11 +10,12 @@ import { ControlCenter } from "./ControlCenter";
 afterEach(cleanup);
 
 const runtimeState: RuntimeState = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   history: [
     { provider: "codex", capturedAt: "2026-07-26T00:00:00Z", metric: 72, metricKind: "percent", status: "ok", resetsAt: null },
   ],
   dailyUsage: [],
+  usageMemory: { retentionDays: 90, firstCapturedAt: "2026-07-26T00:00:00Z", lastCapturedAt: "2026-07-26T00:00:00Z", totalSamples: 1 },
   events: [],
   savedLayouts: [],
   lastNotifications: {},
@@ -104,6 +105,15 @@ describe("ControlCenter provider health", () => {
     fireEvent.click(screen.getByRole("button", { name: "Refresh now" }));
 
     expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows persisted usage-memory coverage and lifetime samples", () => {
+    renderControlCenter();
+    fireEvent.click(screen.getByRole("button", { name: "Activity" }));
+
+    expect(screen.getByText("Local usage memory")).toBeInTheDocument();
+    expect(screen.getByText("90-day detail · 365-day daily summaries")).toBeInTheDocument();
+    expect(screen.getByText("Lifetime samples")).toBeInTheDocument();
   });
 
   it("applies layout and color choices as independent preferences", () => {

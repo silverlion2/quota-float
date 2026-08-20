@@ -1992,3 +1992,128 @@ button.usage-stat-card:hover { border-color: color-mix(in srgb, var(--accent-col
     transition-delay: 0ms !important;
   }
 }
+
+/* Unified semantic palette: every expanded surface inherits the selected style and appearance. */
+.quota-card {
+  --ui-text: #172131;
+  --ui-muted: rgba(23,33,49,.56);
+  --ui-faint: rgba(23,33,49,.38);
+  --ui-border: rgba(35,73,119,.11);
+  --ui-panel: linear-gradient(145deg, rgba(242,247,251,.985), rgba(232,241,248,.97));
+  --ui-surface: rgba(255,255,255,.42);
+  --ui-surface-strong: rgba(255,255,255,.68);
+  --ui-surface-hover: rgba(255,255,255,.82);
+  --ui-shadow: 0 24px 70px rgba(31,55,89,.25), inset 0 1px 0 rgba(255,255,255,.74);
+  --ui-positive: #287b59;
+  --ui-warning: #bb653e;
+  --ui-danger: #c75651;
+  --ui-inverse: #fff;
+}
+.quota-card--style-graphite.quota-card--theme-light {
+  --ui-text: #1a2530;
+  --ui-muted: rgba(26,37,48,.58);
+  --ui-faint: rgba(26,37,48,.38);
+  --ui-border: rgba(50,76,98,.13);
+  --ui-panel: linear-gradient(145deg, rgba(247,249,250,.99), rgba(229,236,240,.98));
+  --ui-surface: rgba(255,255,255,.46);
+  --ui-surface-strong: rgba(255,255,255,.72);
+  --ui-surface-hover: rgba(255,255,255,.9);
+}
+.quota-card--style-paper.quota-card--theme-light {
+  --ui-text: #332a22;
+  --ui-muted: rgba(59,45,34,.6);
+  --ui-faint: rgba(59,45,34,.4);
+  --ui-border: rgba(111,80,52,.16);
+  --ui-panel: repeating-linear-gradient(0deg, rgba(94,71,48,.026) 0 1px, transparent 1px 14px), linear-gradient(145deg, rgba(248,240,225,.99), rgba(239,226,203,.98));
+  --ui-surface: rgba(255,252,244,.4);
+  --ui-surface-strong: rgba(255,252,244,.68);
+  --ui-surface-hover: rgba(255,252,244,.9);
+  --ui-shadow: 0 22px 62px rgba(83,57,34,.24), inset 0 1px 0 rgba(255,255,255,.64);
+  --ui-positive: #4f775d;
+  --ui-warning: #a7623f;
+}
+.quota-card--theme-dark {
+  --ui-text: #edf2f5;
+  --ui-muted: rgba(233,240,244,.58);
+  --ui-faint: rgba(233,240,244,.36);
+  --ui-border: rgba(255,255,255,.085);
+  --ui-panel: linear-gradient(145deg, rgba(20,27,36,.99), rgba(13,18,25,.985));
+  --ui-surface: rgba(255,255,255,.038);
+  --ui-surface-strong: rgba(255,255,255,.062);
+  --ui-surface-hover: rgba(255,255,255,.085);
+  --ui-shadow: 0 24px 70px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.055);
+  --ui-positive: #72d7b7;
+  --ui-warning: #f1ba78;
+  --ui-danger: #ff8b88;
+  --ui-inverse: #111820;
+}
+.quota-card--style-graphite.quota-card--theme-dark {
+  --ui-panel: linear-gradient(145deg, rgba(16,21,29,.995), rgba(8,12,17,.99));
+  --ui-border: rgba(153,190,200,.105);
+}
+.quota-card--style-paper.quota-card--theme-dark {
+  --ui-text: #f3eee8;
+  --ui-muted: rgba(243,238,232,.58);
+  --ui-faint: rgba(243,238,232,.36);
+  --ui-border: rgba(210,188,164,.13);
+  --ui-panel: repeating-linear-gradient(0deg, rgba(255,255,255,.018) 0 1px, transparent 1px 14px), linear-gradient(145deg, rgba(31,27,24,.995), rgba(22,19,17,.99));
+  --ui-surface: rgba(255,248,238,.035);
+  --ui-surface-strong: rgba(255,248,238,.06);
+  --ui-surface-hover: rgba(255,248,238,.085);
+}
+
+.quota-card :is(.control-center, .diagnostics-panel, .update-panel, .usage-insights-panel) {
+  color: var(--ui-text);
+  border-color: var(--ui-border);
+  background: var(--ui-panel);
+  box-shadow: var(--ui-shadow);
+}
+.quota-card--style-paper :is(.control-center, .diagnostics-panel, .update-panel, .usage-insights-panel) { border-radius: 14px; }
+.quota-card :is(.control-header, .diagnostics-header, .update-header) { border-color: var(--ui-border); }
+.quota-card :is(.control-header small, .control-section-title, .control-section-title--appearance small, .control-field, .diagnostics-header p:not(.diagnostics-kicker), .diagnostics-health small, .diagnostics-grid dt, .diagnostics-hint, .update-header p:not(.update-kicker), .update-status small, .update-notes > p, .update-notes > div, .update-footer > span) { color: var(--ui-muted); }
+.quota-card :is(.control-tabs, .appearance-options, .bar-edge-choice) { border-color: var(--ui-border); background: color-mix(in srgb, var(--ui-surface) 72%, transparent); }
+.quota-card .control-tabs button:not(.is-active),
+.quota-card .appearance-options button:not(.is-active) { color: var(--ui-muted); }
+.quota-card :is(.control-tabs button:not(.is-active), .appearance-options button:not(.is-active)):hover { color: var(--ui-text); background: var(--ui-surface-hover); }
+.quota-card :is(.control-field select, .control-field input[type="number"], .control-field input[type="color"], .layout-save input, .usage-provider-filter select, .usage-dimension-filters select, .usage-budget-panel input) {
+  color: var(--ui-text);
+  border-color: var(--ui-border);
+  background: var(--ui-surface-strong);
+}
+.quota-card :is(.display-feature-option, .provider-settings > div, .provider-health-summary, .provider-health-item, .activity-item, .diagnostic-summary, .history-memory-summary, .saved-layouts button, .layout-save button, .backup-actions button, .provider-health-summary button, .diagnostics-health, .diagnostics-grid > div, .update-status, .update-notes) {
+  color: var(--ui-text);
+  border-color: var(--ui-border);
+  background: var(--ui-surface);
+}
+.quota-card :is(.provider-health-summary p, .provider-health-copy p, .provider-health-copy header span, .provider-health-copy footer, .activity-item p, .activity-item time, .diagnostic-summary p, .saved-layouts small, .history-memory-summary p, .history-memory-summary small, .provider-settings > div > span, .saved-layouts > p, .activity-list > p) { color: var(--ui-muted); }
+.quota-card :is(.diagnostics-header > button, .update-header > button, .update-secondary, .provider-settings button, .saved-layouts button, .layout-save button, .backup-actions button, .diagnostic-summary button, .provider-health-summary button) {
+  color: var(--ui-text);
+  border-color: var(--ui-border);
+  background: var(--ui-surface-strong);
+}
+.quota-card :is(.diagnostics-header > button, .update-header > button, .update-secondary, .provider-settings button, .saved-layouts button, .layout-save button, .backup-actions button, .diagnostic-summary button, .provider-health-summary button):hover { background: var(--ui-surface-hover); }
+
+.history-memory-summary { min-height: 54px; display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 7px 9px; border: 1px solid var(--ui-border); border-radius: 10px; }
+.history-memory-summary > svg { width: 18px; height: 18px; color: var(--accent-color, #397ae0); }
+.history-memory-summary > div { min-width: 0; }
+.history-memory-summary strong { display: block; font-size: 8px; }
+.history-memory-summary p, .history-memory-summary small { display: block; margin: 2px 0 0; overflow: hidden; font-size: 6.5px; text-overflow: ellipsis; white-space: nowrap; }
+.history-memory-summary > span { min-width: 54px; display: grid; justify-items: end; color: var(--ui-muted); font-size: 5.8px; }
+.history-memory-summary > span b { color: var(--ui-text); font-size: 14px; font-variant-numeric: tabular-nums; }
+
+.quota-card .usage-insights-panel { scrollbar-color: color-mix(in srgb, var(--accent-color, #397ae0) 35%, transparent) transparent; }
+.quota-card .usage-insights-panel :is(.usage-insights-header h2, .usage-stat-card > strong, .usage-maintenance-panel strong, .usage-model-row) { color: var(--ui-text); }
+.quota-card .usage-insights-panel :is(.usage-insights-header small, .usage-stat-card > span, .usage-stat-card > small, .usage-chart-controls > label, .usage-legend, .usage-calendar-legend, .usage-insights-footnote, .usage-maintenance-panel span, .usage-maintenance-panel small, .usage-model-row--head) { color: var(--ui-muted); }
+.quota-card .usage-insights-panel :is(.usage-insights-header > button, .usage-trend-card, .usage-calendar-card, .usage-summary-grid .usage-stat-card, .usage-chart-controls, .usage-range-tabs, .usage-provider-filter, .usage-refresh, .usage-hourly-card, .usage-budget-panel, .usage-model-ledger, .usage-maintenance-panel, .usage-maintenance-actions button) {
+  color: var(--ui-text);
+  border-color: var(--ui-border);
+  background: var(--ui-surface);
+}
+.quota-card .usage-insights-panel :is(.usage-insights-header > button, .usage-refresh, .usage-maintenance-actions button):hover:not(:disabled) { color: var(--accent-color, #69a8ff); background: var(--ui-surface-hover); }
+.quota-card .usage-chart-controls button { color: var(--ui-muted); }
+.quota-card .usage-chart-controls button.is-active { color: var(--ui-inverse); background: var(--ui-text); }
+.quota-card .usage-bars { border-color: var(--ui-border); background: repeating-linear-gradient(to bottom, var(--ui-border) 0 1px, transparent 1px 32px); }
+.quota-card .usage-day--unknown,
+.quota-card .usage-hour-cell { background: color-mix(in srgb, var(--ui-text) 5%, transparent); box-shadow: inset 0 0 0 1px var(--ui-border); }
+.quota-card .usage-operation-message { color: var(--ui-positive); background: color-mix(in srgb, var(--ui-positive) 9%, transparent); }
+.quota-card .operation-notice { color: var(--ui-danger); border: 1px solid color-mix(in srgb, var(--ui-danger) 18%, transparent); background: color-mix(in srgb, var(--ui-surface-strong) 86%, var(--ui-danger)); }

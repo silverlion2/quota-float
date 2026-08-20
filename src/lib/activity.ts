@@ -5,14 +5,26 @@ import { DEFAULT_PROVIDER_ORDER, normalizeProviderOrder } from "./providers";
 import { calculateQuotaPace, mostOverPaceWindow, paceBaselineKey, refreshDailyPaceBaselines, trackedQuotaWindows, type NamedQuotaWindow, type QuotaPace } from "./quotaPace";
 
 export const EMPTY_RUNTIME_STATE: RuntimeState = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   history: [],
   dailyUsage: [],
+  usageMemory: {
+    retentionDays: 90,
+    firstCapturedAt: null,
+    lastCapturedAt: null,
+    totalSamples: 0,
+  },
   events: [],
   savedLayouts: [],
   lastNotifications: {},
   dailyPaceBaselines: {},
 };
+
+export const HISTORY_RETENTION_DAYS = 90;
+export const DAILY_USAGE_RETENTION_DAYS = 365;
+const MAX_HISTORY_POINTS = 30_000;
+const MAX_DAILY_USAGE_SUMMARIES = 2_200;
+const HISTORY_SAMPLE_INTERVAL_MS = 30 * 60_000;
 
 const providerSet = new Set<ProviderId>(DEFAULT_PROVIDER_ORDER);
 const statusSet = new Set(["ok", "stale", "loading", "unavailable", "signed_out"]);
@@ -168,10 +180,28 @@ export function normalizeRuntimeState(value: unknown): RuntimeState {
     const baseline = dailyPaceBaseline(value);
     if (baseline && key === paceBaselineKey(baseline.provider, baseline.period)) dailyPaceBaselines[key] = baseline;
   }
+  const history = Array.isArray(candidate.history)
+    ? candidate.history.map(historyPoint).filter((item): item is QuotaHistoryPoint => item !== null)
+      .sort((left, right) => left.capturedAt.localeCompare(right.capturedAt)).slice(-MAX_HISTORY_POINTS)
+    : [];
+  const dailyUsage = Array.isArray(candidate.dailyUsage)
+    ? candidate.dailyUsage.map(dailyUsageSummary).filter((item): item is DailyUsageSummary => item !== null)
+      .sort((left, right) => left.localDate.localeCompare(right.localDate) || left.provider.localeCompare(right.provider)).slice(-MAX_DAILY_USAGE_SUMMARIES)
+    : [];
+  const memoryCandidate = record(candidate.usageMemory);
+  const storedTotal = typeof memoryCandidate?.totalSamples === "number" && Number.isSafeInteger(memoryCandidate.totalSamples)
+    ? memoryCandidate.totalSamples
+    : history.length;
   return {
-    schemaVersion: 1,
-    history: Array.isArray(candidate.history) ? candidate.history.map(historyPoint).filter((item): item is QuotaHistoryPoint => item !== null).slice(-1000) : [],
-    dailyUsage: Array.isArray(candidate.dailyUsage) ? candidate.dailyUsage.map(dailyUsageSummary).filter((item): item is DailyUsageSummary => item !== null).slice(-600) : [],
+    schemaVersion: 2,
+    history,
+    dailyUsage,
+    usageMemory: {
+      retentionDays: HISTORY_RETENTION_DAYS,
+      firstCapturedAt: history[0]?.capturedAt ?? null,
+      lastCapturedAt: history.at(-1)?.capturedAt ?? null,
+      totalSamples: Math.max(history.length, Math.max(0, storedTotal)),
+    },
     events: Array.isArray(candidate.events) ? candidate.events.map(activityEvent).filter((item): item is ActivityEvent => item !== null).slice(0, 200) : [],
     savedLayouts: Array.isArray(candidate.savedLayouts) ? candidate.savedLayouts.map(savedLayout).filter((item): item is RuntimeState["savedLayouts"][number] => item !== null).slice(0, 12) : [],
     lastNotifications,
@@ -219,7 +249,12 @@ function recordDailyUsage(
   }
   return next
     .sort((left, right) => left.localDate.localeCompare(right.localDate) || left.provider.localeCompare(right.provider))
-    .slice(-600);
+    .slice(-MAX_DAILY_USAGE_SUMMARIES);
+}
+
+function retainedSince<T>(values: T[], timestamp: (value: T) => string, days: number, now: Date): T[] {
+  const cutoff = now.getTime() - days * 86_400_000;
+  return values.filter((value) => Date.parse(timestamp(value)) >= cutoff);
 }
 
 function metric(snapshot: ProviderSnapshot): Pick<QuotaHistoryPoint, "metric" | "metricKind" | "resetsAt"> {
@@ -290,6 +325,8 @@ export function recordSnapshotActivity(
   resetForecast: ResetForecast | null = null,
 ): RuntimeUpdate {
   const occurredAt = now.toISOString();
+  const retainedHistory = retainedSince(current.history, (point) => point.capturedAt, HISTORY_RETENTION_DAYS, now);
+  let dailyUsage = retainedSince(current.dailyUsage, (summary) => summary.updatedAt, DAILY_USAGE_RETENTION_DAYS, now);
   const isNewReset = recentReset !== null
     && !current.events.some((item) => item.kind === "reset" && item.occurredAt === recentReset.resetAt);
   const resetProviders = isNewReset ? new Set<string>(["codex"]) : new Set<string>();
@@ -299,13 +336,12 @@ export function recordSnapshotActivity(
     : current.lastNotifications;
   const previousByProvider = new Map(previousSnapshots.map((snapshot) => [snapshot.provider, snapshot]));
   const latestHistory = new Map<ProviderId, QuotaHistoryPoint>();
-  for (let index = current.history.length - 1; index >= 0; index -= 1) {
-    const point = current.history[index];
+  for (let index = retainedHistory.length - 1; index >= 0; index -= 1) {
+    const point = retainedHistory[index];
     if (!latestHistory.has(point.provider)) latestHistory.set(point.provider, point);
   }
 
   const additions: QuotaHistoryPoint[] = [];
-  let dailyUsage = current.dailyUsage;
   const createdEvents: ActivityEvent[] = [];
   const notificationKeyOverrides = new Map<ActivityEvent, string>();
   const repeatedNotifications: Array<{ key: string; event: ActivityEvent }> = [];
@@ -313,13 +349,12 @@ export function recordSnapshotActivity(
     const value = metric(snapshot);
     const point: QuotaHistoryPoint = { provider: snapshot.provider, capturedAt: occurredAt, status: snapshot.status, ...value };
     const latest = latestHistory.get(snapshot.provider);
-    const unchanged = latest
-      && latest.metric === point.metric
-      && latest.metricKind === point.metricKind
-      && latest.status === point.status
-      && latest.resetsAt === point.resetsAt;
-    const recentEnough = latest && now.getTime() - new Date(latest.capturedAt).getTime() < 30 * 60_000;
-    if (!unchanged || !recentEnough) {
+    const contextChanged = !latest
+      || latest.metricKind !== point.metricKind
+      || latest.status !== point.status
+      || latest.resetsAt !== point.resetsAt;
+    const sampleDue = !latest || now.getTime() - new Date(latest.capturedAt).getTime() >= HISTORY_SAMPLE_INTERVAL_MS;
+    if (contextChanged || sampleDue) {
       additions.push(point);
       dailyUsage = recordDailyUsage(dailyUsage, latest, point);
     }
@@ -377,11 +412,19 @@ export function recordSnapshotActivity(
     event: item,
   }));
 
+  const history = [...retainedHistory, ...additions].slice(-MAX_HISTORY_POINTS);
   return {
     state: {
       ...current,
-      history: [...current.history, ...additions].slice(-1000),
+      schemaVersion: 2,
+      history,
       dailyUsage,
+      usageMemory: {
+        retentionDays: HISTORY_RETENTION_DAYS,
+        firstCapturedAt: history[0]?.capturedAt ?? null,
+        lastCapturedAt: history.at(-1)?.capturedAt ?? null,
+        totalSamples: Math.min(Number.MAX_SAFE_INTEGER, Math.max(current.usageMemory.totalSamples, current.history.length) + additions.length),
+      },
       events: [...createdEvents, ...current.events].slice(0, 200),
       lastNotifications,
       dailyPaceBaselines,

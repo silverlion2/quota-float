@@ -23,6 +23,50 @@ describe("activity timeline and notification policy", () => {
     const first = recordSnapshotActivity(EMPTY_RUNTIME_STATE, [], [snapshot(50)], null, 15, new Date("2026-07-19T01:00:00Z"));
     const second = recordSnapshotActivity(first.state, [snapshot(50)], [snapshot(50)], null, 15, new Date("2026-07-19T01:10:00Z"));
     expect(second.state.history).toHaveLength(1);
+    expect(second.state.usageMemory).toEqual(expect.objectContaining({ retentionDays: 90, totalSamples: 1 }));
+  });
+
+  it("samples changing numeric usage at a bounded thirty-minute cadence", () => {
+    const first = recordSnapshotActivity(EMPTY_RUNTIME_STATE, [], [snapshot(90)], null, 15, new Date("2026-07-19T01:00:00Z"));
+    const recentChange = recordSnapshotActivity(first.state, [snapshot(90)], [snapshot(85)], null, 15, new Date("2026-07-19T01:10:00Z"));
+    const dueChange = recordSnapshotActivity(recentChange.state, [snapshot(85)], [snapshot(80)], null, 15, new Date("2026-07-19T01:31:00Z"));
+
+    expect(recentChange.state.history).toHaveLength(1);
+    expect(dueChange.state.history).toHaveLength(2);
+    expect(dueChange.state.history.at(-1)?.metric).toBe(80);
+    expect(dueChange.state.dailyUsage.at(-1)?.observedUsedPercent).toBe(10);
+  });
+
+  it("migrates legacy history into local usage memory metadata", () => {
+    const normalized = normalizeRuntimeState({
+      schemaVersion: 1,
+      history: [
+        { provider: "codex", capturedAt: "2026-07-18T01:00:00Z", metric: 80, metricKind: "percent", status: "ok", resetsAt: null },
+        { provider: "codex", capturedAt: "2026-07-19T01:00:00Z", metric: 70, metricKind: "percent", status: "ok", resetsAt: null },
+      ],
+    });
+
+    expect(normalized.schemaVersion).toBe(2);
+    expect(normalized.usageMemory).toEqual({
+      retentionDays: 90,
+      firstCapturedAt: "2026-07-18T01:00:00Z",
+      lastCapturedAt: "2026-07-19T01:00:00Z",
+      totalSamples: 2,
+    });
+  });
+
+  it("keeps rolling detailed and daily usage memory within their retention windows", () => {
+    const current = normalizeRuntimeState({
+      history: [{ provider: "codex", capturedAt: "2025-01-01T00:00:00Z", metric: 90, metricKind: "percent", status: "ok", resetsAt: null }],
+      dailyUsage: [{ provider: "codex", localDate: "2025-01-01", observedUsedPercent: 10, sampleCount: 2, updatedAt: "2025-01-01T02:00:00Z" }],
+    });
+    const updated = recordSnapshotActivity(current, [], [snapshot(50)], null, 15, new Date("2026-07-19T01:00:00Z"));
+
+    expect(updated.state.history).toHaveLength(1);
+    expect(updated.state.history[0].capturedAt).toBe("2026-07-19T01:00:00.000Z");
+    expect(updated.state.dailyUsage).toHaveLength(1);
+    expect(updated.state.dailyUsage[0].localDate).toBe("2026-07-19");
+    expect(updated.state.usageMemory.totalSamples).toBe(2);
   });
 
   it("aggregates observed daily quota use without counting resets as consumption", () => {

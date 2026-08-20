@@ -19,7 +19,7 @@ Quota Float is a local-first Tauri desktop application. React renders the widget
 1. React requests snapshots through `bridge.ts`.
 2. A Tauri command refreshes isolated Rust provider adapters under a shared refresh lock and bounded cache.
 3. Rust returns normalized `ProviderSnapshot` values without exposing credentials or raw provider payloads.
-4. React merges new values with last-known-good values, derives pace/reset events, and persists bounded runtime history.
+4. React merges new values with last-known-good values, derives pace/reset events, and persists bounded runtime history. Detailed quota samples use a rolling 90-day local memory; daily usage summaries retain 365 days, with lifetime sample metadata surviving pruning.
 5. Rendering selects Float, Ring, or Bar for compact mode and one of three expanded layouts.
 
 The Insights tab lazily requests a separate 90-day Codex Token report. Rust streams bounded local session files, skips oversized/content records without deserializing them, and persists a sanitized, versioned per-file cursor index in the application config directory. Index entries use full SHA-256 file identities rather than relative paths or raw filenames. Unchanged files reuse indexed aggregates; append-only files resume from the saved byte cursor; truncation, metadata changes, or a manual rebuild reparses the affected scope. The UI receives only hourly numeric aggregates grouped by model, context tier, project basename, normalized terminal category, and a one-way hashed session key.
@@ -39,7 +39,7 @@ type BarEdge = "top" | "left" | "right";
 type BarPlacement = { edge: BarEdge; offset: number };
 ```
 
-Legacy preferences and saved layouts migrate to `{ edge: "top", offset: 0.5 }`. The same fields flow through layout profiles, export/import, and automatic recovery backups without changing the existing schema version. Credential material is never part of those files.
+Legacy preferences and saved layouts migrate to `{ edge: "top", offset: 0.5 }`. The same fields flow through layout profiles, export/import, and automatic recovery backups. Runtime history schema 1 migrates to schema 2 by deriving local-memory coverage metadata from existing samples. Credential material is never part of those files.
 
 ## Window geometry
 

@@ -109,6 +109,13 @@ export interface DailyUsageSummary {
   updatedAt: string;
 }
 
+export interface UsageMemory {
+  retentionDays: number;
+  firstCapturedAt: string | null;
+  lastCapturedAt: string | null;
+  totalSamples: number;
+}
+
 export type TokenContextTier = "short" | "long";
 
 export interface CodexTokenUsageBucket {
@@ -177,9 +184,10 @@ export interface DailyPaceBaseline {
 }
 
 export interface RuntimeState {
-  schemaVersion: 1;
+  schemaVersion: 2;
   history: QuotaHistoryPoint[];
   dailyUsage: DailyUsageSummary[];
+  usageMemory: UsageMemory;
   events: ActivityEvent[];
   savedLayouts: SavedLayout[];
   lastNotifications: Record<string, string>;

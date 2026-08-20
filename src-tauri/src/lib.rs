@@ -374,9 +374,15 @@ fn read_json_with_backup(path: &Path) -> serde_json::Value {
         })
         .unwrap_or_else(|| {
             serde_json::json!({
-                "schemaVersion": 1,
+                "schemaVersion": 2,
                 "history": [],
                 "dailyUsage": [],
+                "usageMemory": {
+                    "retentionDays": 90,
+                    "firstCapturedAt": null,
+                    "lastCapturedAt": null,
+                    "totalSamples": 0
+                },
                 "events": [],
                 "savedLayouts": [],
                 "lastNotifications": {}
