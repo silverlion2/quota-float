@@ -48,6 +48,6 @@ If any one-time setting is missing or has expired, stop before publishing and re
 - Release automation tests: `scripts/release.test.mjs`
 - Operational guide: [RELEASE.md](RELEASE.md)
 - Checklist: [GITHUB-RELEASE-CHECKLIST.md](GITHUB-RELEASE-CHECKLIST.md)
-- Latest evidence record: [RELEASE-0.2.24.md](RELEASE-0.2.24.md)
+- Latest evidence record: [RELEASE-0.2.26.md](RELEASE-0.2.26.md)
 
 The online workflow supports `patch`, `minor`, `major`, `beta`, `stable`, or an explicit `x.y.z[-beta.n]`. It keeps external `v*` tag compatibility while avoiding reliance on a second workflow being triggered by a tag created with the default GitHub Actions token.
