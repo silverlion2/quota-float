@@ -16,6 +16,7 @@ import {
 import { type CSSProperties, useCallback, useEffect, useMemo, useState } from "react";
 import { exportUsageData, fetchCodexTokenUsage, sendDesktopNotification } from "../lib/bridge";
 import { clampPercent, formatResetTime } from "../lib/format";
+import { deliverNotificationOnce } from "../lib/notificationDelivery";
 import { OPENAI_PRICING_CATALOG } from "../lib/openaiPricing";
 import { calculateQuotaPace, paceBaselineKey, trackedQuotaWindows } from "../lib/quotaPace";
 import {
@@ -207,11 +208,14 @@ export function UsageInsightsPanel({
     if (!budget || budget.status !== "over" || !preferences.apiBudgetAlertsEnabled || snapshot.provider !== "codex") return;
     const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     const key = `quota-float:api-budget-alert:${month}`;
-    if (window.localStorage.getItem(key)) return;
-    window.localStorage.setItem(key, new Date().toISOString());
-    void sendDesktopNotification(
-      english ? "API-equivalent budget outlook" : "API 等价预算展望",
-      english ? `Projected ${money(budget.projectedMonthlyUsd)} this month against a ${money(budget.budgetUsd)} plan.` : `本月预计 ${money(budget.projectedMonthlyUsd)}，已超过 ${money(budget.budgetUsd)} 的预算。`,
+    void deliverNotificationOnce(
+      key,
+      () => window.localStorage.getItem(key) !== null,
+      () => window.localStorage.setItem(key, new Date().toISOString()),
+      () => sendDesktopNotification(
+        english ? "API-equivalent budget outlook" : "API 等价预算展望",
+        english ? `Projected ${money(budget.projectedMonthlyUsd)} this month against a ${money(budget.budgetUsd)} plan.` : `本月预计 ${money(budget.projectedMonthlyUsd)}，已超过 ${money(budget.budgetUsd)} 的预算。`,
+      ),
     );
   }, [budget, english, preferences.apiBudgetAlertsEnabled, snapshot.provider]);
 

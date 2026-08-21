@@ -3,12 +3,12 @@ import { QuotaBar, QuotaCard, QuotaOrb } from "./components/QuotaCard";
 import { ControlCenter } from "./components/ControlCenter";
 import { EMPTY_UPDATE_STATE } from "./components/UpdatePanel";
 import type { UpdateViewState } from "./components/UpdatePanel";
-import { createAutomaticBackup, exportAppData, fetchCodexResetForecast, fetchSnapshots, getAppDiagnostics, getAutostartEnabled, getPreferences, getRuntimeState, getVolcengineDiagnostics, importAppData, listenDesktopEvents, openExternalUrl, reconnectVolcengine, resizeWidgetToContent, restoreLatestBackup, sendDesktopNotification, setAlwaysOnTop, setAutostartEnabled, setWidgetExpanded, startDragging, updatePreferences, updateRuntimeState } from "./lib/bridge";
+import { applyAppData, createAutomaticBackup, exportAppData, fetchCodexResetForecast, fetchSnapshots, getAppDiagnostics, getAutostartEnabled, getPreferences, getRuntimeState, getVolcengineDiagnostics, importAppData, listenDesktopEvents, openExternalUrl, reconnectVolcengine, resizeWidgetToContent, restoreLatestBackup, sendDesktopNotification, setAlwaysOnTop, setAutostartEnabled, setWidgetExpanded, startDragging, updatePreferences, updateRuntimeState } from "./lib/bridge";
 import { needsFastRefresh } from "./lib/format";
 import { checkForAppUpdate, discardAppUpdate, downloadAppUpdate, installAppUpdate, openReleasePage } from "./lib/appUpdate";
 import type { AppUpdateInfo } from "./lib/appUpdate";
 import { copy, nextLanguage, normalizeLanguage } from "./lib/i18n";
-import { normalizeProviderOrder } from "./lib/providers";
+import { nextProviderIndex, normalizeProviderOrder } from "./lib/providers";
 import { detectRecentCodexReset, isRecentCodexReset } from "./lib/resetDetection";
 import type { RecentCodexReset } from "./lib/resetDetection";
 import { trackedQuotaWindows } from "./lib/quotaPace";
@@ -17,6 +17,7 @@ import { canSendNotification, EMPTY_RUNTIME_STATE, isQuietHour, normalizeRuntime
 import { DEFAULT_WIDGET_PREFERENCES, normalizeWidgetPreferences } from "./lib/preferences";
 import { resolveAppearanceMode, systemPrefersDark } from "./lib/appearance";
 import { loadStartupState } from "./lib/startup";
+import { runSingleFlight, type SingleFlightState } from "./lib/singleFlight";
 import type { AppDiagnostics, ProviderId, ProviderSnapshot, ResetForecast, RuntimeState, VolcengineDiagnostics, WidgetPreferences } from "./types";
 
 const DEFAULT_PREFS = DEFAULT_WIDGET_PREFERENCES;
@@ -57,7 +58,7 @@ export default function App() {
   const collapseContentTimer = useRef<number | null>(null);
   const hoverSequence = useRef(0);
   const updateSequence = useRef(0);
-  const refreshSequence = useRef(0);
+  const refreshFlight = useRef<SingleFlightState<void>>({ current: null });
   const runtimeStateRef = useRef<RuntimeState>(EMPTY_RUNTIME_STATE);
   const preferencesRef = useRef<WidgetPreferences>(DEFAULT_PREFS);
   const confirmedPreferencesRef = useRef<WidgetPreferences>(DEFAULT_PREFS);
@@ -145,14 +146,12 @@ export default function App() {
     });
   }, [preferences.automaticUpdates, preferences.skippedUpdateVersion, preferences.updateChannel, startUpdateDownload, t.updateFailed, updateState.phase]);
 
-  const refresh = useCallback(async (force = false) => {
-    const sequence = ++refreshSequence.current;
+  const refresh = useCallback((force = false) => runSingleFlight(refreshFlight.current, async () => {
     try {
       const [values, forecast] = await Promise.all([
         fetchSnapshots(force),
         fetchCodexResetForecast().catch(() => null),
       ]);
-      if (refreshSequence.current !== sequence) return;
       setCodexResetForecast(forecast);
       const hasFailure = values.some((item) => item.status !== "ok");
       if (hasFailure) failures.current += 1;
@@ -196,7 +195,6 @@ export default function App() {
           }
         }
       }
-      if (refreshSequence.current !== sequence) return;
       commitRuntimeState(nextRuntimeState);
       setSnapshots((current) => {
         const merged = mergeSnapshots(current, values);
@@ -204,7 +202,6 @@ export default function App() {
         return merged;
       });
     } catch {
-      if (refreshSequence.current !== sequence) return;
       failures.current += 1;
       setSnapshots((current) => {
         const next = current.length > 0
@@ -214,7 +211,7 @@ export default function App() {
         return next;
       });
     }
-  }, [commitRuntimeState]);
+  }), [commitRuntimeState]);
 
   const loadVolcengineDiagnostics = useCallback(async () => {
     setDiagnosticsLoading(true);
@@ -317,19 +314,23 @@ export default function App() {
     };
   }, [refresh]);
 
-  useEffect(() => {
-    if (hovered || preferences.pinnedProvider || snapshots.length < 2) return;
-    const id = window.setInterval(() => setActiveIndex((value) => (value + 1) % snapshots.length), preferences.autoRotateSeconds * 1000);
-    return () => window.clearInterval(id);
-  }, [hovered, preferences.autoRotateSeconds, preferences.pinnedProvider, snapshots.length]);
-
   const orderedSnapshots = useMemo(() => {
     const order = normalizeProviderOrder(preferences.providerOrder);
     return [...snapshots].filter((item) => !preferences.hiddenProviders.includes(item.provider)).sort((left, right) => order.indexOf(left.provider) - order.indexOf(right.provider));
   }, [preferences.hiddenProviders, preferences.providerOrder, snapshots]);
 
-  const current = preferences.pinnedProvider
-    ? orderedSnapshots.find((item) => item.provider === preferences.pinnedProvider) ?? orderedSnapshots[0]
+  const visiblePinnedProvider = preferences.pinnedProvider && orderedSnapshots.some((item) => item.provider === preferences.pinnedProvider)
+    ? preferences.pinnedProvider
+    : null;
+
+  useEffect(() => {
+    if (hovered || visiblePinnedProvider || orderedSnapshots.length < 2) return;
+    const id = window.setInterval(() => setActiveIndex((value) => nextProviderIndex(value, orderedSnapshots.length)), preferences.autoRotateSeconds * 1000);
+    return () => window.clearInterval(id);
+  }, [hovered, orderedSnapshots.length, preferences.autoRotateSeconds, visiblePinnedProvider]);
+
+  const current = visiblePinnedProvider
+    ? orderedSnapshots.find((item) => item.provider === visiblePinnedProvider) ?? orderedSnapshots[0]
     : orderedSnapshots[activeIndex % Math.max(1, orderedSnapshots.length)];
 
   const savePreferences = useCallback((next: WidgetPreferences) => {
@@ -420,7 +421,7 @@ export default function App() {
     const nextPreferences = normalizeWidgetPreferences(bundle.preferences);
     const nextRuntime = normalizeRuntimeState(bundle.runtimeState);
     ++preferenceSaveSequence.current;
-    await Promise.all([updatePreferences(nextPreferences), updateRuntimeState(nextRuntime)]);
+    await applyAppData(nextPreferences, nextRuntime);
     preferencesRef.current = nextPreferences;
     confirmedPreferencesRef.current = nextPreferences;
     runtimeStateRef.current = nextRuntime;
@@ -509,7 +510,7 @@ export default function App() {
 
   useEffect(() => {
     if (compact) return;
-    const card = document.querySelector<HTMLElement>(".quota-card");
+    const card = document.querySelector<HTMLElement>(".quota-card, .loading-card");
     if (!card) return;
     let animationFrame: number | null = null;
     let lastHeight = 0;
@@ -531,7 +532,7 @@ export default function App() {
       resizeObserver?.disconnect();
       if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);
     };
-  }, [compact]);
+  }, [compact, Boolean(current)]);
 
   if (!current) return <div className="loading-card" aria-label={t.loadingQuota}><span /><span /><span /></div>;
 

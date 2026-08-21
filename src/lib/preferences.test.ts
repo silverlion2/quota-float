@@ -52,6 +52,13 @@ describe("widget preference migration", () => {
     expect(value.hiddenProviders).toEqual([]);
   });
 
+  it("clears a pin when that provider is hidden", () => {
+    expect(normalizeWidgetPreferences({ pinnedProvider: "codex", hiddenProviders: ["codex"] })).toEqual(expect.objectContaining({
+      pinnedProvider: null,
+      hiddenProviders: ["codex"],
+    }));
+  });
+
   it("normalizes malformed values from a manually edited backup", () => {
     const value = normalizeWidgetPreferences({
       alertThreshold: "many" as never,

@@ -31,3 +31,7 @@ export function normalizeProviderOrder(order?: readonly ProviderId[] | null): Pr
   }
   return normalized;
 }
+
+export function nextProviderIndex(current: number, visibleCount: number): number {
+  return visibleCount > 0 ? (current + 1) % visibleCount : 0;
+}

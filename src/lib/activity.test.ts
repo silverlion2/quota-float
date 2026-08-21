@@ -19,6 +19,27 @@ describe("activity timeline and notification policy", () => {
     expect(recovered.createdEvents.map((item) => item.kind)).toContain("recovered");
   });
 
+  it("assigns unique activity IDs when several windows cross together", () => {
+    const windows = (remainingPercent: number): ProviderSnapshot => ({
+      provider: "volcengine",
+      displayName: "VOLCENGINE",
+      plan: "Coding Plan Personal",
+      shortWindow: { remainingPercent, resetsAt: "2026-07-19T05:00:00Z", windowSeconds: 18_000 },
+      weeklyWindow: { remainingPercent, resetsAt: "2026-07-26T00:00:00Z", windowSeconds: 604_800 },
+      monthlyWindow: null,
+      resetCredits: null,
+      updatedAt: "2026-07-19T00:00:00Z",
+      status: "ok",
+      message: null,
+    });
+    const previous = windows(30);
+    const next = windows(12);
+    const update = recordSnapshotActivity(EMPTY_RUNTIME_STATE, [previous], [next], null, 15, new Date("2026-07-19T01:00:00Z"));
+    const quotaEvents = update.createdEvents.filter((item) => item.kind === "quota");
+    expect(quotaEvents).toHaveLength(2);
+    expect(new Set(quotaEvents.map((item) => item.id)).size).toBe(2);
+  });
+
   it("deduplicates unchanged samples for thirty minutes", () => {
     const first = recordSnapshotActivity(EMPTY_RUNTIME_STATE, [], [snapshot(50)], null, 15, new Date("2026-07-19T01:00:00Z"));
     const second = recordSnapshotActivity(first.state, [snapshot(50)], [snapshot(50)], null, 15, new Date("2026-07-19T01:10:00Z"));

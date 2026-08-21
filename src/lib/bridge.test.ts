@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { EMPTY_RUNTIME_STATE } from "./activity";
 import {
+  applyAppData,
   fetchCodexTokenUsage,
   getVolcengineDiagnostics,
   listenDesktopEvents,
@@ -152,6 +153,13 @@ describe("widget transitions", () => {
       "start:set_runtime_state",
       "end:set_runtime_state",
     ]);
+  });
+
+  it("restores settings and runtime data through one native transaction", async () => {
+    const preferences = { ...DEFAULT_WIDGET_PREFERENCES, alertThreshold: 12 };
+    const runtimeState = { ...EMPTY_RUNTIME_STATE, lastNotifications: { restored: "2026-08-22T00:00:00Z" } };
+    await applyAppData(preferences, runtimeState);
+    expect(api.invoke).toHaveBeenCalledWith("apply_app_data", { preferences, runtimeState });
   });
 
   it("removes listeners registered before a later registration fails", async () => {

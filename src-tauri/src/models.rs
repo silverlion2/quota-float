@@ -275,6 +275,13 @@ impl WidgetPreferences {
         if self.hidden_providers.len() >= default_provider_order().len() {
             self.hidden_providers.clear();
         }
+        if self
+            .pinned_provider
+            .as_ref()
+            .is_some_and(|provider| self.hidden_providers.contains(provider))
+        {
+            self.pinned_provider = None;
+        }
         if !matches!(
             self.layout_mode.as_str(),
             "compact" | "standard" | "detailed"
@@ -424,6 +431,18 @@ mod tests {
         assert!(normalized.hidden_providers.is_empty());
         assert_eq!(normalized.accent_color, "#397ae0");
         assert_eq!(normalized.alert_threshold, 1);
+    }
+
+    #[test]
+    fn hidden_provider_cannot_remain_pinned() {
+        let preferences = WidgetPreferences {
+            pinned_provider: Some("codex".into()),
+            hidden_providers: vec!["codex".into()],
+            ..Default::default()
+        };
+        let normalized = preferences.normalized();
+        assert_eq!(normalized.pinned_provider, None);
+        assert_eq!(normalized.hidden_providers, vec!["codex"]);
     }
 
     #[test]

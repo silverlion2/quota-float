@@ -266,8 +266,8 @@ function metric(snapshot: ProviderSnapshot): Pick<QuotaHistoryPoint, "metric" | 
   return { metric: null, metricKind: "none", resetsAt: null };
 }
 
-function event(kind: ActivityEvent["kind"], provider: ProviderId | null, occurredAt: string, title: string, detail: string): ActivityEvent {
-  return { id: `${occurredAt}-${kind}-${provider ?? "app"}`, provider, kind, occurredAt, title, detail };
+function event(kind: ActivityEvent["kind"], provider: ProviderId | null, occurredAt: string, discriminator: string, title: string, detail: string): ActivityEvent {
+  return { id: `${occurredAt}-${kind}-${provider ?? "app"}-${discriminator}`, provider, kind, occurredAt, title, detail };
 }
 
 export interface RuntimeUpdate {
@@ -296,6 +296,7 @@ function paceReminderEvent(
       "warning",
       snapshot.provider,
       occurredAt,
+      `pace-${period}-${depleted ? "depleted" : "over"}`,
       depleted ? `${snapshot.displayName} 今日计划额度已用完` : `${snapshot.displayName} 用量进度偏快`,
       depleted
         ? `${periodLabel}额度已超出当前计划 ${pace.overByPercent.toFixed(1)}%；今日计划还可用 0%，建议暂停使用，等待计划进度追上。`
@@ -306,6 +307,7 @@ function paceReminderEvent(
     "warning",
     snapshot.provider,
     occurredAt,
+    `pace-${period}-${depleted ? "depleted" : "over"}`,
     depleted ? `${snapshot.displayName} today's pace budget is used up` : `${snapshot.displayName} usage is over pace`,
     depleted
       ? `${periodLabel} usage is ${pace.overByPercent.toFixed(1)}% ahead of plan; 0% remains in today's plan. Pause usage until the plan catches up.`
@@ -362,9 +364,9 @@ export function recordSnapshotActivity(
     const previous = previousByProvider.get(snapshot.provider);
     if (!previous) continue;
     if (previous.status !== "ok" && snapshot.status === "ok") {
-      createdEvents.push(event("recovered", snapshot.provider, occurredAt, `${snapshot.displayName} recovered`, "Quota data is available again."));
+      createdEvents.push(event("recovered", snapshot.provider, occurredAt, "status-recovered", `${snapshot.displayName} recovered`, "Quota data is available again."));
     } else if (previous.status === "ok" && snapshot.status !== "ok") {
-      createdEvents.push(event("warning", snapshot.provider, occurredAt, `${snapshot.displayName} needs attention`, `Provider status changed to ${snapshot.status}; automatic retry is active.`));
+      createdEvents.push(event("warning", snapshot.provider, occurredAt, `status-${snapshot.status}`, `${snapshot.displayName} needs attention`, `Provider status changed to ${snapshot.status}; automatic retry is active.`));
     }
     const quotaWindows = trackedQuotaWindows(snapshot);
     if (quotaWindows.length > 0) {
@@ -379,6 +381,7 @@ export function recordSnapshotActivity(
             "quota",
             snapshot.provider,
             occurredAt,
+            `threshold-${item.period}`,
             language === "zh-CN" ? `${snapshot.displayName} 额度偏低` : `${snapshot.displayName} quota is low`,
             language === "zh-CN" ? `${period}额度剩余 ${Math.round(item.window.remainingPercent)}%。` : `${Math.round(item.window.remainingPercent)}% ${period} quota remains.`,
           ));
@@ -404,7 +407,7 @@ export function recordSnapshotActivity(
     }
   }
   if (recentReset && isNewReset) {
-    createdEvents.push(event("reset", "codex", recentReset.resetAt, "Codex quota reset", `Detected from ${recentReset.source} data.`));
+    createdEvents.push(event("reset", "codex", recentReset.resetAt, `reset-${recentReset.source}`, "Codex quota reset", `Detected from ${recentReset.source} data.`));
   }
 
   const notificationCandidates = createdEvents.map((item) => ({
