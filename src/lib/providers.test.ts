@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeProviderOrder } from "./providers";
+import { nextProviderIndex, normalizeProviderOrder } from "./providers";
 
 describe("provider ordering", () => {
   it("preserves a custom order and appends missing providers", () => {
@@ -22,5 +22,14 @@ describe("provider ordering", () => {
       "volcengine",
       "antigravity",
     ]);
+  });
+});
+
+describe("provider rotation", () => {
+  it("cycles against the visible provider count", () => {
+    expect(nextProviderIndex(0, 4)).toBe(1);
+    expect(nextProviderIndex(3, 4)).toBe(0);
+    expect(nextProviderIndex(5, 4)).toBe(2);
+    expect(nextProviderIndex(2, 0)).toBe(0);
   });
 });

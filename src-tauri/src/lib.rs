@@ -35,12 +35,14 @@ const BAR_TOP_LOGICAL_HEIGHT: f64 = 38.0;
 const BAR_SIDE_LOGICAL_WIDTH: f64 = 64.0;
 const BAR_SIDE_LOGICAL_HEIGHT: f64 = 320.0;
 const EXPANDED_LOGICAL_WIDTH: f64 = 552.0;
-// The React card reports its intrinsic height immediately after expansion.
-// Keep the initial shell compact so the content-driven resize does not visibly jump down.
+// The React card reports its intrinsic height immediately after expansion. This is also
+// the baseline height when the expanded view has no provider content.
 const EXPANDED_LOGICAL_HEIGHT: f64 = 260.0;
-const MIN_EXPANDED_LOGICAL_HEIGHT: f64 = 160.0;
-const MAX_EXPANDED_LOGICAL_HEIGHT: f64 = 1_200.0;
+const MIN_EXPANDED_LOGICAL_HEIGHT: f64 = EXPANDED_LOGICAL_HEIGHT;
 const EDGE_SAFE_INSET_LOGICAL: f64 = 4.0;
+// Tauri caps the whole window at 1200 logical pixels. Reserve both transparent
+// safety insets so content-driven sizing never requests a window above that cap.
+const MAX_EXPANDED_LOGICAL_HEIGHT: f64 = 1_200.0 - EDGE_SAFE_INSET_LOGICAL * 2.0;
 const SNAP_THRESHOLD_LOGICAL: f64 = 24.0;
 const POSITION_EPSILON: u32 = 2;
 
@@ -364,6 +366,25 @@ fn persist_json_value(path: &Path, value: &serde_json::Value) -> Result<(), Stri
     Ok(())
 }
 
+fn persist_app_data(
+    preferences_path: &Path,
+    runtime_state_path: &Path,
+    previous_preferences: &WidgetPreferences,
+    next_preferences: &WidgetPreferences,
+    next_runtime_state: &serde_json::Value,
+) -> Result<(), String> {
+    persist_preferences(preferences_path, next_preferences)?;
+    if let Err(error) = persist_json_value(runtime_state_path, next_runtime_state) {
+        return match persist_preferences(preferences_path, previous_preferences) {
+            Ok(()) => Err(error),
+            Err(rollback_error) => Err(format!(
+                "{error}; failed to restore previous settings: {rollback_error}"
+            )),
+        };
+    }
+    Ok(())
+}
+
 fn read_json_with_backup(path: &Path) -> serde_json::Value {
     [path.to_path_buf(), path.with_extension("json.bak")]
         .into_iter()
@@ -401,6 +422,28 @@ fn set_runtime_state(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     persist_json_value(&state.runtime_state_path, &runtime_state)
+}
+
+#[tauri::command]
+fn apply_app_data(
+    preferences: WidgetPreferences,
+    runtime_state: serde_json::Value,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let next_preferences = preferences.normalized();
+    let mut current_preferences = state
+        .preferences
+        .lock()
+        .map_err(|_| "settings unavailable".to_string())?;
+    persist_app_data(
+        &state.preferences_path,
+        &state.runtime_state_path,
+        &current_preferences,
+        &next_preferences,
+        &runtime_state,
+    )?;
+    *current_preferences = next_preferences;
+    Ok(())
 }
 
 #[tauri::command]
@@ -1260,6 +1303,68 @@ fn resize_expanded_widget(
 }
 
 #[cfg(test)]
+mod persistence_tests {
+    use super::*;
+
+    fn temporary_root(label: &str) -> PathBuf {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after the Unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "quota-float-{label}-{}-{nonce}",
+            std::process::id()
+        ))
+    }
+
+    #[test]
+    fn app_data_restore_persists_both_files() {
+        let root = temporary_root("restore-success");
+        let preferences_path = root.join("preferences.json");
+        let runtime_path = root.join("runtime-state.json");
+        let previous = WidgetPreferences::default();
+        let mut next = previous.clone();
+        next.alert_threshold = 12;
+        let runtime = serde_json::json!({ "schemaVersion": 2, "events": [] });
+
+        persist_app_data(&preferences_path, &runtime_path, &previous, &next, &runtime)
+            .expect("app data should persist");
+        assert_eq!(load_preferences(&preferences_path).alert_threshold, 12);
+        assert_eq!(read_json_with_backup(&runtime_path), runtime);
+        fs::remove_dir_all(root).expect("temporary restore directory should be removable");
+    }
+
+    #[test]
+    fn app_data_restore_rolls_back_settings_when_runtime_write_fails() {
+        let root = temporary_root("restore-rollback");
+        fs::create_dir_all(&root).expect("temporary restore directory should be created");
+        let preferences_path = root.join("preferences.json");
+        let previous = WidgetPreferences::default();
+        persist_preferences(&preferences_path, &previous)
+            .expect("previous settings should persist");
+        let mut next = previous.clone();
+        next.alert_threshold = 12;
+        let blocked_parent = root.join("blocked");
+        fs::write(&blocked_parent, b"not a directory").expect("blocking file should be created");
+        let runtime_path = blocked_parent.join("runtime-state.json");
+
+        assert!(persist_app_data(
+            &preferences_path,
+            &runtime_path,
+            &previous,
+            &next,
+            &serde_json::json!({ "schemaVersion": 2 }),
+        )
+        .is_err());
+        assert_eq!(
+            load_preferences(&preferences_path).alert_threshold,
+            previous.alert_threshold
+        );
+        fs::remove_dir_all(root).expect("temporary restore directory should be removable");
+    }
+}
+
+#[cfg(test)]
 mod geometry_tests {
     use super::*;
 
@@ -1487,9 +1592,10 @@ mod geometry_tests {
 
     #[test]
     fn expanded_height_tracks_content_and_respects_work_area() {
-        assert_eq!(bounded_expanded_height(213.4, 1.0, 4, Some(1040)), 221);
-        assert_eq!(bounded_expanded_height(40.0, 1.0, 4, Some(1040)), 168);
+        assert_eq!(bounded_expanded_height(313.4, 1.0, 4, Some(1040)), 321);
+        assert_eq!(bounded_expanded_height(40.0, 1.0, 4, Some(1040)), 268);
         assert_eq!(bounded_expanded_height(2_000.0, 1.0, 4, Some(700)), 708);
+        assert_eq!(bounded_expanded_height(2_000.0, 1.0, 4, Some(1400)), 1200);
     }
 
     #[test]
@@ -2223,6 +2329,7 @@ pub fn run() {
             set_widget_always_on_top,
             get_runtime_state,
             set_runtime_state,
+            apply_app_data,
             export_app_data,
             export_usage_data,
             import_app_data,

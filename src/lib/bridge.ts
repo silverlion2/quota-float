@@ -133,8 +133,7 @@ function mockCodexTokenUsage(): CodexTokenUsageReport {
 }
 
 let widgetTransition: Promise<void> = Promise.resolve();
-let preferenceWrite: Promise<void> = Promise.resolve();
-let runtimeWrite: Promise<void> = Promise.resolve();
+let dataWrite: Promise<void> = Promise.resolve();
 
 function enqueueWidgetTransition(operation: () => Promise<void>): Promise<void> {
   const next = widgetTransition.then(operation, operation);
@@ -142,15 +141,9 @@ function enqueueWidgetTransition(operation: () => Promise<void>): Promise<void> 
   return next;
 }
 
-function enqueuePreferenceWrite(operation: () => Promise<void>): Promise<void> {
-  const next = preferenceWrite.then(operation, operation);
-  preferenceWrite = next.catch(() => undefined);
-  return next;
-}
-
-function enqueueRuntimeWrite(operation: () => Promise<void>): Promise<void> {
-  const next = runtimeWrite.then(operation, operation);
-  runtimeWrite = next.catch(() => undefined);
+function enqueueDataWrite(operation: () => Promise<void>): Promise<void> {
+  const next = dataWrite.then(operation, operation);
+  dataWrite = next.catch(() => undefined);
   return next;
 }
 
@@ -232,7 +225,7 @@ export async function getPreferences(): Promise<WidgetPreferences> {
 
 export async function updatePreferences(value: WidgetPreferences): Promise<void> {
   if (!isTauri()) return;
-  return enqueuePreferenceWrite(async () => {
+  return enqueueDataWrite(async () => {
     const { invoke } = await import("@tauri-apps/api/core");
     await invoke("set_preferences", { preferences: value });
   });
@@ -258,9 +251,17 @@ export async function getRuntimeState(): Promise<RuntimeState> {
 
 export async function updateRuntimeState(runtimeState: RuntimeState): Promise<void> {
   if (!isTauri()) return;
-  return enqueueRuntimeWrite(async () => {
+  return enqueueDataWrite(async () => {
     const { invoke } = await import("@tauri-apps/api/core");
     await invoke("set_runtime_state", { runtimeState });
+  });
+}
+
+export async function applyAppData(preferences: WidgetPreferences, runtimeState: RuntimeState): Promise<void> {
+  if (!isTauri()) return;
+  return enqueueDataWrite(async () => {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("apply_app_data", { preferences, runtimeState });
   });
 }
 

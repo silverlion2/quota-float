@@ -351,7 +351,7 @@ mod windows {
     async fn send_personal(
         client: &reqwest::Client,
         headers: HeaderMap,
-    ) -> Result<Value, ProviderSnapshot> {
+    ) -> Result<Value, Box<ProviderSnapshot>> {
         let body = serde_json::json!({
             "PageNumber": 1,
             "PageSize": 100,
@@ -367,30 +367,30 @@ mod windows {
             .send()
             .await
             .map_err(|_| {
-                ProviderSnapshot::provider_failure(
+                Box::new(ProviderSnapshot::provider_failure(
                     "workbuddy",
                     "WORKBUDDY",
                     "unavailable",
                     "Network unavailable. WorkBuddy will retry automatically.",
-                )
+                ))
             })?;
         if !response.status().is_success() {
-            return Err(http_failure(response.status()));
+            return Err(Box::new(http_failure(response.status())));
         }
         limited_json(response).await.map_err(|_| {
-            ProviderSnapshot::provider_failure(
+            Box::new(ProviderSnapshot::provider_failure(
                 "workbuddy",
                 "WORKBUDDY",
                 "unavailable",
                 "WorkBuddy returned an unsupported quota response.",
-            )
+            ))
         })
     }
 
     async fn send_enterprise(
         client: &reqwest::Client,
         headers: HeaderMap,
-    ) -> Result<Value, ProviderSnapshot> {
+    ) -> Result<Value, Box<ProviderSnapshot>> {
         let response = client
             .post(format!(
                 "{ENDPOINT}/v2/billing/meter/get-enterprise-user-usage"
@@ -400,23 +400,23 @@ mod windows {
             .send()
             .await
             .map_err(|_| {
-                ProviderSnapshot::provider_failure(
+                Box::new(ProviderSnapshot::provider_failure(
                     "workbuddy",
                     "WORKBUDDY",
                     "unavailable",
                     "Network unavailable. WorkBuddy will retry automatically.",
-                )
+                ))
             })?;
         if !response.status().is_success() {
-            return Err(http_failure(response.status()));
+            return Err(Box::new(http_failure(response.status())));
         }
         limited_json(response).await.map_err(|_| {
-            ProviderSnapshot::provider_failure(
+            Box::new(ProviderSnapshot::provider_failure(
                 "workbuddy",
                 "WORKBUDDY",
                 "unavailable",
                 "WorkBuddy returned an unsupported quota response.",
-            )
+            ))
         })
     }
 
@@ -463,7 +463,7 @@ mod windows {
                         message,
                     )
                 }),
-                Err(snapshot) => snapshot,
+                Err(snapshot) => *snapshot,
             });
         }
         Some(match send_personal(client, headers).await {
@@ -477,7 +477,7 @@ mod windows {
                     )
                 })
             }
-            Err(snapshot) => snapshot,
+            Err(snapshot) => *snapshot,
         })
     }
 

@@ -69,7 +69,8 @@ type LegacyWidgetPreferences = Partial<WidgetPreferences> & { visualStyle?: unkn
 export function normalizeWidgetPreferences(value: LegacyWidgetPreferences | null | undefined): WidgetPreferences {
   const candidate = value && typeof value === "object" ? value as Record<string, unknown> : {};
   const hiddenProviders = providerList(candidate.hiddenProviders);
-  const pinnedProvider = providerSet.has(candidate.pinnedProvider as ProviderId) ? candidate.pinnedProvider as ProviderId : null;
+  const requestedPinnedProvider = providerSet.has(candidate.pinnedProvider as ProviderId) ? candidate.pinnedProvider as ProviderId : null;
+  const pinnedProvider = requestedPinnedProvider && !hiddenProviders.includes(requestedPinnedProvider) ? requestedPinnedProvider : null;
   const layoutMode = candidate.layoutMode === "compact" || candidate.layoutMode === "detailed" ? candidate.layoutMode : "standard";
   const compactLayout = candidate.compactLayout === "bar" || candidate.compactLayout === "ring" || candidate.compactLayout === "float"
     ? candidate.compactLayout
