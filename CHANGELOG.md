@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.26 - 2026-08-21
+
+- fix: harden widget state and notifications
+- docs: record v0.2.25 release evidence
+
 ## 0.2.25 - 2026-08-20
 
 - feat: unify themes and retain usage history
