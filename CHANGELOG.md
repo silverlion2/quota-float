@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 - 2026-08-22
 
 - Add deterministic native Tauri WebDriver smoke coverage for the compiled Windows application.
 - Add a concurrent provider registry with bounded timeouts and targeted transient retries.
