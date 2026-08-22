@@ -1,0 +1,15 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "e2e",
+  "description": "Test-only WebdriverIO capabilities, enabled only by tauri.e2e.conf.json",
+  "windows": ["widget"],
+  "permissions": [
+    "wdio:allow-execute",
+    "wdio:allow-log-frontend",
+    "wdio:allow-debug-plugin",
+    "wdio:allow-get-active-window-label",
+    "wdio:allow-get-window-states",
+    "wdio:allow-list-windows",
+    "wdio-webdriver:default"
+  ]
+}

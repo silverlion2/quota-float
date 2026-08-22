@@ -4,6 +4,10 @@ import App from "./App";
 import { DesignPlayground } from "./components/DesignPlayground";
 import "./styles.css";
 
+if (import.meta.env.VITE_WDIO === "1") {
+  await import("@wdio/tauri-plugin");
+}
+
 function BrowserPreview() {
   return (
     <div className="browser-preview-shell">

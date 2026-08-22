@@ -2251,7 +2251,12 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
 }
 
 pub fn run() {
-    let app = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(feature = "wdio")]
+    let builder = builder
+        .plugin(tauri_plugin_wdio::init())
+        .plugin(tauri_plugin_wdio_webdriver::init());
+    let app = builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
@@ -2277,7 +2282,7 @@ pub fn run() {
             let client = reqwest::Client::builder()
                 .timeout(Duration::from_secs(12))
                 .redirect(reqwest::redirect::Policy::none())
-                .user_agent("QuotaFloat/0.1")
+                .user_agent(concat!("QuotaFloat/", env!("CARGO_PKG_VERSION")))
                 .build()
                 .expect("static HTTP client configuration must be valid");
             app.manage(AppState {

@@ -32,6 +32,7 @@
       }
     ],
     "security": {
+      "capabilities": ["default"],
       "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://api.github.com; img-src 'self' data:"
     }
   },

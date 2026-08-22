@@ -1,0 +1,17 @@
+{
+  "productName": "Quota Float E2E",
+  "identifier": "app.quotafloat.desktop.e2e",
+  "build": {
+    "beforeBuildCommand": "npm run build:e2e"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "security": {
+      "capabilities": ["default", "e2e"]
+    }
+  },
+  "bundle": {
+    "active": false,
+    "createUpdaterArtifacts": false
+  }
+}
