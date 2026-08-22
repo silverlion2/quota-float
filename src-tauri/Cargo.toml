@@ -1,7 +1,7 @@
 [package]
 name = "quota-float"
 version = "0.2.27"
-description = "A lightweight floating coding-assistant quota monitor"
+description = "Local-first desktop quota monitor for coding assistants on Windows and macOS"
 authors = ["Quota Float contributors"]
 license = "MIT"
 edition = "2021"

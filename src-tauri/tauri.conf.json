@@ -40,8 +40,8 @@
     "createUpdaterArtifacts": true,
     "targets": "all",
     "category": "Utility",
-    "shortDescription": "Coding-assistant quotas at a glance",
-    "longDescription": "A lightweight floating desktop card for coding-assistant usage limits.",
+    "shortDescription": "Local-first coding-assistant quota monitor",
+    "longDescription": "Monitor Codex, Qoder, TRAE, WorkBuddy, Volcengine Ark Coding Plan, and Google Antigravity quotas from a local-first Tauri desktop app for Windows and macOS.",
     "copyright": "Copyright Quota Float contributors",
     "icon": [
       "icons/32x32.png",
