@@ -1375,7 +1375,11 @@ select:focus-visible {
   row-gap: 8px;
   padding: 13px 16px;
 }
-.quota-card--overlay-open { min-height: 448px; }
+.quota-card-content { display: contents; }
+.quota-card--overlay-open { min-height: var(--overlay-min-height, 448px); }
+.quota-card--overlay-open > .quota-card-content { display: none; }
+.quota-card--diagnostics-open { --overlay-min-height: 270px; }
+.quota-card--update-open { --overlay-min-height: 232px; }
 .quota-panel-header {
   min-height: 44px;
   gap: 10px;
@@ -1526,31 +1530,33 @@ button.usage-stat-card:hover { border-color: color-mix(in srgb, var(--accent-col
 .color-theme-option > i { height: 34px; padding: 6px; }
 
 .diagnostics-panel,
-.update-panel { gap: 8px; padding: 13px 14px; border-radius: 18px; }
+.update-panel { grid-template-rows: auto auto auto; align-content: center; gap: 6px; padding: 10px 11px; border-radius: 16px; }
+.diagnostics-header > button,
+.update-header > button { width: 28px; height: 28px; }
 .diagnostics-header h2,
 .update-header h2 { font-size: 15px; }
 .diagnostics-header p:not(.diagnostics-kicker),
 .update-header p:not(.update-kicker) { font-size: 8px; }
 .diagnostics-header .diagnostics-kicker,
 .update-header .update-kicker { font-size: 7px; }
-.diagnostics-body { grid-template-columns: 132px minmax(0, 1fr); gap: 10px; }
-.diagnostics-health { padding: 9px 10px; }
+.diagnostics-body { grid-template-columns: 112px minmax(0, 1fr); gap: 7px; }
+.diagnostics-health { padding: 7px 8px; }
 .diagnostics-health strong,
 .update-status strong { font-size: 10px; }
 .diagnostics-health small,
 .update-status small { font-size: 8px; }
-.diagnostics-grid { gap: 5px 7px; }
-.diagnostics-grid > div { padding: 5px 7px; }
+.diagnostics-grid { gap: 4px 6px; }
+.diagnostics-grid > div { padding: 4px 6px; }
 .diagnostics-grid dt { font-size: 7px; }
 .diagnostics-grid dd { font-size: 9px; }
 .diagnostics-hint,
 .update-footer > span { font-size: 8px; }
 .diagnostics-reconnect,
 .update-footer button { min-height: 28px; padding: 0 10px; font-size: 9px; }
-.update-body { grid-template-columns: 156px minmax(0, 1fr); gap: 10px; }
-.update-status { padding: 9px 10px; }
-.update-notes { padding: 7px 9px; }
-.update-notes > div { height: 60px; font-size: 8px; }
+.update-body { grid-template-columns: 132px minmax(0, 1fr); gap: 7px; }
+.update-status { padding: 7px 8px; }
+.update-notes { padding: 5px 7px; }
+.update-notes > div { height: 46px; font-size: 8px; }
 
 /* Keep the multi-state design review legible at the desktop preview viewport. */
 .screenshot-stage--states { width: 100%; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; padding: 24px; box-sizing: border-box; }

@@ -573,7 +573,7 @@ export const QuotaCard = memo(function QuotaCard({
 
   return (
     <main
-      className={`quota-card quota-card--${snapshot.status} quota-card--${tier} quota-card--layout-${preferences.layoutMode} quota-card--expanded-${preferences.expandedLayout} quota-card--style-${preferences.colorTheme} quota-card--theme-${resolvedAppearance} quota-card--origin-${preferences.compactLayout === "bar" ? preferences.barEdge : "center"}${overlayOpen ? " quota-card--overlay-open" : ""}${insightsOpen ? " quota-card--insights-open" : ""}${collapsing ? " quota-card--collapsing" : ""}`}
+      className={`quota-card quota-card--${snapshot.status} quota-card--${tier} quota-card--layout-${preferences.layoutMode} quota-card--expanded-${preferences.expandedLayout} quota-card--style-${preferences.colorTheme} quota-card--theme-${resolvedAppearance} quota-card--origin-${preferences.compactLayout === "bar" ? preferences.barEdge : "center"}${overlayOpen ? " quota-card--overlay-open" : ""}${diagnosticsOpen ? " quota-card--diagnostics-open" : ""}${updateOpen ? " quota-card--update-open" : ""}${insightsOpen ? " quota-card--insights-open" : ""}${collapsing ? " quota-card--collapsing" : ""}`}
       style={{ "--accent-color": preferences.accentColor } as CSSProperties}
       onMouseEnter={() => onHover(true)}
       onMouseLeave={() => onHover(false)}
@@ -607,6 +607,7 @@ export const QuotaCard = memo(function QuotaCard({
           onOpenRelease={onUpdateRelease}
         />
       ) : null}
+      <div className="quota-card-content">
       <header className="quota-panel-header" aria-hidden={overlayOpen || undefined} inert={overlayOpen || undefined}>
         <div className="quota-panel-navigation">
           <p className="quota-panel-brand">QUOTA FLOAT <span>· LOCAL FIRST</span></p>
@@ -836,6 +837,7 @@ export const QuotaCard = memo(function QuotaCard({
           onPreferences={onPreferences}
           onOpenResetForecast={onOpenResetForecast}
         /> : null}
+      </div>
       </div>
     </main>
   );

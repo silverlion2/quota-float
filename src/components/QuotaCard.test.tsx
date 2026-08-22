@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProviderSnapshot, VolcengineDiagnostics, WidgetPreferences } from "../types";
 import { DEFAULT_WIDGET_PREFERENCES } from "../lib/preferences";
@@ -577,7 +577,10 @@ describe("QuotaCard platform ledger", () => {
       />,
     );
 
-    expect(screen.getByRole("dialog", { name: "Volcengine connection" })).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", { name: "Volcengine connection" });
+    expect(dialog).toBeInTheDocument();
+    expect(dialog.closest("main")).toHaveClass("quota-card--diagnostics-open");
+    expect(dialog.closest("main")?.querySelector(".quota-card-content")).toBeInTheDocument();
     expect(screen.getByText(/~\\AppData\\Roaming\\npm\\arkcli\.cmd/)).toBeInTheDocument();
     expect(screen.queryByText(/refresh_token|ark-[a-z0-9]{8}/i)).not.toBeInTheDocument();
   });
@@ -608,11 +611,72 @@ describe("QuotaCard platform ledger", () => {
       />,
     );
 
-    expect(screen.getByRole("dialog", { name: "Quota Float update" })).toHaveTextContent("0.2.0 is ready");
+    const dialog = screen.getByRole("dialog", { name: "Quota Float update" });
+    expect(dialog).toHaveTextContent("0.2.0 is ready");
+    expect(dialog.closest("main")).toHaveClass("quota-card--update-open");
     fireEvent.click(screen.getByRole("button", { name: "Later" }));
     expect(onUpdateLater).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole("button", { name: /Restart and install/i }));
     expect(onUpdateInstall).toHaveBeenCalledOnce();
+  });
+
+  it("covers loading, unavailable, and attention diagnostics without exposing the quota content", () => {
+    const view = render(
+      <QuotaCard
+        snapshot={signedOutVolcengine}
+        snapshots={[signedOutVolcengine]}
+        preferences={preferences}
+        onSelectProvider={noop}
+        onLock={noop}
+        onLanguage={noop}
+        onDrag={noop}
+        onHover={noop}
+        diagnosticsOpen
+        diagnosticsLoading
+        consumingProviders={new Set()}
+      />,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent("Checking Ark CLI");
+    for (const panel of screen.getAllByRole("tabpanel", { hidden: true })) {
+      expect(panel).toHaveAttribute("inert");
+    }
+
+    view.rerender(
+      <QuotaCard
+        snapshot={signedOutVolcengine}
+        snapshots={[signedOutVolcengine]}
+        preferences={preferences}
+        onSelectProvider={noop}
+        onLock={noop}
+        onLanguage={noop}
+        onDrag={noop}
+        onHover={noop}
+        diagnosticsOpen
+        consumingProviders={new Set()}
+      />,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent("Quota service is temporarily unavailable");
+
+    view.rerender(
+      <QuotaCard
+        snapshot={signedOutVolcengine}
+        snapshots={[signedOutVolcengine]}
+        preferences={preferences}
+        onSelectProvider={noop}
+        onLock={noop}
+        onLanguage={noop}
+        onDrag={noop}
+        onHover={noop}
+        diagnostics={diagnostics}
+        diagnosticsOpen
+        consumingProviders={new Set()}
+      />,
+    );
+
+    expect(screen.getByText("Needs attention")).toBeInTheDocument();
+    expect(within(screen.getByRole("dialog")).getByText("Volcengine login expired. Reconnect to continue.")).toBeInTheDocument();
   });
 
   it("shows when the current Codex window recently reset", () => {

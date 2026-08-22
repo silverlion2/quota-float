@@ -32,7 +32,7 @@ export function UpdatePanel({ state, language, onClose, onDownload, onInstall, o
   const t = copy[language];
   const version = state.info?.version;
   const busy = state.phase === "checking" || state.phase === "downloading" || state.phase === "installing";
-  const title = state.phase === "checking"
+  const title = state.phase === "idle" || state.phase === "checking"
     ? t.updateChecking
     : state.phase === "downloading"
       ? t.updateDownloading(version ?? "")
