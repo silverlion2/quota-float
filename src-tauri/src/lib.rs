@@ -28,6 +28,7 @@ use tauri::{
     AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State, WindowEvent,
 };
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
+use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_window_state::Builder as WindowStateBuilder;
 
 const COLLAPSED_LOGICAL_WIDTH: f64 = 92.0;
@@ -400,40 +401,105 @@ fn apply_app_data(
 }
 
 #[tauri::command]
-fn export_app_data(path: String, bundle: serde_json::Value) -> Result<(), String> {
-    let target = PathBuf::from(path);
+async fn export_app_data(
+    bundle: serde_json::Value,
+    app: AppHandle,
+) -> Result<Option<String>, String> {
+    let filename = format!(
+        "quota-float-backup-{}.json",
+        chrono::Local::now().format("%Y-%m-%d")
+    );
+    let Some(target) = app
+        .dialog()
+        .file()
+        .add_filter("Quota Float backup", &["json"])
+        .set_file_name(filename)
+        .blocking_save_file()
+        .map(|path| path.into_path())
+        .transpose()
+        .map_err(|_| "backup path is invalid".to_string())?
+    else {
+        return Ok(None);
+    };
     if target.extension().and_then(|value| value.to_str()) != Some("json") {
         return Err("backup file must use the .json extension".into());
     }
-    persist_json_value(&target, &bundle)
+    persist_json_value(&target, &bundle)?;
+    Ok(Some(target.to_string_lossy().into_owned()))
 }
 
 #[tauri::command]
-fn export_usage_data(path: String, content: String) -> Result<(), String> {
+async fn export_usage_data(
+    content: String,
+    format: String,
+    app: AppHandle,
+) -> Result<Option<String>, String> {
     const MAX_EXPORT_BYTES: usize = 20 * 1024 * 1024;
     if content.len() > MAX_EXPORT_BYTES {
         return Err("usage export is too large".into());
     }
-    let target = PathBuf::from(path);
-    let extension = target
-        .extension()
-        .and_then(|value| value.to_str())
-        .map(str::to_ascii_lowercase);
-    if !matches!(extension.as_deref(), Some("csv" | "json" | "svg")) {
+    let format = format.to_ascii_lowercase();
+    if !matches!(format.as_str(), "csv" | "json" | "svg") {
         return Err("usage export must use .csv, .json, or .svg".into());
     }
+    let filename = format!(
+        "quota-float-usage-{}.{}",
+        chrono::Local::now().format("%Y-%m-%d"),
+        format
+    );
+    let Some(target) = app
+        .dialog()
+        .file()
+        .add_filter("Quota Float usage", &[format.as_str()])
+        .set_file_name(filename)
+        .blocking_save_file()
+        .map(|path| path.into_path())
+        .transpose()
+        .map_err(|_| "usage export path is invalid".to_string())?
+    else {
+        return Ok(None);
+    };
+    if target
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_none_or(|extension| !extension.eq_ignore_ascii_case(&format))
+    {
+        return Err("usage export extension does not match its format".into());
+    }
     let mut file =
-        fs::File::create(target).map_err(|_| "failed to create usage export".to_string())?;
+        fs::File::create(&target).map_err(|_| "failed to create usage export".to_string())?;
     file.write_all(content.as_bytes())
         .and_then(|_| file.sync_all())
-        .map_err(|_| "failed to write usage export".to_string())
+        .map_err(|_| "failed to write usage export".to_string())?;
+    Ok(Some(target.to_string_lossy().into_owned()))
 }
 
 #[tauri::command]
-fn import_app_data(path: String) -> Result<serde_json::Value, String> {
-    let target = PathBuf::from(path);
+async fn import_app_data(app: AppHandle) -> Result<Option<serde_json::Value>, String> {
+    const MAX_BACKUP_BYTES: u64 = 20 * 1024 * 1024;
+    let Some(target) = app
+        .dialog()
+        .file()
+        .add_filter("Quota Float backup", &["json"])
+        .blocking_pick_file()
+        .map(|path| path.into_path())
+        .transpose()
+        .map_err(|_| "backup path is invalid".to_string())?
+    else {
+        return Ok(None);
+    };
+    if target.extension().and_then(|value| value.to_str()) != Some("json") {
+        return Err("backup file must use the .json extension".into());
+    }
+    let metadata =
+        fs::metadata(&target).map_err(|_| "failed to inspect backup file".to_string())?;
+    if !metadata.is_file() || metadata.len() > MAX_BACKUP_BYTES {
+        return Err("backup file is too large".into());
+    }
     let raw = fs::read_to_string(target).map_err(|_| "failed to read backup file".to_string())?;
-    serde_json::from_str(&raw).map_err(|_| "backup file is not valid JSON".to_string())
+    serde_json::from_str(&raw)
+        .map(Some)
+        .map_err(|_| "backup file is not valid JSON".to_string())
 }
 
 #[tauri::command]

@@ -1,17 +1,31 @@
+async function expandWidget() {
+  if (await browser.$(".quota-card").isDisplayed()) return;
+  await browser.tauri.execute(() => {
+    document.querySelector(".quota-orb, .quota-bar")?.dispatchEvent(
+      new MouseEvent("mouseover", { bubbles: true }),
+    );
+  });
+  await browser.$(".quota-card").waitForDisplayed({
+    timeout: 15_000,
+    timeoutMsg: "Quota Float did not expand from its compact widget",
+  });
+}
+
 describe("Quota Float desktop widget", () => {
   before(async () => {
     await browser.waitUntil(async () => (await browser.$("#root")).isExisting(), {
       timeout: 15_000,
       timeoutMsg: "Quota Float did not create its root view",
     });
+  });
+
+  beforeEach(async () => {
+    await expandWidget();
+  });
+
+  afterEach(async () => {
     await browser.tauri.execute(() => {
-      document.querySelector(".quota-orb, .quota-bar")?.dispatchEvent(
-        new MouseEvent("mouseover", { bubbles: true }),
-      );
-    });
-    await browser.$(".quota-card").waitForDisplayed({
-      timeout: 15_000,
-      timeoutMsg: "Quota Float did not expand from its compact widget",
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     });
   });
 

@@ -188,12 +188,8 @@ export async function exportUsageData(content: string, format: UsageExportFormat
     URL.revokeObjectURL(url);
     return filename;
   }
-  const { save } = await import("@tauri-apps/plugin-dialog");
-  const path = await save({ defaultPath: filename, filters: [{ name: "Quota Float usage", extensions: [format] }] });
-  if (!path) return null;
   const { invoke } = await import("@tauri-apps/api/core");
-  await invoke("export_usage_data", { path, content });
-  return path;
+  return invoke<string | null>("export_usage_data", { content, format });
 }
 
 export async function openExternalUrl(url: string): Promise<void> {
@@ -267,21 +263,14 @@ export async function applyAppData(preferences: WidgetPreferences, runtimeState:
 
 export async function exportAppData(bundle: unknown): Promise<string | null> {
   if (!isTauri()) return null;
-  const { save } = await import("@tauri-apps/plugin-dialog");
-  const path = await save({ defaultPath: `quota-float-backup-${new Date().toISOString().slice(0, 10)}.json`, filters: [{ name: "Quota Float backup", extensions: ["json"] }] });
-  if (!path) return null;
   const { invoke } = await import("@tauri-apps/api/core");
-  await invoke("export_app_data", { path, bundle });
-  return path;
+  return invoke<string | null>("export_app_data", { bundle });
 }
 
 export async function importAppData(): Promise<unknown | null> {
   if (!isTauri()) return null;
-  const { open } = await import("@tauri-apps/plugin-dialog");
-  const path = await open({ multiple: false, directory: false, filters: [{ name: "Quota Float backup", extensions: ["json"] }] });
-  if (!path || Array.isArray(path)) return null;
   const { invoke } = await import("@tauri-apps/api/core");
-  return invoke("import_app_data", { path });
+  return invoke("import_app_data");
 }
 
 export async function createAutomaticBackup(bundle: unknown): Promise<string | null> {
