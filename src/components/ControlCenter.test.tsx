@@ -140,6 +140,23 @@ describe("ControlCenter provider health", () => {
 
     fireEvent.click(screen.getByRole("checkbox", { name: /Put attention-needed providers first/i }));
     expect(onPreferences).toHaveBeenCalledWith(expect.objectContaining({ riskFirst: true }));
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /Project focus mode/i }));
+    expect(onPreferences).toHaveBeenCalledWith(expect.objectContaining({ resourceMode: "focus" }));
+  });
+
+  it("pauses provider monitoring independently from visibility", () => {
+    const onPreferences = vi.fn();
+    renderControlCenter(vi.fn(), onPreferences);
+    fireEvent.click(screen.getAllByRole("button", { name: "Monitoring" })[0]);
+    expect(onPreferences).toHaveBeenCalledWith(expect.objectContaining({ pausedProviders: ["codex"], hiddenProviders: [] }));
+  });
+
+  it("excludes paused providers from the health denominator", () => {
+    renderControlCenter(vi.fn(), vi.fn(), { ...DEFAULT_WIDGET_PREFERENCES, language: "en", pausedProviders: ["volcengine"] });
+    fireEvent.click(screen.getByRole("button", { name: "Health" }));
+    expect(screen.getByText("1/6 providers connected")).toBeInTheDocument();
+    expect(screen.getByText("Paused")).toBeInTheDocument();
   });
 
   it("shows magnetic edge previews for Bar and applies an edge choice", () => {

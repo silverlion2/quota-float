@@ -19,6 +19,8 @@
 | 数据 | TRAE credits | 各 entitlement pack 独立计算后汇总，不相互抵扣 | Rust 解析器回归测试 |
 | 数据 | 正常/过期/登出/缺字段 | 不崩溃、不猜测额度、保留 last-known-good 并安全标记 | Provider/快照单元测试 |
 | Provider registry | 并发、超时、临时失败与定向重试 | 固定顺序返回；慢平台被限制；只重试临时失败组；健康平台不重复请求 | Rust registry 单元测试、每周 Windows/macOS compatibility workflow |
+| 自适应刷新 | 健康、临界、异常平台与 Balanced/Project Focus 模式 | 各平台使用独立时钟和分级间隔；只查询到期且未暂停的平台；Volcengine/Antigravity 不做同轮进程级重试 | TypeScript refresh policy、bridge/merge 与 Rust registry 单元测试 |
+| 项目专注 | 开关专注模式、暂停/恢复平台、手动刷新 | 自动轮播和无限环境动画停止；自动刷新降频；至少保留一个监控平台；手动刷新保持可用 | 偏好归一化、控制中心组件和样式回归测试 |
 | Claude | 正常、多窗口、登出、缺字段、超大响应 | 利用率转换为剩余比例；只读复用 Claude Code OAuth；未知结构不猜测 | Rust 合成 fixture 与凭据发现测试 |
 | Token 洞察 | Codex session metadata / `turn_context` / `token_count` | 只保留项目 basename、规范化终端、模型名、哈希会话键与数值计数；忽略正文与过期事件 | Rust 元数据解析与安全维度测试 |
 | 增量索引 | 初次、未变化、追加、截断/重建 | 首次全建；未变化零正文读取复用；追加从 cursor 续读；异常或手动操作安全重建 | Rust 持久化索引测试与 UI 重建入口 |

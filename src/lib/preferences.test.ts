@@ -15,6 +15,8 @@ describe("widget preference migration", () => {
     expect(value.riskFirst).toBe(false);
     expect(value.showHistorySparklines).toBe(true);
     expect(value.notificationsEnabled).toBe(true);
+    expect(value.resourceMode).toBe("balanced");
+    expect(value.pausedProviders).toEqual([]);
     expect(value.monthlyApiBudgetUsd).toBe(500);
     expect(value.apiBudgetAlertsEnabled).toBe(true);
   });
@@ -57,6 +59,17 @@ describe("widget preference migration", () => {
       pinnedProvider: null,
       hiddenProviders: ["codex"],
     }));
+  });
+
+  it("normalizes focus mode and never pauses every provider", () => {
+    const value = normalizeWidgetPreferences({
+      resourceMode: "focus",
+      pausedProviders: ["codex", "claude", "qoder", "trae", "workbuddy", "volcengine", "antigravity"],
+    });
+    expect(value.resourceMode).toBe("focus");
+    expect(value.pausedProviders).not.toContain("codex");
+    expect(value.pausedProviders).toHaveLength(6);
+    expect(normalizeWidgetPreferences({ resourceMode: "turbo" as never }).resourceMode).toBe("balanced");
   });
 
   it("normalizes malformed values from a manually edited backup", () => {

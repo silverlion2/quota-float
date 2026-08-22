@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canSendNotification, EMPTY_RUNTIME_STATE, isQuietHour, normalizeRuntimeState, recordSnapshotActivity } from "./activity";
+import { canSendNotification, EMPTY_RUNTIME_STATE, isQuietHour, normalizeRuntimeState, recordSnapshotActivity, runtimeStatesEqual } from "./activity";
 import { MAX_DAILY_OBSERVED_PERCENT } from "../types";
 import type { ProviderSnapshot } from "../types";
 
@@ -12,6 +12,15 @@ function snapshot(remainingPercent: number, status: ProviderSnapshot["status"] =
 }
 
 describe("activity timeline and notification policy", () => {
+  it("detects when a refresh produces no persistable runtime changes", () => {
+    const signedOut = snapshot(0, "signed_out");
+    const first = recordSnapshotActivity(EMPTY_RUNTIME_STATE, [], [signedOut], null, 15, new Date("2026-07-19T01:00:00Z"));
+    const unchanged = recordSnapshotActivity(first.state, [signedOut], [signedOut], null, 15, new Date("2026-07-19T01:05:00Z"));
+    const sampled = recordSnapshotActivity(first.state, [signedOut], [signedOut], null, 15, new Date("2026-07-19T01:31:00Z"));
+
+    expect(runtimeStatesEqual(first.state, unchanged.state)).toBe(true);
+    expect(runtimeStatesEqual(first.state, sampled.state)).toBe(false);
+  });
   it("records low quota crossings and provider recovery", () => {
     const low = recordSnapshotActivity(EMPTY_RUNTIME_STATE, [snapshot(30)], [snapshot(12)], null, 15, new Date("2026-07-19T01:00:00Z"));
     expect(low.createdEvents.map((item) => item.kind)).toContain("quota");

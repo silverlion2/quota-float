@@ -62,6 +62,7 @@ Updater artifacts are signed with the project's Tauri update key. Windows Authen
 
 - Real quota windows, exact remaining balances, unlimited-plan states, and reset-credit expiration times when available.
 - Daily quota pace guidance and alerts, configurable thresholds, quiet hours, and notification cooldowns.
+- Per-provider adaptive refresh scheduling, a low-impact Project Focus mode, and monitoring pause controls for sources you do not need during active work.
 - Floating orb, persistent expansion, always-on-top control, provider rotation, drag-to-reorder, and localized tray actions.
 - Local quota timeline for resets, low-quota crossings, provider failures, recoveries, and updates, backed by a rolling 90-day detailed usage memory and 365-day daily summaries.
 - A Vibe Usage dashboard with incremental local Codex indexing, model/project/terminal filters, session and activity metrics, trend charts, an hourly heatmap, and per-model API-equivalent cost estimates.

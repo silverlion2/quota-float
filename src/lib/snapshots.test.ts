@@ -33,4 +33,11 @@ describe("snapshot failure handling", () => {
   it("replaces stale data after recovery", () => {
     expect(mergeSnapshots([{ ...success, status: "stale" }], [{ ...success, weeklyWindow: { ...success.weeklyWindow!, remainingPercent: 88 } }])[0].weeklyWindow?.remainingPercent).toBe(88);
   });
+
+  it("preserves providers outside a targeted refresh and removes a refreshed provider that is no longer detected", () => {
+    const qoder = { ...success, provider: "qoder" as const, displayName: "QODER" };
+    expect(mergeSnapshots([success, qoder], [{ ...success, weeklyWindow: { ...success.weeklyWindow!, remainingPercent: 88 } }], ["codex"]))
+      .toEqual([qoder, expect.objectContaining({ provider: "codex", weeklyWindow: expect.objectContaining({ remainingPercent: 88 }) })]);
+    expect(mergeSnapshots([success, qoder], [], ["qoder"])).toEqual([success]);
+  });
 });

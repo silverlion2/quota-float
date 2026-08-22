@@ -12,16 +12,18 @@ Quota Float is a local-first Tauri desktop application. React renders the widget
 | Frontend domain | `src/lib/*` | Preference/runtime normalization, quota pace, reset detection, history, update state, last-known-good merging |
 | Desktop bridge | `src/lib/bridge.ts` | Typed Tauri commands/events, serialized writes, drag stability detection, browser mocks |
 | Native orchestration | `src-tauri/src/lib.rs`, `src-tauri/src/models.rs`, `src-tauri/src/codex_usage.rs` | Commands, window state, physical-pixel geometry, persistence, bounded local Token aggregation, backups, tray, lifecycle |
-| Provider registry | `src-tauri/src/provider_registry.rs` | Stable ordering, bounded concurrent collection, adapter timeouts, targeted transient retries |
+| Provider registry | `src-tauri/src/provider_registry.rs` | Stable ordering, selected-provider collection, adapter timeouts, and bounded transient retries for non-process-spawning adapters |
 | Provider adapters | `src-tauri/src/{codex,claude,qoder,trae,workbuddy,volcengine,antigravity}.rs` | Read-only discovery, request/parsing, provider-specific error isolation |
 
 ## Data flow
 
-1. React requests snapshots through `bridge.ts`.
-2. A Tauri command asks the provider registry to refresh isolated Rust adapters concurrently under a shared refresh lock and bounded cache. Only transiently failed provider groups are retried.
+1. React computes which unpaused providers are due from independent attempt clocks, health state, and the selected resource mode, then requests only that subset through `bridge.ts`.
+2. A Tauri command asks the provider registry to refresh the selected isolated Rust adapters concurrently under a shared refresh lock and bounded cache. Transiently failed network/file adapters receive bounded same-cycle retries; Volcengine and Antigravity do not, because their probes spawn external processes.
 3. Rust returns normalized `ProviderSnapshot` values without exposing credentials or raw provider payloads.
-4. React merges new values with last-known-good values, derives pace/reset events, and persists bounded runtime history. Detailed quota samples use a rolling 90-day local memory; daily usage summaries retain 365 days, with lifetime sample metadata surviving pruning.
+4. React merges partial results with last-known-good values, derives pace/reset events, and persists bounded runtime history only when the persistable state changes. Detailed quota samples use a rolling 90-day local memory; daily usage summaries retain 365 days, with lifetime sample metadata surviving pruning.
 5. Rendering selects Float, Ring, or Bar for compact mode and one of three expanded layouts.
+
+Balanced mode refreshes healthy providers on a five-minute cadence, fast-reset or critical providers every minute, and unavailable providers with a thirty-minute cooldown. Project Focus mode stretches those intervals to fifteen, five, and sixty minutes, disables provider auto-rotation and ambient infinite animation, while manual refresh remains available.
 
 The Insights tab lazily requests a separate 90-day Codex Token report. Rust streams bounded local session files, skips oversized/content records without deserializing them, and persists a sanitized, versioned per-file cursor index in the application config directory. Index entries use full SHA-256 file identities rather than relative paths or raw filenames. Unchanged files reuse indexed aggregates; append-only files resume from the saved byte cursor; truncation, metadata changes, or a manual rebuild reparses the affected scope. The UI receives only hourly numeric aggregates grouped by model, context tier, project basename, normalized terminal category, and a one-way hashed session key.
 
@@ -31,7 +33,7 @@ Provider failures are partial: one unavailable adapter must not erase healthy pr
 
 ## Preferences and recovery
 
-`WidgetPreferences` is normalized independently in TypeScript and Rust. Missing fields receive safe defaults, provider order is deduplicated/completed, numeric values are bounded, and unknown enum values fall back to supported values.
+`WidgetPreferences` is normalized independently in TypeScript and Rust. Missing fields receive safe defaults, provider order is deduplicated/completed, numeric values are bounded, and unknown enum values fall back to supported values. Resource mode and paused-provider IDs use the same cross-language normalization; at least one provider remains monitored.
 
 Bar placement is stored as:
 

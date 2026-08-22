@@ -49,7 +49,8 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
   const labels = zh ? {
     title: "控制中心", subtitle: "显示、提醒、历史与恢复", display: "显示", alerts: "提醒", activity: "历史", system: "系统",
     layout: "信息密度", compact: "紧凑", standard: "标准", detailed: "详细", accent: "强调色", rotate: "轮换间隔",
-    providers: "平台显示", hidden: "已隐藏", collapsed: "精简行", resetOrder: "恢复默认排序", savedLayouts: "布局方案", saveLayout: "保存当前布局", noLayouts: "尚未保存布局方案",
+    providers: "平台显示与监控", hidden: "已隐藏", collapsed: "精简行", paused: "已暂停", monitoring: "监控中", resetOrder: "恢复默认排序", savedLayouts: "布局方案", saveLayout: "保存当前布局", noLayouts: "尚未保存布局方案",
+    focusMode: "项目专注模式", focusModeHint: "降低后台刷新频率并暂停轮换与动态效果；手动刷新仍可用",
     notifications: "桌面提醒", threshold: "低额度阈值", resetAlert: "额度重置提醒", recoveryAlert: "恢复可用提醒", quiet: "勿扰时段", cooldown: "重复提醒冷却", minutes: "分钟",
     events: "最近事件", noEvents: "还没有额度变化事件", history: "历史采样", samples: "条采样", memoryTitle: "本地用量记忆", memoryEmpty: "首次刷新后开始记录", memoryRetention: "90 天详细记录 · 365 天每日汇总", lifetimeSamples: "累计采样",
     update: "更新策略", channel: "更新通道", autoUpdate: "后台自动检查和下载", autostart: "登录系统后自动启动", stable: "稳定版", beta: "测试版（手动安装）",
@@ -57,7 +58,8 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
   } : {
     title: "Control center", subtitle: "Display, alerts, history, and recovery", display: "Display", alerts: "Alerts", activity: "Activity", system: "System",
     layout: "Information density", compact: "Compact", standard: "Standard", detailed: "Detailed", accent: "Accent color", rotate: "Rotation interval",
-    providers: "Provider visibility", hidden: "Hidden", collapsed: "Condensed row", resetOrder: "Reset default order", savedLayouts: "Layout profiles", saveLayout: "Save current layout", noLayouts: "No layout profiles saved",
+    providers: "Provider display and monitoring", hidden: "Hidden", collapsed: "Condensed row", paused: "Paused", monitoring: "Monitoring", resetOrder: "Reset default order", savedLayouts: "Layout profiles", saveLayout: "Save current layout", noLayouts: "No layout profiles saved",
+    focusMode: "Project focus mode", focusModeHint: "Reduces background refreshes and pauses rotation and ambient motion; manual refresh stays available",
     notifications: "Desktop alerts", threshold: "Low-quota threshold", resetAlert: "Quota reset alerts", recoveryAlert: "Provider recovery alerts", quiet: "Quiet hours", cooldown: "Repeat-alert cooldown", minutes: "minutes",
     events: "Recent events", noEvents: "No quota change events yet", history: "History samples", samples: "samples", memoryTitle: "Local usage memory", memoryEmpty: "Starts after the first refresh", memoryRetention: "90-day detail · 365-day daily summaries", lifetimeSamples: "Lifetime samples",
     update: "Update policy", channel: "Update channel", autoUpdate: "Check and download in background", autostart: "Launch after system sign-in", stable: "Stable", beta: "Beta (manual install)",
@@ -79,14 +81,16 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
       loading: "检查中",
       unavailable: "不可用",
       signed_out: "需要登录",
-    } satisfies Record<SnapshotStatus, string>,
+      paused: "已暂停",
+    } satisfies Record<SnapshotStatus | "paused", string>,
     defaults: {
       ok: "最近一次额度刷新已完成。",
       stale: "正在显示最近一次有效数据。",
       loading: "正在等待平台响应。",
       unavailable: "未检测到平台，或平台暂时不可用。",
       signed_out: "请在对应应用或 CLI 中重新登录。",
-    } satisfies Record<SnapshotStatus, string>,
+      paused: "不会在后台唤醒此平台；已有数据保持只读显示。",
+    } satisfies Record<SnapshotStatus | "paused", string>,
   } : {
     tab: "Health",
     title: "Provider health",
@@ -103,14 +107,16 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
       loading: "Checking",
       unavailable: "Unavailable",
       signed_out: "Sign-in required",
-    } satisfies Record<SnapshotStatus, string>,
+      paused: "Paused",
+    } satisfies Record<SnapshotStatus | "paused", string>,
     defaults: {
       ok: "Latest quota refresh completed.",
       stale: "Showing the last known good data.",
       loading: "Waiting for the provider response.",
       unavailable: "Provider is not detected or temporarily unavailable.",
       signed_out: "Sign in again through the provider app or CLI.",
-    } satisfies Record<SnapshotStatus, string>,
+      paused: "This provider will not be awakened in the background; existing data remains read-only.",
+    } satisfies Record<SnapshotStatus | "paused", string>,
   };
   const appearanceLabels = zh ? {
     appearance: "全局外观",
@@ -219,8 +225,9 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
 
   const historyCounts = useMemo(() => new Map(PROVIDER_CATALOG.map((provider) => [provider.id, runtimeState.history.filter((point) => point.provider === provider.id).length])), [runtimeState.history]);
   const snapshotsByProvider = useMemo(() => new Map(snapshots.map((snapshot) => [snapshot.provider, snapshot])), [snapshots]);
-  const healthyProviderCount = useMemo(() => snapshots.filter((snapshot) => snapshot.status === "ok").length, [snapshots]);
-  const attentionProviderCount = Math.max(0, PROVIDER_CATALOG.length - healthyProviderCount);
+  const monitoredProviderCount = Math.max(1, PROVIDER_CATALOG.length - preferences.pausedProviders.length);
+  const healthyProviderCount = useMemo(() => snapshots.filter((snapshot) => snapshot.status === "ok" && !preferences.pausedProviders.includes(snapshot.provider)).length, [preferences.pausedProviders, snapshots]);
+  const attentionProviderCount = Math.max(0, monitoredProviderCount - healthyProviderCount);
   const memoryRange = runtimeState.usageMemory.firstCapturedAt && runtimeState.usageMemory.lastCapturedAt
     ? `${formatCheckedAt(runtimeState.usageMemory.firstCapturedAt, language, labels.memoryEmpty)} — ${formatCheckedAt(runtimeState.usageMemory.lastCapturedAt, language, labels.memoryEmpty)}`
     : labels.memoryEmpty;
@@ -342,6 +349,7 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
           </div>
           <label className="control-field color-accent-field"><span>{customizationLabels.accent}</span><input type="color" value={preferences.accentColor} onChange={(event) => onPreferences({ ...preferences, accentColor: event.target.value })} /></label>
           <div className="display-feature-options">
+            <label className="display-feature-option"><Monitor /><span><strong>{labels.focusMode}</strong><small>{labels.focusModeHint}</small></span><span className="switch"><input type="checkbox" checked={preferences.resourceMode === "focus"} onChange={(event) => onPreferences({ ...preferences, resourceMode: event.target.checked ? "focus" : "balanced" })} /><i /></span></label>
             <label className="display-feature-option"><ListStar /><span><strong>{appearanceLabels.riskFirst}</strong><small>{appearanceLabels.riskFirstHint}</small></span><span className="switch"><input type="checkbox" checked={preferences.riskFirst} onChange={(event) => onPreferences({ ...preferences, riskFirst: event.target.checked })} /><i /></span></label>
             <label className="display-feature-option"><ChartLineUp /><span><strong>{appearanceLabels.history}</strong><small>{appearanceLabels.historyHint}</small></span><span className="switch"><input type="checkbox" checked={preferences.showHistorySparklines} onChange={(event) => onPreferences({ ...preferences, showHistorySparklines: event.target.checked })} /><i /></span></label>
           </div>
@@ -350,7 +358,8 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
             {PROVIDER_CATALOG.map((provider) => {
               const hidden = preferences.hiddenProviders.includes(provider.id);
               const collapsed = preferences.collapsedProviders.includes(provider.id);
-              return <div key={provider.id}><strong>{provider.label}</strong><span>{historyCounts.get(provider.id)} {labels.samples}</span><button type="button" className={hidden ? "is-active" : ""} onClick={() => onPreferences({ ...preferences, hiddenProviders: toggleProvider(preferences.hiddenProviders, provider.id) })}>{hidden ? <EyeSlash /> : <Eye />}{hidden ? labels.hidden : zh ? "显示" : "Visible"}</button><button type="button" className={collapsed ? "is-active" : ""} onClick={() => onPreferences({ ...preferences, collapsedProviders: toggleProvider(preferences.collapsedProviders, provider.id) })}><Layout />{labels.collapsed}</button></div>;
+              const paused = preferences.pausedProviders.includes(provider.id);
+              return <div key={provider.id}><strong>{provider.label}</strong><span>{historyCounts.get(provider.id)} {labels.samples}</span><button type="button" className={hidden ? "is-active" : ""} onClick={() => onPreferences({ ...preferences, hiddenProviders: toggleProvider(preferences.hiddenProviders, provider.id) })}>{hidden ? <EyeSlash /> : <Eye />}{hidden ? labels.hidden : zh ? "显示" : "Visible"}</button><button type="button" className={collapsed ? "is-active" : ""} onClick={() => onPreferences({ ...preferences, collapsedProviders: toggleProvider(preferences.collapsedProviders, provider.id) })}><Layout />{labels.collapsed}</button><button type="button" className={paused ? "is-active" : ""} disabled={!paused && monitoredProviderCount <= 1} onClick={() => onPreferences({ ...preferences, pausedProviders: toggleProvider(preferences.pausedProviders, provider.id) })}><Heartbeat />{paused ? labels.paused : labels.monitoring}</button></div>;
             })}
           </div>
           <div className="control-section-title"><span>{labels.savedLayouts}</span></div>
@@ -362,7 +371,7 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
           <div className="provider-health-summary" role="status">
             <Heartbeat weight="duotone" />
             <div>
-              <strong>{healthyProviderCount}/{PROVIDER_CATALOG.length} {healthLabels.summary}</strong>
+              <strong>{healthyProviderCount}/{monitoredProviderCount} {healthLabels.summary}</strong>
               <p>{attentionProviderCount === 0 ? healthLabels.allHealthy : `${attentionProviderCount} ${healthLabels.attention}`}</p>
             </div>
             <button type="button" onClick={onRefresh}><ArrowClockwise />{healthLabels.refresh}</button>
@@ -371,7 +380,8 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
           <div className="provider-health-list">
             {PROVIDER_CATALOG.map((provider) => {
               const snapshot = snapshotsByProvider.get(provider.id);
-              const status = snapshot?.status ?? "unavailable";
+              const paused = preferences.pausedProviders.includes(provider.id);
+              const status: SnapshotStatus | "paused" = paused ? "paused" : snapshot?.status ?? "unavailable";
               return (
                 <article key={provider.id} className={`provider-health-item provider-health-item--${status}`}>
                   <i aria-hidden="true" />

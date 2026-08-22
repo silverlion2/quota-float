@@ -149,9 +149,10 @@ function enqueueDataWrite(operation: () => Promise<void>): Promise<void> {
 
 export const isTauri = () => "__TAURI_INTERNALS__" in window;
 
-export async function fetchSnapshots(force = false): Promise<ProviderSnapshot[]> {
-  if (!isTauri()) return mockSnapshots;
+export async function fetchSnapshots(force = false, providerIds?: ProviderSnapshot["provider"][]): Promise<ProviderSnapshot[]> {
+  if (!isTauri()) return providerIds ? mockSnapshots.filter((snapshot) => providerIds.includes(snapshot.provider)) : mockSnapshots;
   const { invoke } = await import("@tauri-apps/api/core");
+  if (providerIds) return invoke<ProviderSnapshot[]>("refresh_snapshots", { providerIds });
   return invoke<ProviderSnapshot[]>(force ? "refresh_snapshots" : "get_snapshots");
 }
 

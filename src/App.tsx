@@ -3,7 +3,6 @@ import { QuotaBar, QuotaCard, QuotaOrb } from "./components/QuotaCard";
 import { EMPTY_UPDATE_STATE } from "./components/UpdatePanel";
 import type { UpdateViewState } from "./components/UpdatePanel";
 import { applyAppData, createAutomaticBackup, exportAppData, fetchCodexResetForecast, fetchSnapshots, getAppDiagnostics, getAutostartEnabled, getPreferences, getRuntimeState, getVolcengineDiagnostics, importAppData, listenDesktopEvents, openExternalUrl, reconnectVolcengine, resizeWidgetToContent, restoreLatestBackup, sendDesktopNotification, setAlwaysOnTop, setAutostartEnabled, setWidgetExpanded, startDragging, updatePreferences, updateRuntimeState } from "./lib/bridge";
-import { needsFastRefresh } from "./lib/format";
 import { checkForAppUpdate, discardAppUpdate, downloadAppUpdate, installAppUpdate, openReleasePage } from "./lib/appUpdate";
 import type { AppUpdateInfo } from "./lib/appUpdate";
 import { copy, nextLanguage, normalizeLanguage } from "./lib/i18n";
@@ -12,11 +11,12 @@ import { detectRecentCodexReset, isRecentCodexReset } from "./lib/resetDetection
 import type { RecentCodexReset } from "./lib/resetDetection";
 import { trackedQuotaWindows } from "./lib/quotaPace";
 import { mergeSnapshots } from "./lib/snapshots";
-import { canSendNotification, EMPTY_RUNTIME_STATE, isQuietHour, normalizeRuntimeState, recordSnapshotActivity } from "./lib/activity";
+import { canSendNotification, EMPTY_RUNTIME_STATE, isQuietHour, normalizeRuntimeState, recordSnapshotActivity, runtimeStatesEqual } from "./lib/activity";
 import { DEFAULT_WIDGET_PREFERENCES, normalizeWidgetPreferences } from "./lib/preferences";
 import { resolveAppearanceMode, systemPrefersDark } from "./lib/appearance";
 import { loadStartupState } from "./lib/startup";
 import { runSingleFlight, type SingleFlightState } from "./lib/singleFlight";
+import { monitoredProviderIds, nextProviderRefreshDelay, providersDueForRefresh, type ProviderAttemptTimes } from "./lib/refreshPolicy";
 import type { AppDiagnostics, ProviderId, ProviderSnapshot, ResetForecast, RuntimeState, VolcengineDiagnostics, WidgetPreferences } from "./types";
 
 const DEFAULT_PREFS = DEFAULT_WIDGET_PREFERENCES;
@@ -50,8 +50,9 @@ export default function App() {
   const [appDiagnostics, setAppDiagnostics] = useState<AppDiagnostics | null>(null);
   const [autostartEnabled, setAutostartState] = useState(false);
   const [systemDark, setSystemDark] = useState(systemPrefersDark);
-  const failures = useRef(0);
   const snapshotsRef = useRef<ProviderSnapshot[]>([]);
+  const providerAttempts = useRef<ProviderAttemptTimes>({});
+  const resetForecastRef = useRef<ResetForecast | null>(null);
   const previousMetric = useRef(new Map<string, number>());
   const consumptionTimers = useRef(new Map<string, number>());
   const collapseTimer = useRef<number | null>(null);
@@ -79,7 +80,12 @@ export default function App() {
     document.documentElement.dataset.appearance = resolvedAppearance;
   }, [resolvedAppearance]);
 
+  useEffect(() => {
+    document.documentElement.dataset.resourceMode = preferences.resourceMode;
+  }, [preferences.resourceMode]);
+
   const commitRuntimeState = useCallback((next: RuntimeState) => {
+    if (runtimeStatesEqual(runtimeStateRef.current, next)) return;
     runtimeStateRef.current = next;
     setRuntimeState(next);
     void updateRuntimeState(next).catch(() => setOperationError("Activity history could not be saved."));
@@ -147,15 +153,23 @@ export default function App() {
   }, [preferences.automaticUpdates, preferences.skippedUpdateVersion, preferences.updateChannel, startUpdateDownload, t.updateFailed, updateState.phase]);
 
   const refresh = useCallback((force = false) => runSingleFlight(refreshFlight.current, async () => {
+    const preferenceSnapshot = preferencesRef.current;
+    const monitored = monitoredProviderIds(preferenceSnapshot.pausedProviders);
+    const providerIds = force
+      ? monitored
+      : providersDueForRefresh(snapshotsRef.current, monitored, providerAttempts.current, preferenceSnapshot.resourceMode);
+    if (providerIds.length === 0) return;
+    const attemptedAt = Date.now();
+    for (const provider of providerIds) providerAttempts.current[provider] = attemptedAt;
     try {
       const [values, forecast] = await Promise.all([
-        fetchSnapshots(force),
-        fetchCodexResetForecast().catch(() => null),
+        fetchSnapshots(true, providerIds),
+        providerIds.includes("codex") ? fetchCodexResetForecast().catch(() => null) : Promise.resolve(undefined),
       ]);
-      setCodexResetForecast(forecast);
-      const hasFailure = values.some((item) => item.status !== "ok");
-      if (hasFailure) failures.current += 1;
-      else failures.current = 0;
+      if (forecast !== undefined) {
+        resetForecastRef.current = forecast;
+        setCodexResetForecast(forecast);
+      }
       for (const item of values) {
         const percentWindows = trackedQuotaWindows(item);
         const nextMetric = percentWindows.length > 0
@@ -181,7 +195,7 @@ export default function App() {
         detectedReset = detectRecentCodexReset(nextCodex, snapshotsRef.current.find((item) => item.provider === "codex") ?? null, now);
         setRecentCodexReset((current) => detectedReset ?? (isRecentCodexReset(current, now) ? current : null));
       }
-      const activity = recordSnapshotActivity(runtimeStateRef.current, snapshotsRef.current, values, detectedReset, preferencesRef.current.alertThreshold, now, preferencesRef.current.language, preferencesRef.current.notificationCooldownMinutes, forecast);
+      const activity = recordSnapshotActivity(runtimeStateRef.current, snapshotsRef.current, values, detectedReset, preferencesRef.current.alertThreshold, now, preferencesRef.current.language, preferencesRef.current.notificationCooldownMinutes, forecast ?? resetForecastRef.current);
       let nextRuntimeState = activity.state;
       const notificationPreferences = preferencesRef.current;
       if (notificationPreferences.notificationsEnabled && !isQuietHour(now.getHours(), notificationPreferences.quietHoursStart, notificationPreferences.quietHoursEnd)) {
@@ -197,16 +211,16 @@ export default function App() {
       }
       commitRuntimeState(nextRuntimeState);
       setSnapshots((current) => {
-        const merged = mergeSnapshots(current, values);
+        const merged = mergeSnapshots(current, values, providerIds);
         snapshotsRef.current = merged;
         return merged;
       });
     } catch {
-      failures.current += 1;
       setSnapshots((current) => {
+        const fallbackProvider = providerIds[0] ?? "codex";
         const next = current.length > 0
-          ? current.map((item) => ({ ...item, status: "stale" as const, message: "Refresh failed. Please try again later." }))
-          : [{ provider: "codex" as const, displayName: "CODEX", plan: null, shortWindow: null, weeklyWindow: null, resetCredits: null, resetCreditExpiresAt: [], updatedAt: new Date().toISOString(), status: "unavailable" as const, message: "Quota is temporarily unavailable. It will retry automatically." }];
+          ? current.map((item) => providerIds.includes(item.provider) ? { ...item, status: "stale" as const, message: "Refresh failed. Please try again later." } : item)
+          : [{ provider: fallbackProvider, displayName: fallbackProvider.toUpperCase(), plan: null, shortWindow: null, weeklyWindow: null, resetCredits: null, resetCreditExpiresAt: [], updatedAt: new Date().toISOString(), status: "unavailable" as const, message: "Quota is temporarily unavailable. It will retry automatically." }];
         snapshotsRef.current = next;
         return next;
       });
@@ -293,19 +307,16 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [checkUpdate]);
 
-  const refreshMs = useMemo(() => {
-    const backoff = failures.current === 0 ? 5 * 60_000 : Math.min(30 * 60_000, 30_000 * 2 ** (failures.current - 1));
-    if (failures.current === 0 && snapshots.some((item) => item.status === "ok" && needsFastRefresh(item))) return 60_000;
-    return backoff;
-  }, [snapshots]);
+  const monitoredProviders = useMemo(() => monitoredProviderIds(preferences.pausedProviders), [preferences.pausedProviders]);
 
   useEffect(() => {
-    const id = window.setInterval(() => void refresh(), refreshMs);
-    return () => window.clearInterval(id);
-  }, [refresh, refreshMs]);
+    const delay = nextProviderRefreshDelay(snapshots, monitoredProviders, providerAttempts.current, preferences.resourceMode);
+    const id = window.setTimeout(() => void refresh(), Math.max(1_000, delay));
+    return () => window.clearTimeout(id);
+  }, [monitoredProviders, preferences.resourceMode, refresh, snapshots]);
 
   useEffect(() => {
-    const refreshWhenActive = () => { if (document.visibilityState === "visible") void refresh(true); };
+    const refreshWhenActive = () => { if (document.visibilityState === "visible") void refresh(); };
     window.addEventListener("focus", refreshWhenActive);
     document.addEventListener("visibilitychange", refreshWhenActive);
     return () => {
@@ -316,18 +327,23 @@ export default function App() {
 
   const orderedSnapshots = useMemo(() => {
     const order = normalizeProviderOrder(preferences.providerOrder);
-    return [...snapshots].filter((item) => !preferences.hiddenProviders.includes(item.provider)).sort((left, right) => order.indexOf(left.provider) - order.indexOf(right.provider));
-  }, [preferences.hiddenProviders, preferences.providerOrder, snapshots]);
+    return [...snapshots]
+      .filter((item) => !preferences.hiddenProviders.includes(item.provider))
+      .map((item) => preferences.pausedProviders.includes(item.provider)
+        ? { ...item, status: "stale" as const, message: language === "en" ? "Background monitoring is paused." : "已暂停后台监控。" }
+        : item)
+      .sort((left, right) => order.indexOf(left.provider) - order.indexOf(right.provider));
+  }, [language, preferences.hiddenProviders, preferences.pausedProviders, preferences.providerOrder, snapshots]);
 
   const visiblePinnedProvider = preferences.pinnedProvider && orderedSnapshots.some((item) => item.provider === preferences.pinnedProvider)
     ? preferences.pinnedProvider
     : null;
 
   useEffect(() => {
-    if (hovered || visiblePinnedProvider || orderedSnapshots.length < 2) return;
+    if (preferences.resourceMode === "focus" || hovered || visiblePinnedProvider || orderedSnapshots.length < 2) return;
     const id = window.setInterval(() => setActiveIndex((value) => nextProviderIndex(value, orderedSnapshots.length)), preferences.autoRotateSeconds * 1000);
     return () => window.clearInterval(id);
-  }, [hovered, orderedSnapshots.length, preferences.autoRotateSeconds, visiblePinnedProvider]);
+  }, [hovered, orderedSnapshots.length, preferences.autoRotateSeconds, preferences.resourceMode, visiblePinnedProvider]);
 
   const current = visiblePinnedProvider
     ? orderedSnapshots.find((item) => item.provider === visiblePinnedProvider) ?? orderedSnapshots[0]
@@ -469,7 +485,7 @@ export default function App() {
     setCollapsing(false);
     setHovered(value);
     if (!value && preferences.stayExpanded) return;
-    if (value) void refresh(true);
+    if (value) void refresh();
     if (value) {
       const sequence = ++hoverSequence.current;
       void setWidgetExpanded(true, preferences.compactLayout, { edge: preferences.barEdge, offset: preferences.barOffset })

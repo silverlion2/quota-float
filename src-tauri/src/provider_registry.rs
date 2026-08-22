@@ -83,6 +83,13 @@ impl ProviderDescriptor {
     fn failure(self, status: &str, message: &str) -> ProviderSnapshot {
         ProviderSnapshot::provider_failure(self.id, self.display_name, status, message)
     }
+
+    fn supports_same_cycle_retry(self) -> bool {
+        !matches!(
+            self.kind,
+            ProviderKind::Volcengine | ProviderKind::Antigravity
+        )
+    }
 }
 
 fn batch_is_retryable(values: &[ProviderSnapshot]) -> bool {
@@ -103,14 +110,26 @@ async fn fetch_selected(
     .await
 }
 
-pub async fn collect(client: &Client) -> Vec<ProviderSnapshot> {
-    let mut batches = fetch_selected(client, PROVIDERS).await;
+fn selected_providers(provider_ids: &[String]) -> Vec<ProviderDescriptor> {
+    PROVIDERS
+        .iter()
+        .filter(|provider| provider_ids.iter().any(|id| id == provider.id))
+        .copied()
+        .collect()
+}
+
+async fn collect_providers(
+    client: &Client,
+    providers: Vec<ProviderDescriptor>,
+) -> Vec<ProviderSnapshot> {
+    let mut batches = fetch_selected(client, providers.iter().copied()).await;
 
     for delay in [400_u64, 1_200_u64] {
         let retry = batches
             .iter()
             .filter(|(_, values)| batch_is_retryable(values))
-            .filter_map(|(kind, _)| PROVIDERS.iter().find(|provider| provider.kind == *kind))
+            .filter_map(|(kind, _)| providers.iter().find(|provider| provider.kind == *kind))
+            .filter(|provider| provider.supports_same_cycle_retry())
             .copied()
             .collect::<Vec<_>>();
         if retry.is_empty() {
@@ -125,7 +144,7 @@ pub async fn collect(client: &Client) -> Vec<ProviderSnapshot> {
         }
     }
 
-    PROVIDERS
+    providers
         .iter()
         .flat_map(|provider| {
             batches
@@ -135,6 +154,14 @@ pub async fn collect(client: &Client) -> Vec<ProviderSnapshot> {
                 .flat_map(|(_, values)| values.iter().cloned())
         })
         .collect()
+}
+
+pub async fn collect(client: &Client) -> Vec<ProviderSnapshot> {
+    collect_providers(client, PROVIDERS.to_vec()).await
+}
+
+pub async fn collect_selected(client: &Client, provider_ids: &[String]) -> Vec<ProviderSnapshot> {
+    collect_providers(client, selected_providers(provider_ids)).await
 }
 
 #[cfg(test)]
@@ -186,5 +213,36 @@ mod tests {
             .iter()
             .all(|provider| provider.timeout >= Duration::from_secs(1)
                 && provider.timeout <= Duration::from_secs(15)));
+    }
+
+    #[test]
+    fn selected_providers_are_validated_and_keep_registry_order() {
+        let selected = selected_providers(&[
+            "antigravity".into(),
+            "unknown".into(),
+            "codex".into(),
+            "codex".into(),
+        ]);
+        assert_eq!(
+            selected
+                .iter()
+                .map(|provider| provider.id)
+                .collect::<Vec<_>>(),
+            vec!["codex", "antigravity"]
+        );
+    }
+
+    #[test]
+    fn process_spawning_providers_do_not_retry_in_the_same_cycle() {
+        assert!(PROVIDERS
+            .iter()
+            .find(|provider| provider.kind == ProviderKind::Codex)
+            .is_some_and(|provider| provider.supports_same_cycle_retry()));
+        for kind in [ProviderKind::Volcengine, ProviderKind::Antigravity] {
+            assert!(PROVIDERS
+                .iter()
+                .find(|provider| provider.kind == kind)
+                .is_some_and(|provider| !provider.supports_same_cycle_retry()));
+        }
     }
 }

@@ -11,12 +11,13 @@ Quota Float 是一款 Windows/macOS Tauri 桌面悬浮窗：它只读复用本�
 - Bar 的边缘与沿边偏移会写入偏好、布局方案、导出文件和恢复备份；偏移采用 `0…1` 归一化值，可适配工作区与缩放变化。
 - 展开视图包括 Dashboard、Provider bar 与 Stacked，并从 Bar 所在边缘向屏幕内侧展开；内容高度变化不会丢失 Bar 锚点。
 - 支持平台轮播/选择、排序、隐藏、精简、风险优先、历史轨迹、额度节奏提示、桌面提醒、状态中心、托盘控制、开机启动和应用内更新。
+- 各平台按健康状态独立安排刷新与失败冷却；“项目专注模式”会降低刷新频率、停止自动轮播与无限环境动画，也可单独暂停不需要的平台监控，手动刷新仍然可用。
 - 网络或平台读取失败时保留最后一次成功数据并标记为过期；浏览器预览始终使用合成数据。
 
 ## 技术栈与职责
 
 - React 19 + TypeScript + Vite：界面、交互、偏好归一化、历史/提醒逻辑和浏览器合成预览。
-- Tauri 2 + Rust：只读平台适配器、并发 registry/定向重试、持久化、窗口几何、拖动磁吸、托盘、通知和更新桥接。
+- Tauri 2 + Rust：只读平台适配器、按需并发 registry、有界重试、持久化、窗口几何、拖动磁吸、托盘、通知和更新桥接。
 - Vitest + Testing Library：纯函数、组件、偏好迁移和桥接回归测试。
 - Rust 单元测试、`fmt`、`check` 与 `clippy`：平台解析、registry、偏好迁移和物理像素窗口几何验证。
 - WebdriverIO + Tauri WebDriver：编译后的真实桌面进程、原生桥接、展开、控制中心与更新对话框冒烟验证。
@@ -25,10 +26,10 @@ Quota Float 是一款 Windows/macOS Tauri 桌面悬浮窗：它只读复用本�
 
 ## 关键文件
 
-- `src/App.tsx`：前端状态协调、刷新/退避、展开收起、拖动结果持久化和提醒调度。
+- `src/App.tsx`：前端状态协调、按平台刷新/退避、专注模式、展开收起、拖动结果持久化和提醒调度。
 - `src/components/QuotaCard.tsx`：Float、Ring、Bar 与展开仪表板。
 - `src/components/ControlCenter.tsx`：显示、Bar 边缘、平台、提醒、布局方案和恢复设置。
-- `src/lib/preferences.ts`、`src/lib/activity.ts`：偏好、布局方案、导入和旧数据迁移。
+- `src/lib/preferences.ts`、`src/lib/refreshPolicy.ts`、`src/lib/activity.ts`：偏好、按平台刷新策略、布局方案、导入、旧数据迁移和无变化写入抑制。
 - `src/lib/bridge.ts`：浏览器 mock 与 Tauri command 的类型化桥接。
 - `src-tauri/src/lib.rs`：应用命令、窗口/显示器几何、磁吸、持久化、托盘和生命周期。
 - `src-tauri/src/models.rs`：Rust 侧偏好与平台快照模型及安全归一化。

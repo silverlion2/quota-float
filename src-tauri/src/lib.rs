@@ -241,15 +241,26 @@ fn apply_short_window_test_override(
     snapshots
 }
 
-async fn collect_snapshots(client: &reqwest::Client) -> Vec<ProviderSnapshot> {
-    provider_registry::collect(client).await
+async fn collect_snapshots(
+    client: &reqwest::Client,
+    provider_ids: Option<&[String]>,
+) -> Vec<ProviderSnapshot> {
+    match provider_ids {
+        Some(provider_ids) => provider_registry::collect_selected(client, provider_ids).await,
+        None => provider_registry::collect(client).await,
+    }
 }
 
-async fn fetch_snapshots_uncached(state: &State<'_, AppState>) -> Vec<ProviderSnapshot> {
+async fn fetch_snapshots_uncached(
+    state: &State<'_, AppState>,
+    provider_ids: Option<&[String]>,
+) -> Vec<ProviderSnapshot> {
     let _guard = state.fetch_lock.lock().await;
-    let values = collect_snapshots(&state.client).await;
-    if let Ok(mut cache) = state.snapshot_cache.lock() {
-        *cache = Some((Instant::now(), values.clone()));
+    let values = collect_snapshots(&state.client, provider_ids).await;
+    if provider_ids.is_none() {
+        if let Ok(mut cache) = state.snapshot_cache.lock() {
+            *cache = Some((Instant::now(), values.clone()));
+        }
     }
     apply_short_window_test_override(state.inner(), values)
 }
@@ -600,7 +611,7 @@ async fn get_snapshots(state: State<'_, AppState>) -> Result<Vec<ProviderSnapsho
             }
         }
     }
-    let values = collect_snapshots(&state.client).await;
+    let values = collect_snapshots(&state.client, None).await;
     if let Ok(mut cache) = state.snapshot_cache.lock() {
         *cache = Some((Instant::now(), values.clone()));
     }
@@ -608,8 +619,11 @@ async fn get_snapshots(state: State<'_, AppState>) -> Result<Vec<ProviderSnapsho
 }
 
 #[tauri::command]
-async fn refresh_snapshots(state: State<'_, AppState>) -> Result<Vec<ProviderSnapshot>, String> {
-    Ok(fetch_snapshots_uncached(&state).await)
+async fn refresh_snapshots(
+    provider_ids: Option<Vec<String>>,
+    state: State<'_, AppState>,
+) -> Result<Vec<ProviderSnapshot>, String> {
+    Ok(fetch_snapshots_uncached(&state, provider_ids.as_deref()).await)
 }
 
 #[tauri::command]

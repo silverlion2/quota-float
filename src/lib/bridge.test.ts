@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { EMPTY_RUNTIME_STATE } from "./activity";
 import {
   applyAppData,
+  fetchSnapshots,
   fetchCodexTokenUsage,
   getVolcengineDiagnostics,
   listenDesktopEvents,
@@ -110,6 +111,11 @@ describe("widget transitions", () => {
     expect(api.invoke).toHaveBeenCalledWith("get_codex_token_usage", { force: true, rebuild: false });
     await fetchCodexTokenUsage(true, true);
     expect(api.invoke).toHaveBeenCalledWith("get_codex_token_usage", { force: true, rebuild: true });
+  });
+
+  it("passes targeted provider refreshes to the native command", async () => {
+    await fetchSnapshots(false, ["codex", "antigravity"]);
+    expect(api.invoke).toHaveBeenCalledWith("refresh_snapshots", { providerIds: ["codex", "antigravity"] });
   });
 
   it("serializes rapid preference writes so the newest state cannot be overwritten", async () => {

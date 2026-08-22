@@ -269,6 +269,12 @@ describe("quota pace", () => {
     expect(refreshDailyPaceBaselines(current, [{ ...unavailable, status: "signed_out" }], new Date(2026, 6, 22, 9, 0, 0))).toEqual({});
   });
 
+  it("preserves baselines for providers omitted from a targeted refresh", () => {
+    const resetsAt = new Date(2026, 6, 26, 8, 0, 0).toISOString();
+    const current = refreshDailyPaceBaselines({}, [codexSnapshot(70, resetsAt)], new Date(2026, 6, 22, 8, 0, 0));
+    expect(refreshDailyPaceBaselines(current, [], new Date(2026, 6, 22, 9, 0, 0))).toEqual(current);
+  });
+
   it("tracks only the weekly Codex window even when compatibility data includes 5h", () => {
     const codex: ProviderSnapshot = {
       provider: "codex",

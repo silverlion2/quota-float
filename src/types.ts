@@ -13,6 +13,7 @@ export type ColorTheme = "aurora" | "graphite" | "paper";
 export type AppearanceMode = "system" | "light" | "dark";
 export type ResolvedAppearance = Exclude<AppearanceMode, "system">;
 export type UpdateChannel = "stable" | "beta";
+export type ResourceMode = "balanced" | "focus";
 
 export const MAX_DAILY_OBSERVED_PERCENT = 10_000;
 
@@ -58,6 +59,8 @@ export interface WidgetPreferences {
   skippedUpdateVersion?: string | null;
   hiddenProviders: ProviderId[];
   collapsedProviders: ProviderId[];
+  pausedProviders: ProviderId[];
+  resourceMode: ResourceMode;
   layoutMode: LayoutMode;
   compactLayout: CompactLayout;
   barEdge: BarEdge;

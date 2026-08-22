@@ -12,6 +12,8 @@ export const DEFAULT_WIDGET_PREFERENCES: WidgetPreferences = {
   skippedUpdateVersion: null,
   hiddenProviders: [],
   collapsedProviders: [],
+  pausedProviders: [],
+  resourceMode: "balanced",
   layoutMode: "standard",
   compactLayout: "float",
   barEdge: "top",
@@ -69,6 +71,10 @@ type LegacyWidgetPreferences = Partial<WidgetPreferences> & { visualStyle?: unkn
 export function normalizeWidgetPreferences(value: LegacyWidgetPreferences | null | undefined): WidgetPreferences {
   const candidate = value && typeof value === "object" ? value as Record<string, unknown> : {};
   const hiddenProviders = providerList(candidate.hiddenProviders);
+  const requestedPausedProviders = providerList(candidate.pausedProviders);
+  const pausedProviders = requestedPausedProviders.length >= DEFAULT_PROVIDER_ORDER.length
+    ? requestedPausedProviders.filter((provider) => provider !== "codex")
+    : requestedPausedProviders;
   const requestedPinnedProvider = providerSet.has(candidate.pinnedProvider as ProviderId) ? candidate.pinnedProvider as ProviderId : null;
   const pinnedProvider = requestedPinnedProvider && !hiddenProviders.includes(requestedPinnedProvider) ? requestedPinnedProvider : null;
   const layoutMode = candidate.layoutMode === "compact" || candidate.layoutMode === "detailed" ? candidate.layoutMode : "standard";
@@ -106,6 +112,8 @@ export function normalizeWidgetPreferences(value: LegacyWidgetPreferences | null
     skippedUpdateVersion: safeSkippedVersion(candidate.skippedUpdateVersion),
     hiddenProviders: hiddenProviders.length >= DEFAULT_PROVIDER_ORDER.length ? [] : hiddenProviders,
     collapsedProviders: providerList(candidate.collapsedProviders),
+    pausedProviders,
+    resourceMode: candidate.resourceMode === "focus" ? "focus" : "balanced",
     layoutMode,
     compactLayout,
     barEdge,

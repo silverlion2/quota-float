@@ -276,6 +276,30 @@ export interface RuntimeUpdate {
   notificationCandidates: Array<{ key: string; event: ActivityEvent }>;
 }
 
+function sameArrayEntries<T>(left: readonly T[], right: readonly T[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function sameRecordEntries<T>(left: Record<string, T>, right: Record<string, T>): boolean {
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  return leftKeys.length === rightKeys.length && leftKeys.every((key) => left[key] === right[key]);
+}
+
+export function runtimeStatesEqual(left: RuntimeState, right: RuntimeState): boolean {
+  return left.schemaVersion === right.schemaVersion
+    && sameArrayEntries(left.history, right.history)
+    && sameArrayEntries(left.dailyUsage, right.dailyUsage)
+    && left.usageMemory.retentionDays === right.usageMemory.retentionDays
+    && left.usageMemory.firstCapturedAt === right.usageMemory.firstCapturedAt
+    && left.usageMemory.lastCapturedAt === right.usageMemory.lastCapturedAt
+    && left.usageMemory.totalSamples === right.usageMemory.totalSamples
+    && sameArrayEntries(left.events, right.events)
+    && sameArrayEntries(left.savedLayouts, right.savedLayouts)
+    && sameRecordEntries(left.lastNotifications, right.lastNotifications)
+    && sameRecordEntries(left.dailyPaceBaselines, right.dailyPaceBaselines);
+}
+
 function pacePeriodLabel(period: NamedQuotaWindow["period"], language: Language): string {
   if (language === "zh-CN") return period === "5h" ? "5 小时" : period === "weekly" ? "周度" : "月度";
   return period === "5h" ? "5-hour" : period;

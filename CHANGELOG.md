@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add per-provider adaptive refresh scheduling, Project Focus mode, and provider monitoring pause controls to reduce idle work and avoid repeated process-spawning probes.
+
 ## 0.3.0 - 2026-08-22
 
 - Add deterministic native Tauri WebDriver smoke coverage for the compiled Windows application.

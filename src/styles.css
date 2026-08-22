@@ -158,11 +158,12 @@
 .display-feature-option strong { font-size: 7px; }
 .display-feature-option small { margin-top: 1px; color: rgba(23,33,49,.42); font-size: 5.5px; }
 .provider-settings { display: grid; gap: 3px; }
-.provider-settings > div { min-width: 0; min-height: 27px; display: grid; grid-template-columns: minmax(70px, 1fr) 58px auto auto; align-items: center; gap: 5px; padding: 2px 5px 2px 8px; border: 1px solid rgba(35,73,119,.08); border-radius: 8px; background: rgba(255,255,255,.38); }
+.provider-settings > div { min-width: 0; min-height: 27px; display: grid; grid-template-columns: minmax(64px, 1fr) 52px auto auto auto; align-items: center; gap: 5px; padding: 2px 5px 2px 8px; border: 1px solid rgba(35,73,119,.08); border-radius: 8px; background: rgba(255,255,255,.38); }
 .provider-settings strong { overflow: hidden; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
 .provider-settings > div > span { color: rgba(23,33,49,.38); font-size: 6px; }
 .provider-settings button { min-height: 20px; display: inline-flex; align-items: center; gap: 3px; padding: 0 6px; border: 1px solid rgba(35,73,119,.1); border-radius: 6px; color: rgba(23,33,49,.55); background: rgba(255,255,255,.45); cursor: pointer; font-size: 6px; font-weight: 680; }
 .provider-settings button.is-active { border-color: color-mix(in srgb, var(--accent-color, #397ae0) 32%, transparent); color: var(--accent-color, #397ae0); background: color-mix(in srgb, var(--accent-color, #397ae0) 9%, white); }
+.provider-settings button:disabled { cursor: not-allowed; opacity: .42; }
 .provider-settings button svg { width: 9px; height: 9px; }
 .provider-health-summary { min-height: 42px; display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 7px; padding: 6px 8px; border: 1px solid rgba(35,73,119,.09); border-radius: 10px; background: rgba(255,255,255,.46); }
 .provider-health-summary > svg { width: 20px; height: 20px; color: #2e9b67; }
@@ -428,6 +429,18 @@ button { font: inherit; }
 @media (prefers-reduced-motion: reduce) {
   .aurora, .loading-card span, .usage-indicator--active i, .quota-card, .diagnostics-panel, .diagnostics-loading svg, .diagnostics-reconnect svg, .error-reconnect-button svg, .update-panel, .update-status svg, .usage-insights-panel { animation: none; }
   .progress span, .provider-row-shell { transition: none; }
+}
+
+:root[data-resource-mode="focus"] .aurora,
+:root[data-resource-mode="focus"] .loading-card span,
+:root[data-resource-mode="focus"] .usage-indicator--active i,
+:root[data-resource-mode="focus"] .diagnostics-loading svg,
+:root[data-resource-mode="focus"] .diagnostics-reconnect svg,
+:root[data-resource-mode="focus"] .error-reconnect-button svg,
+:root[data-resource-mode="focus"] .update-status svg,
+:root[data-resource-mode="focus"] .usage-refresh:disabled svg,
+:root[data-resource-mode="focus"] .usage-chart-empty svg {
+  animation: none;
 }
 
 @media (prefers-contrast: more) {
@@ -984,7 +997,7 @@ button { font: inherit; }
 .display-feature-option strong { font-size: 9px; }
 .display-feature-option small { font-size: 7px; }
 .provider-settings { gap: 5px; }
-.provider-settings > div { min-height: 34px; grid-template-columns: minmax(70px, 1fr) 62px auto auto; gap: 6px; padding: 4px 6px 4px 10px; }
+.provider-settings > div { min-height: 34px; grid-template-columns: minmax(64px, 1fr) 54px auto auto auto; gap: 6px; padding: 4px 6px 4px 10px; }
 .provider-settings strong { font-size: 9px; }
 .provider-settings > div > span { font-size: 7px; }
 .provider-settings button { min-height: 26px; padding: 0 8px; font-size: 8px; }

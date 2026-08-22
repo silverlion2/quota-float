@@ -75,6 +75,10 @@ pub struct WidgetPreferences {
     pub hidden_providers: Vec<String>,
     #[serde(default)]
     pub collapsed_providers: Vec<String>,
+    #[serde(default)]
+    pub paused_providers: Vec<String>,
+    #[serde(default = "default_resource_mode")]
+    pub resource_mode: String,
     #[serde(default = "default_layout_mode")]
     pub layout_mode: String,
     #[serde(default = "default_compact_layout")]
@@ -144,6 +148,9 @@ fn default_provider_order() -> Vec<String> {
 fn default_layout_mode() -> String {
     "standard".into()
 }
+fn default_resource_mode() -> String {
+    "balanced".into()
+}
 fn default_compact_layout() -> String {
     "float".into()
 }
@@ -200,6 +207,8 @@ impl Default for WidgetPreferences {
             skipped_update_version: None,
             hidden_providers: Vec::new(),
             collapsed_providers: Vec::new(),
+            paused_providers: Vec::new(),
+            resource_mode: default_resource_mode(),
             layout_mode: default_layout_mode(),
             compact_layout: default_compact_layout(),
             bar_edge: default_bar_edge(),
@@ -281,8 +290,15 @@ impl WidgetPreferences {
         };
         self.hidden_providers = normalize_providers(self.hidden_providers);
         self.collapsed_providers = normalize_providers(self.collapsed_providers);
+        self.paused_providers = normalize_providers(self.paused_providers);
         if self.hidden_providers.len() >= default_provider_order().len() {
             self.hidden_providers.clear();
+        }
+        if self.paused_providers.len() >= default_provider_order().len() {
+            self.paused_providers.retain(|provider| provider != "codex");
+        }
+        if !matches!(self.resource_mode.as_str(), "balanced" | "focus") {
+            self.resource_mode = default_resource_mode();
         }
         if self
             .pinned_provider
@@ -377,6 +393,8 @@ mod tests {
         .expect("legacy preferences should remain readable");
 
         assert_eq!(preferences.skipped_update_version, None);
+        assert_eq!(preferences.resource_mode, "balanced");
+        assert!(preferences.paused_providers.is_empty());
     }
 
     #[test]
@@ -442,6 +460,33 @@ mod tests {
         assert!(normalized.hidden_providers.is_empty());
         assert_eq!(normalized.accent_color, "#397ae0");
         assert_eq!(normalized.alert_threshold, 1);
+    }
+
+    #[test]
+    fn resource_preferences_are_bounded_and_keep_one_provider_active() {
+        let preferences = WidgetPreferences {
+            paused_providers: vec![
+                "codex".into(),
+                "claude".into(),
+                "qoder".into(),
+                "trae".into(),
+                "workbuddy".into(),
+                "volcengine".into(),
+                "antigravity".into(),
+            ],
+            resource_mode: "focus".into(),
+            ..Default::default()
+        };
+        let normalized = preferences.normalized();
+        assert_eq!(normalized.resource_mode, "focus");
+        assert!(!normalized.paused_providers.contains(&"codex".to_string()));
+        assert_eq!(normalized.paused_providers.len(), 6);
+
+        let invalid = WidgetPreferences {
+            resource_mode: "turbo".into(),
+            ..Default::default()
+        };
+        assert_eq!(invalid.normalized().resource_mode, "balanced");
     }
 
     #[test]

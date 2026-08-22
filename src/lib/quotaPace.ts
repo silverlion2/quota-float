@@ -72,6 +72,10 @@ export function refreshDailyPaceBaselines(
   resetForecast: ResetForecast | null = null,
 ): Record<string, DailyPaceBaseline> {
   const next: Record<string, DailyPaceBaseline> = {};
+  const refreshedProviders = new Set(snapshots.map((snapshot) => snapshot.provider));
+  for (const [key, baseline] of Object.entries(current)) {
+    if (!refreshedProviders.has(baseline.provider)) next[key] = baseline;
+  }
   const localDate = localDateKey(now);
   for (const snapshot of snapshots) {
     const windows = trackedQuotaWindows(snapshot);
