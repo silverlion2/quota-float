@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.27 - 2026-08-22
+
+- fix: compact update and diagnostics overlays
+- docs: record v0.2.26 release evidence
+
 ## 0.2.26 - 2026-08-21
 
 - fix: harden widget state and notifications
