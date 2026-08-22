@@ -48,10 +48,12 @@ describe("release automation", () => {
 
   it("publishes a per-user NSIS updater on Windows", () => {
     const workflow = readFileSync(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
-    expect(workflow).toMatch(/platform: windows-latest\s+args: "--bundles nsis"/);
-    expect(workflow).toMatch(/platform: macos-latest\s+args: "--target universal-apple-darwin --bundles app,dmg"/);
+    expect(workflow).toMatch(/platform: windows-latest\s+args: "--bundles nsis --config src-tauri\/tauri\.release\.conf\.json"/);
+    expect(workflow).toMatch(/platform: macos-latest\s+args: "--target universal-apple-darwin --bundles app,dmg --config src-tauri\/tauri\.release\.conf\.json"/);
     expect(workflow).toMatch(/prerelease:.*contains\(needs\.verify\.outputs\.tag, '-'/);
     expect(workflow).toContain("verify-windows-upgrade.ps1");
+    expect(workflow).toContain("Verify Authenticode when configured");
+    expect(workflow).toContain("Verify Developer ID signature and notarization when configured");
   });
 
   it("supports guarded online release preparation", () => {

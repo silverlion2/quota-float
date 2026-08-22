@@ -5,7 +5,7 @@
 <h1 align="center">Quota Float — Coding Assistant Quota Monitor</h1>
 
 <p align="center">
-  A lightweight, local-first desktop widget that keeps Codex, Qoder, TRAE, WorkBuddy, Volcengine Ark Coding Plan, and Google Antigravity usage limits visible at a glance.
+  A lightweight, local-first desktop widget that keeps Codex, Claude, Qoder, TRAE, WorkBuddy, Volcengine Ark Coding Plan, and Google Antigravity usage limits visible at a glance.
 </p>
 
 <p align="center">
@@ -28,7 +28,7 @@ Quota Float is an always-on-top **Codex quota monitor and coding-assistant usage
 
 ## Why Quota Float?
 
-- **All quotas in one place:** monitor Codex, Qoder, TRAE, WorkBuddy, Volcengine Ark Coding Plan, and Google Antigravity from one compact widget.
+- **All quotas in one place:** monitor Codex, Claude, Qoder, TRAE, WorkBuddy, Volcengine Ark Coding Plan, and Google Antigravity from one compact widget.
 - **Useful before a limit hits:** see healthy, caution, and critical states, quota pace guidance, reset timing, and configurable desktop alerts.
 - **Stays out of the way:** use a floating orb, Ring, or magnetic Bar attached to the top, left, or right work-area edge; expand inward on hover and keep the placement across restarts and display changes.
 - **Resilient by design:** transient failures are retried, while last-known-good values remain visible and clearly marked as stale.
@@ -40,6 +40,7 @@ Quota Float is an always-on-top **Codex quota monitor and coding-assistant usage
 | Provider | Quota source | Requirement |
 | --- | --- | --- |
 | OpenAI Codex | Existing Codex local sign-in state | Codex Desktop or Codex CLI signed in |
+| Anthropic Claude | Existing Claude Code OAuth sign-in state | Claude Code signed in |
 | Qoder | Local account cache | Qoder installed and signed in |
 | TRAE | Existing TRAE local sign-in state | TRAE installed and signed in |
 | WorkBuddy | Existing WorkBuddy local sign-in state | WorkBuddy installed and signed in |
@@ -81,7 +82,7 @@ Updater artifacts are signed with the project's Tauri update key. Windows Authen
 
 ## Privacy and Security
 
-Quota Float sends each provider's existing token only to that provider's official quota service; Volcengine access stays inside Ark CLI, and Antigravity is queried through its loopback-only local quota service. The app stores only its own preferences, bounded quota samples, event summaries, layout profiles, recovery points, and a sanitized incremental Codex usage index.
+Quota Float sends each provider's existing token only to that provider's official quota service; Claude credentials remain read-only, Volcengine access stays inside Ark CLI, and Antigravity is queried through its loopback-only local quota service. The app stores only its own preferences, bounded quota samples, event summaries, layout profiles, recovery points, and a sanitized incremental Codex usage index.
 
 It does **not** store provider tokens, account IDs, prompts, chat history, raw quota responses, or local auth paths. It does not redeem reset credits or change provider account settings. See [Privacy](PRIVACY.md) and [Security](SECURITY.md) for the complete boundary.
 
@@ -128,9 +129,9 @@ Build a desktop bundle with:
 npm run tauri build
 ```
 
-After a Codex Desktop update, run `npm run check:codex`. See the [Codex update compatibility guide](docs/CODEX-UPDATE-CHECK.md) and [release checklist](docs/GITHUB-RELEASE-CHECKLIST.md) for maintainer workflows.
+After a Codex Desktop update, run `npm run check:codex`. See the [provider compatibility contract](docs/PROVIDER-COMPATIBILITY.md), [Codex update compatibility guide](docs/CODEX-UPDATE-CHECK.md), and [release checklist](docs/GITHUB-RELEASE-CHECKLIST.md) for maintainer workflows.
 
-Maintainers can start with the current [project summary](docs/PROJECT-SUMMARY.md), [architecture](docs/ARCHITECTURE.md), [roadmap](docs/ROADMAP.md), and [desktop development SOP](docs/DESKTOP-DEVELOPMENT-SOP.md).
+Maintainers can start with the current [v0.3.0 improvement set](docs/IMPROVEMENTS-v0.3.0.md), [project summary](docs/PROJECT-SUMMARY.md), [architecture](docs/ARCHITECTURE.md), [distribution/signing guide](docs/DISTRIBUTION.md), and [desktop development SOP](docs/DESKTOP-DEVELOPMENT-SOP.md).
 
 ## Contributing
 

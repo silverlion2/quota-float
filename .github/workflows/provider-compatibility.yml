@@ -1,0 +1,47 @@
+name: Provider compatibility
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 3 * * 1"
+  push:
+    paths:
+      - "src-tauri/src/**"
+      - "src/providers.ts"
+      - "src/bridge.ts"
+      - "src/**/*.test.ts"
+      - "src/**/*.test.tsx"
+      - ".github/workflows/provider-compatibility.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: provider-compatibility-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract-fixtures:
+    name: Fixture contracts (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - name: Verify frontend provider contracts
+        run: npm test -- src/lib/providers.test.ts src/lib/bridge.test.ts
+      - name: Verify all read-only native provider fixtures
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+      - name: Enforce native warnings as errors
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings

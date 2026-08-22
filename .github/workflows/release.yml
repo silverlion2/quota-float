@@ -154,9 +154,9 @@ jobs:
       matrix:
         include:
           - platform: windows-latest
-            args: "--bundles nsis"
+            args: "--bundles nsis --config src-tauri/tauri.release.conf.json"
           - platform: macos-latest
-            args: "--target universal-apple-darwin --bundles app,dmg"
+            args: "--target universal-apple-darwin --bundles app,dmg --config src-tauri/tauri.release.conf.json"
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
@@ -175,6 +175,80 @@ jobs:
         with:
           workspaces: src-tauri
       - run: npm ci
+      - name: Configure optional platform code signing
+        if: runner.os == 'Windows'
+        shell: powershell
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          WINDOWS_TIMESTAMP_URL: ${{ secrets.WINDOWS_TIMESTAMP_URL }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE)) {
+            '{}' | Set-Content -LiteralPath 'src-tauri/tauri.release.conf.json' -Encoding UTF8
+            Write-Host '::notice::WINDOWS_CERTIFICATE is not configured; the release will retain Tauri updater signing but will not have Authenticode.'
+            exit 0
+          }
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)) {
+            throw 'WINDOWS_CERTIFICATE_PASSWORD is required when WINDOWS_CERTIFICATE is configured.'
+          }
+          $certificatePath = Join-Path $env:RUNNER_TEMP 'quota-float-release.pfx'
+          [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          $password = ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -Force -AsPlainText
+          $certificate = Import-PfxCertificate -FilePath $certificatePath -CertStoreLocation 'Cert:\CurrentUser\My' -Password $password
+          Remove-Item -LiteralPath $certificatePath -Force
+          if ($null -eq $certificate -or [string]::IsNullOrWhiteSpace($certificate.Thumbprint)) {
+            throw 'The Windows signing certificate could not be imported.'
+          }
+          $timestampUrl = if ([string]::IsNullOrWhiteSpace($env:WINDOWS_TIMESTAMP_URL)) {
+            'http://timestamp.digicert.com'
+          } else {
+            $env:WINDOWS_TIMESTAMP_URL
+          }
+          @{
+            bundle = @{
+              windows = @{
+                certificateThumbprint = $certificate.Thumbprint
+                digestAlgorithm = 'sha256'
+                timestampUrl = $timestampUrl
+              }
+            }
+          } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath 'src-tauri/tauri.release.conf.json' -Encoding UTF8
+          Write-Host 'Configured Authenticode with the imported project certificate.'
+      - name: Configure optional macOS signing and notarization
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          printf '{}\n' > src-tauri/tauri.release.conf.json
+          if [[ -z "$APPLE_CERTIFICATE" ]]; then
+            echo '::notice::APPLE_CERTIFICATE is not configured; the release will retain Tauri updater signing but will not have Developer ID signing or notarization.'
+            exit 0
+          fi
+          if [[ -z "$APPLE_CERTIFICATE_PASSWORD" || -z "$KEYCHAIN_PASSWORD" ]]; then
+            echo 'APPLE_CERTIFICATE_PASSWORD and KEYCHAIN_PASSWORD are required when APPLE_CERTIFICATE is configured.' >&2
+            exit 1
+          fi
+          certificate_path="$RUNNER_TEMP/quota-float-release.p12"
+          keychain_path="$RUNNER_TEMP/quota-float-release.keychain-db"
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$certificate_path"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security import "$certificate_path" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain_path"
+          security list-keychain -d user -s "$keychain_path"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$keychain_path"
+          signing_identity="$(security find-identity -v -p codesigning "$keychain_path" | awk -F'"' '/Developer ID Application/ { print $2; exit }')"
+          rm -f "$certificate_path"
+          if [[ -z "$signing_identity" ]]; then
+            echo 'No Developer ID Application identity was found in APPLE_CERTIFICATE.' >&2
+            exit 1
+          fi
+          echo "APPLE_SIGNING_IDENTITY=$signing_identity" >> "$GITHUB_ENV"
+          echo 'Configured Developer ID signing with the imported project certificate.'
       - name: Verify the checked-out release ref
         shell: bash
         run: npm run version:check -- --tag "${{ needs.verify.outputs.tag }}"
@@ -184,6 +258,9 @@ jobs:
         env:
           RELEASE_TAG: ${{ needs.verify.outputs.tag }}
           RELEASE_SHA: ${{ github.event_name == 'push' && github.sha || needs.create-release-ref.outputs.release_sha }}
+          WINDOWS_PLATFORM_SIGNING: ${{ secrets.WINDOWS_CERTIFICATE != '' && secrets.WINDOWS_CERTIFICATE_PASSWORD != '' }}
+          MACOS_PLATFORM_SIGNING: ${{ secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.KEYCHAIN_PASSWORD != '' }}
+          MACOS_NOTARIZATION: ${{ secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
         with:
           result-encoding: string
           script: |
@@ -193,13 +270,21 @@ jobs:
               tag_name: process.env.RELEASE_TAG,
               target_commitish: process.env.RELEASE_SHA,
             });
-            return `${data.body}\n\n## Privacy\n\nQuota Float remains local-first: it reads existing local sign-in state only for quota requests and does not upload prompts, chats, raw quota responses, or local credentials.`;
+            const signing = [
+              `Windows Authenticode: ${process.env.WINDOWS_PLATFORM_SIGNING === "true" ? "verified by release CI" : "not configured"}`,
+              `macOS Developer ID: ${process.env.MACOS_PLATFORM_SIGNING === "true" ? "verified by release CI" : "not configured"}`,
+              `macOS notarization: ${process.env.MACOS_NOTARIZATION === "true" ? "validated by release CI" : "not configured"}`,
+            ];
+            return `${data.body}\n\n## Platform signing\n\n${signing.map((item) => `- ${item}`).join("\n")}\n\nTauri updater signatures are generated independently for both platforms.\n\n## Privacy\n\nQuota Float remains local-first: it reads existing local sign-in state only for quota requests and does not upload prompts, chats, raw quota responses, or local credentials.`;
       - name: Build and upload draft release artifacts
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tagName: ${{ needs.verify.outputs.tag }}
           releaseName: Quota Float ${{ needs.verify.outputs.tag }}
@@ -217,6 +302,39 @@ jobs:
             "src-tauri/target/release/quota-float.exe",
             $installer
           )
+      - name: Verify Authenticode when configured
+        if: runner.os == 'Windows'
+        shell: powershell
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE)) {
+            exit 0
+          }
+          $installer = Get-ChildItem 'src-tauri/target/release/bundle/nsis' -Filter '*x64-setup.exe' |
+            Select-Object -ExpandProperty FullName -First 1
+          foreach ($artifact in @('src-tauri/target/release/quota-float.exe', $installer)) {
+            $signature = Get-AuthenticodeSignature -FilePath $artifact
+            if ($signature.Status -ne 'Valid') {
+              throw "Invalid Authenticode signature for ${artifact}: $($signature.StatusMessage)"
+            }
+          }
+      - name: Verify Developer ID signature and notarization when configured
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$APPLE_CERTIFICATE" ]]; then
+            exit 0
+          fi
+          app_path="$(find src-tauri/target/universal-apple-darwin/release/bundle/macos -maxdepth 1 -name '*.app' -print -quit)"
+          codesign --verify --deep --strict --verbose=2 "$app_path"
+          if [[ -n "$APPLE_ID" ]]; then
+            xcrun stapler validate "$app_path"
+          fi
 
   finalize:
     needs: [verify, create-release-ref, publish-draft]

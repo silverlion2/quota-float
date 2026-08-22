@@ -5,6 +5,7 @@ Quota Float is designed to be local-first and minimal.
 ## What It Reads
 
 - Codex quota: reads the local Codex Desktop login file and sends the existing credential only to Codex quota endpoints.
+- Claude quota: reads the existing Claude Code OAuth credential from the supported local credential store and sends it only to Anthropic's usage endpoint. Quota Float never refreshes or rewrites that credential.
 - Codex Token insights: scans bounded local Codex session JSONL files but deserializes only session metadata needed for a project basename and normalized terminal category, `turn_context` model names, and numeric `token_count` metadata. Prompt, response, tool payload, full working-directory, account, and raw session identifiers are not retained or returned to the UI. Oversized and non-metadata records are discarded.
 - Qoder: decrypts the existing Electron account cache for the current Windows user and reads its cached remaining quota.
 - TRAE: decrypts the existing local TRAE login state for the current Windows user and sends the token only to TRAE's quota endpoint.
@@ -38,6 +39,7 @@ The app only calls these quota-related HTTPS endpoints from the local desktop pr
 
 - `https://chatgpt.com/backend-api/wham/usage`
 - `https://chatgpt.com/backend-api/wham/rate-limit-reset-credits`
+- `https://api.anthropic.com/api/oauth/usage`
 - `https://api.trae.cn/trae/api/v2/pay/ide_user_ent_usage`
 - `https://copilot.tencent.com/v2/billing/meter/get-user-resource`
 - `https://copilot.tencent.com/v2/billing/meter/get-enterprise-user-usage`

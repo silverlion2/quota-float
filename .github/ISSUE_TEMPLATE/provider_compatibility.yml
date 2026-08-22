@@ -1,0 +1,47 @@
+name: Provider compatibility report
+description: Report that an existing provider became stale, signed out, or unavailable.
+title: "[Compatibility]: "
+labels: ["provider", "compatibility"]
+body:
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Provider
+      options:
+        - Codex
+        - Claude
+        - Qoder
+        - TRAE
+        - WorkBuddy
+        - Volcengine Ark Coding Plan
+        - Google Antigravity
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Quota Float version
+      placeholder: e.g. 0.3.0
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include OS version, CPU architecture, and the provider app/CLI version.
+    validations:
+      required: true
+  - type: textarea
+    id: symptoms
+    attributes:
+      label: Symptoms and safe diagnostics
+      description: Paste only Quota Float's redacted diagnostic text. Never paste credentials, account IDs, auth paths, prompts, chats, or raw responses.
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety confirmation
+      options:
+        - label: I verified this report contains no credentials or private provider data.
+          required: true

@@ -12,12 +12,13 @@ Quota Float is a local-first Tauri desktop application. React renders the widget
 | Frontend domain | `src/lib/*` | Preference/runtime normalization, quota pace, reset detection, history, update state, last-known-good merging |
 | Desktop bridge | `src/lib/bridge.ts` | Typed Tauri commands/events, serialized writes, drag stability detection, browser mocks |
 | Native orchestration | `src-tauri/src/lib.rs`, `src-tauri/src/models.rs`, `src-tauri/src/codex_usage.rs` | Commands, window state, physical-pixel geometry, persistence, bounded local Token aggregation, backups, tray, lifecycle |
-| Provider adapters | `src-tauri/src/{codex,qoder,trae,workbuddy,volcengine,antigravity}.rs` | Read-only discovery, request/parsing, provider-specific error isolation |
+| Provider registry | `src-tauri/src/provider_registry.rs` | Stable ordering, bounded concurrent collection, adapter timeouts, targeted transient retries |
+| Provider adapters | `src-tauri/src/{codex,claude,qoder,trae,workbuddy,volcengine,antigravity}.rs` | Read-only discovery, request/parsing, provider-specific error isolation |
 
 ## Data flow
 
 1. React requests snapshots through `bridge.ts`.
-2. A Tauri command refreshes isolated Rust provider adapters under a shared refresh lock and bounded cache.
+2. A Tauri command asks the provider registry to refresh isolated Rust adapters concurrently under a shared refresh lock and bounded cache. Only transiently failed provider groups are retried.
 3. Rust returns normalized `ProviderSnapshot` values without exposing credentials or raw provider payloads.
 4. React merges new values with last-known-good values, derives pace/reset events, and persists bounded runtime history. Detailed quota samples use a rolling 90-day local memory; daily usage summaries retain 365 days, with lifetime sample metadata surviving pruning.
 5. Rendering selects Float, Ring, or Bar for compact mode and one of three expanded layouts.
@@ -61,6 +62,7 @@ The bridge waits for native drag position stability, asks Rust to resolve the ed
 - Credentials go only to the corresponding official provider endpoint or a documented loopback-only local service.
 - Provider credentials, account identifiers, auth paths, prompts, chats, raw session records, and raw provider responses are neither persisted nor included in diagnostics. Only the documented sanitized Token cursor/index is persisted locally.
 - Provider reads are non-mutating: no reset redemption, account updates, or provider configuration writes.
+- Import/export file selection is native-owned; the webview never supplies arbitrary filesystem paths.
 - Browser preview and tests use synthetic or fixture data.
 
 See `PRIVACY.md`, `SECURITY.md`, and `docs/DESKTOP-DEVELOPMENT-SOP.md` for the complete operational boundary.
@@ -71,5 +73,8 @@ See `PRIVACY.md`, `SECURITY.md`, and `docs/DESKTOP-DEVELOPMENT-SOP.md` for the c
 - Component tests cover compact/expanded layouts, themes, provider selection, Insights tab behavior, accessibility, hover timing and saved layouts.
 - Bridge tests cover command payloads, serialized writes and drag-result persistence.
 - Rust tests cover provider parsing, preference normalization, bounded/incremental Token indexing, and multi-monitor/DPI/work-area geometry.
+- A scheduled Windows/macOS compatibility workflow runs every provider's synthetic fixtures without credentials.
+- Native WebDriver smoke tests launch the compiled Windows application and exercise the Tauri bridge and primary overlays.
+- Production builds enforce JavaScript/CSS size budgets after lazy-loading secondary panels.
 - The desktop fast handoff gate adds production build, Rust formatting, `check`, strict `clippy`, and diff validation.
 - Real Windows/macOS smoke tests remain necessary for WebView transparency, native dragging, always-on-top, pointer pass-through and tray/menu behavior.

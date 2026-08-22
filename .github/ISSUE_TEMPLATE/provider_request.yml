@@ -1,0 +1,48 @@
+name: Provider request
+description: Propose another quota provider with a safe, read-only data source.
+title: "[Provider]: "
+labels: ["provider"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Quota Float only accepts providers with a documented read-only source and a credential boundary that can remain inside the native Tauri process.
+  - type: input
+    id: provider
+    attributes:
+      label: Provider
+      placeholder: Provider or product name
+    validations:
+      required: true
+  - type: dropdown
+    id: source
+    attributes:
+      label: Available quota source
+      options:
+        - Official quota API
+        - Official local CLI or desktop cache
+        - Loopback-only local service
+        - Unknown
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Documentation or implementation evidence
+      description: Link official documentation or a public implementation showing where quota and reset data come from. Never paste credentials or raw authenticated responses.
+    validations:
+      required: true
+  - type: textarea
+    id: platforms
+    attributes:
+      label: Platforms and sign-in method
+      description: Note Windows/macOS support and what local app or CLI must already be signed in.
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety confirmation
+      options:
+        - label: I removed tokens, account IDs, auth paths, prompts, chats, and raw quota responses.
+          required: true

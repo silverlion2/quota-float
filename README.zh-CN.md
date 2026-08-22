@@ -5,7 +5,7 @@
 <h1 align="center">Quota Float — AI 编程助手额度监控悬浮窗</h1>
 
 <p align="center">
-  在桌面上集中查看 Codex、Qoder、TRAE、WorkBuddy、火山方舟 Coding Plan 和 Google Antigravity 的剩余额度、重置时间与使用节奏。
+  在桌面上集中查看 Codex、Claude、Qoder、TRAE、WorkBuddy、火山方舟 Coding Plan 和 Google Antigravity 的剩余额度、重置时间与使用节奏。
 </p>
 
 <p align="center">
@@ -28,7 +28,7 @@ Quota Float 是一款适用于 Windows 和 macOS 的轻量、置顶、**本地�
 
 ## 为什么用 Quota Float？
 
-- **多个平台，一处查看：** 同时监控 Codex、Qoder、TRAE、WorkBuddy、火山方舟 Coding Plan 和 Google Antigravity。
+- **多个平台，一处查看：** 同时监控 Codex、Claude、Qoder、TRAE、WorkBuddy、火山方舟 Coding Plan 和 Google Antigravity。
 - **提前发现额度压力：** 提供健康/提醒/紧张状态、使用节奏建议、重置时间和可配置桌面提醒。
 - **随用随看，不打扰工作：** 可使用悬浮球、圆环或磁吸 Bar；Bar 可贴合工作区顶部、左侧或右侧，悬停时向屏幕内展开，并在重启或显示器变化后保持相对位置。
 - **异常时信息不丢失：** 自动重试临时故障，并保留且明确标记上次成功数据。
@@ -40,6 +40,7 @@ Quota Float 是一款适用于 Windows 和 macOS 的轻量、置顶、**本地�
 | 平台 | 数据来源 | 使用条件 |
 | --- | --- | --- |
 | OpenAI Codex | 本机已有 Codex 登录状态 | Codex Desktop 或 Codex CLI 已登录 |
+| Anthropic Claude | 本机已有 Claude Code OAuth 登录状态 | Claude Code 已登录 |
 | Qoder | 本地账号缓存 | Qoder 已安装并登录 |
 | TRAE | 本机已有 TRAE 登录状态 | TRAE 已安装并登录 |
 | WorkBuddy | 本机已有 WorkBuddy 登录状态 | WorkBuddy 已安装并登录 |
@@ -81,7 +82,7 @@ Quota Float 是一款适用于 Windows 和 macOS 的轻量、置顶、**本地�
 
 ## 隐私与安全
 
-Quota Float 只会把各平台已有令牌发送到该平台自己的额度服务；火山方舟访问保持在 Ark CLI 内，Antigravity 通过本机回环额度服务读取。应用仅保存自身偏好、有限数量的额度采样、事件摘要、布局方案、恢复点，以及脱敏后的 Codex 增量用量索引。
+Quota Float 只会把各平台已有令牌发送到该平台自己的额度服务；Claude 凭据保持只读，火山方舟访问保持在 Ark CLI 内，Antigravity 通过本机回环额度服务读取。应用仅保存自身偏好、有限数量的额度采样、事件摘要、布局方案、恢复点，以及脱敏后的 Codex 增量用量索引。
 
 应用**不会**保存平台令牌、账号 ID、提示词、聊天记录、原始额度响应或本地认证路径，也不会兑换重置次数或修改账号设置。完整边界请阅读[隐私说明](PRIVACY.md)和[安全说明](SECURITY.md)。
 

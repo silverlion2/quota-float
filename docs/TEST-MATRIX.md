@@ -18,6 +18,8 @@
 | Float/Ring | 原有吸附行为 | 不使用 Bar 磁吸结果，保持原窗口吸附路径 | Rust 几何回归、组件测试 |
 | 数据 | TRAE credits | 各 entitlement pack 独立计算后汇总，不相互抵扣 | Rust 解析器回归测试 |
 | 数据 | 正常/过期/登出/缺字段 | 不崩溃、不猜测额度、保留 last-known-good 并安全标记 | Provider/快照单元测试 |
+| Provider registry | 并发、超时、临时失败与定向重试 | 固定顺序返回；慢平台被限制；只重试临时失败组；健康平台不重复请求 | Rust registry 单元测试、每周 Windows/macOS compatibility workflow |
+| Claude | 正常、多窗口、登出、缺字段、超大响应 | 利用率转换为剩余比例；只读复用 Claude Code OAuth；未知结构不猜测 | Rust 合成 fixture 与凭据发现测试 |
 | Token 洞察 | Codex session metadata / `turn_context` / `token_count` | 只保留项目 basename、规范化终端、模型名、哈希会话键与数值计数；忽略正文与过期事件 | Rust 元数据解析与安全维度测试 |
 | 增量索引 | 初次、未变化、追加、截断/重建 | 首次全建；未变化零正文读取复用；追加从 cursor 续读；异常或手动操作安全重建 | Rust 持久化索引测试与 UI 重建入口 |
 | 洞察筛选/指标 | 模型、项目、终端、会话与活跃度 | 筛选同时作用于总览、对比、图表、热力图与模型账本；会话去重、连续天数和均值一致 | TypeScript 聚合与组件测试 |
@@ -25,6 +27,9 @@
 | 预算与提醒 | 关闭、正常、预警、超支 | 按选定区间外推当月；预算归一化；超支提醒本地限频且可关闭 | TypeScript 预算/偏好测试与组件路径 |
 | 用量导出 | CSV、JSON、SVG、价格目录 | 项目匿名化、会话键与正文排除；价格版本可追溯；原生写入限制格式和大小 | TypeScript 导出测试、Rust 命令审查 |
 | 隐私 | 浏览器与诊断 | 浏览器只用合成数据；诊断不含 token、账号、auth 路径或原始响应 | 桥接测试、静态审查 |
+| 原生 E2E | 编译桌面进程、Tauri bridge、展开、控制中心、更新弹窗 | 真实 WebView 启动；原生命令可调用；主要 overlay 可访问且独立关闭 | `npm run test:e2e` WebdriverIO smoke |
+| 性能预算 | 入口与懒加载 chunk | 入口 JS ≤ 430 KiB、总 JS ≤ 600 KiB、gzip JS ≤ 180 KiB、CSS ≤ 150 KiB | `npm run build` + `npm run check:bundle`、CI gate |
+| 供应链 | npm/Rust advisories | 高风险 npm advisory 为零；RustSec vulnerability 为零 | `npm audit --audit-level=high`、`cargo audit`、Dependabot/security workflow |
 
 交付时执行 `docs/DESKTOP-DEVELOPMENT-SOP.md` 的完整 fast handoff gate；本轮实际测试数量和命令结果记录在任务交付说明中，避免文档数字随测试增删而失真。
 

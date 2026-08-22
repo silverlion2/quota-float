@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Add deterministic native Tauri WebDriver smoke coverage for the compiled Windows application.
+- Add a concurrent provider registry with bounded timeouts and targeted transient retries.
+- Add read-only Claude Code quota support without refreshing or persisting provider credentials.
+- Lazy-load secondary panels and enforce production bundle-size budgets in CI.
+- Move import/export selection behind native dialogs and narrow the Tauri capability surface.
+- Add zero-high-advisory npm/Rust supply-chain gates plus automated dependency updates.
+- Add scheduled Windows/macOS provider compatibility fixtures and focused feedback templates.
+- Add optional Authenticode, Developer ID, and notarization release paths with signature verification and explicit release disclosure.
+
 ## 0.2.27 - 2026-08-22
 
 - fix: compact update and diagnostics overlays
