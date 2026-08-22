@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite --configLoader native",
     "build": "tsc && vite build --configLoader native",
+    "check:bundle": "node scripts/check-bundle-budget.mjs",
     "build:e2e": "cross-env VITE_WDIO=1 tsc && cross-env VITE_WDIO=1 vite build --configLoader native",
     "test:e2e:build": "tauri build --features wdio --config src-tauri/tauri.e2e.conf.json --no-bundle",
     "test:e2e": "wdio run wdio.conf.ts",

@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { QuotaBar, QuotaCard, QuotaOrb } from "./components/QuotaCard";
-import { ControlCenter } from "./components/ControlCenter";
 import { EMPTY_UPDATE_STATE } from "./components/UpdatePanel";
 import type { UpdateViewState } from "./components/UpdatePanel";
 import { applyAppData, createAutomaticBackup, exportAppData, fetchCodexResetForecast, fetchSnapshots, getAppDiagnostics, getAutostartEnabled, getPreferences, getRuntimeState, getVolcengineDiagnostics, importAppData, listenDesktopEvents, openExternalUrl, reconnectVolcengine, resizeWidgetToContent, restoreLatestBackup, sendDesktopNotification, setAlwaysOnTop, setAutostartEnabled, setWidgetExpanded, startDragging, updatePreferences, updateRuntimeState } from "./lib/bridge";
@@ -21,6 +20,7 @@ import { runSingleFlight, type SingleFlightState } from "./lib/singleFlight";
 import type { AppDiagnostics, ProviderId, ProviderSnapshot, ResetForecast, RuntimeState, VolcengineDiagnostics, WidgetPreferences } from "./types";
 
 const DEFAULT_PREFS = DEFAULT_WIDGET_PREFERENCES;
+const ControlCenter = lazy(() => import("./components/ControlCenter").then((module) => ({ default: module.ControlCenter })));
 
 function errorMessage(error: unknown, fallback: string): string {
   if (typeof error === "string" && error.trim()) return error;
@@ -624,27 +624,29 @@ export default function App() {
         void getAppDiagnostics().then(setAppDiagnostics).catch(() => undefined);
       }}
       controlCenter={(
-        <ControlCenter
-          preferences={preferences}
-          runtimeState={runtimeState}
-          snapshots={snapshots}
-          diagnostics={appDiagnostics}
-          language={language}
-          onClose={() => setControlOpen(false)}
-          onRefresh={() => refresh(true)}
-          onPreferences={savePreferences}
-          onRuntimeState={commitRuntimeState}
-          onExport={handleExport}
-          onImport={handleImport}
-          onRestore={handleRestore}
-          onCopyDiagnostics={handleCopyDiagnostics}
-          autostartEnabled={autostartEnabled}
-          onAutostart={(enabled) => {
-            const previous = autostartEnabled;
-            setAutostartState(enabled);
-            void setAutostartEnabled(enabled).then(setAutostartState).catch(() => { setAutostartState(previous); setOperationError(language === "en" ? "Autostart could not be changed." : "无法修改开机启动设置。"); });
-          }}
-        />
+        <Suspense fallback={<div className="loading-card" role="status" aria-label={language === "en" ? "Loading control center" : "正在加载控制中心"}><span /><span /><span /></div>}>
+          <ControlCenter
+            preferences={preferences}
+            runtimeState={runtimeState}
+            snapshots={snapshots}
+            diagnostics={appDiagnostics}
+            language={language}
+            onClose={() => setControlOpen(false)}
+            onRefresh={() => refresh(true)}
+            onPreferences={savePreferences}
+            onRuntimeState={commitRuntimeState}
+            onExport={handleExport}
+            onImport={handleImport}
+            onRestore={handleRestore}
+            onCopyDiagnostics={handleCopyDiagnostics}
+            autostartEnabled={autostartEnabled}
+            onAutostart={(enabled) => {
+              const previous = autostartEnabled;
+              setAutostartState(enabled);
+              void setAutostartEnabled(enabled).then(setAutostartState).catch(() => { setAutostartState(previous); setOperationError(language === "en" ? "Autostart could not be changed." : "无法修改开机启动设置。"); });
+            }}
+          />
+        </Suspense>
       )}
       isConsuming={consumingProviders.has(current.provider)}
       consumingProviders={consumingProviders}

@@ -17,6 +17,7 @@ jobs:
       - run: npm run version:check
       - run: npm test
       - run: npm run build
+      - run: npm run check:bundle
       - run: npm audit --audit-level=high
 
   desktop:

@@ -1,5 +1,5 @@
 import { ArrowClockwise, ArrowsInSimple, ArrowsOutSimple, CheckCircle, ClockCounterClockwise, CloudArrowDown, CloudSlash, DotsSixVertical, Gauge, GearSix, Pulse, PushPin, PushPinSlash, SignIn, SpinnerGap, WarningCircle, X } from "@phosphor-icons/react";
-import { memo, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
+import { lazy, memo, Suspense, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { clampPercent, formatDateTime, formatResetDate, formatResetTime, quotaTier } from "../lib/format";
 import { copy, normalizeLanguage, resetForecastLabel, resetForecastTitle } from "../lib/i18n";
 import { useModalDialog } from "../lib/modalDialog";
@@ -11,7 +11,8 @@ import type { BarEdge, ColorTheme, CompactLayout, DailyPaceBaseline, DailyUsageS
 import { ProviderMark } from "./ProviderMark";
 import { ProviderLogoSlider } from "./ProviderLogoSlider";
 import { EMPTY_UPDATE_STATE, UpdatePanel, type UpdateViewState } from "./UpdatePanel";
-import { UsageInsightsPanel } from "./UsageInsightsPanel";
+
+const UsageInsightsPanel = lazy(() => import("./UsageInsightsPanel").then((module) => ({ default: module.UsageInsightsPanel })));
 
 interface Props {
   snapshot: ProviderSnapshot;
@@ -824,19 +825,21 @@ export const QuotaCard = memo(function QuotaCard({
         aria-hidden={overlayOpen || undefined}
         inert={overlayOpen || undefined}
       >
-        {insightsOpen ? <UsageInsightsPanel
-          snapshot={snapshot}
-          snapshots={snapshots}
-          history={history}
-          dailyUsage={dailyUsage}
-          paceBaselines={paceBaselines}
-          language={language}
-          preferences={preferences}
-          resetForecast={visibleResetForecast}
-          onSelectProvider={onSelectProvider}
-          onPreferences={onPreferences}
-          onOpenResetForecast={onOpenResetForecast}
-        /> : null}
+        {insightsOpen ? <Suspense fallback={<div className="usage-chart-empty" role="status">{language === "en" ? "Loading usage insights…" : "正在加载用量洞察…"}</div>}>
+          <UsageInsightsPanel
+            snapshot={snapshot}
+            snapshots={snapshots}
+            history={history}
+            dailyUsage={dailyUsage}
+            paceBaselines={paceBaselines}
+            language={language}
+            preferences={preferences}
+            resetForecast={visibleResetForecast}
+            onSelectProvider={onSelectProvider}
+            onPreferences={onPreferences}
+            onOpenResetForecast={onOpenResetForecast}
+          />
+        </Suspense> : null}
       </div>
       </div>
     </main>

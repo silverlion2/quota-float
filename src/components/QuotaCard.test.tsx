@@ -207,7 +207,7 @@ describe("QuotaCard platform ledger", () => {
     expect(container.querySelector(".provider-history polyline")).toBeInTheDocument();
   });
 
-  it("switches between exactly two tabs while preserving the local usage dashboard", () => {
+  it("switches between exactly two tabs while preserving the local usage dashboard", async () => {
     render(
       <QuotaCard
         snapshot={codex}
@@ -242,7 +242,7 @@ describe("QuotaCard platform ledger", () => {
     fireEvent.click(insightsTab);
     expect(insightsTab).toHaveAttribute("aria-selected", "true");
     expect(quotaTab).toHaveAttribute("aria-selected", "false");
-    expect(screen.getByRole("region", { name: "Usage insights" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Usage insights" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "30D" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("API equivalent")).toBeInTheDocument();
     expect(screen.getByText("Total Token")).toBeInTheDocument();
@@ -264,7 +264,7 @@ describe("QuotaCard platform ledger", () => {
     expect(quotaTab).toHaveAttribute("aria-selected", "true");
   });
 
-  it("labels a short-window pace guide by the hour", () => {
+  it("labels a short-window pace guide by the hour", async () => {
     render(
       <QuotaCard
         snapshot={antigravity}
@@ -280,7 +280,7 @@ describe("QuotaCard platform ledger", () => {
       />,
     );
 
-    expect(screen.getByText("Hourly guide")).toBeInTheDocument();
+    expect(await screen.findByText("Hourly guide")).toBeInTheDocument();
     expect(screen.queryByText("Daily guide")).not.toBeInTheDocument();
   });
 
