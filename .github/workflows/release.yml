@@ -177,14 +177,14 @@ jobs:
       - run: npm ci
       - name: Configure optional platform code signing
         if: runner.os == 'Windows'
-        shell: powershell
+        shell: pwsh
         env:
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
           WINDOWS_TIMESTAMP_URL: ${{ secrets.WINDOWS_TIMESTAMP_URL }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE)) {
-            '{}' | Set-Content -LiteralPath 'src-tauri/tauri.release.conf.json' -Encoding UTF8
+            '{}' | Set-Content -LiteralPath 'src-tauri/tauri.release.conf.json' -Encoding utf8NoBOM
             Write-Host '::notice::WINDOWS_CERTIFICATE is not configured; the release will retain Tauri updater signing but will not have Authenticode.'
             exit 0
           }
@@ -212,7 +212,7 @@ jobs:
                 timestampUrl = $timestampUrl
               }
             }
-          } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath 'src-tauri/tauri.release.conf.json' -Encoding UTF8
+          } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath 'src-tauri/tauri.release.conf.json' -Encoding utf8NoBOM
           Write-Host 'Configured Authenticode with the imported project certificate.'
       - name: Configure optional macOS signing and notarization
         if: runner.os == 'macOS'

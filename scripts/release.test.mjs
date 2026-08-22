@@ -54,6 +54,7 @@ describe("release automation", () => {
     expect(workflow).toContain("verify-windows-upgrade.ps1");
     expect(workflow).toContain("Verify Authenticode when configured");
     expect(workflow).toContain("Verify Developer ID signature and notarization when configured");
+    expect(workflow).toContain("-Encoding utf8NoBOM");
   });
 
   it("supports guarded online release preparation", () => {
