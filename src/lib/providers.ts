@@ -11,6 +11,7 @@ export interface ProviderDefinition {
 
 export const PROVIDER_CATALOG: readonly ProviderDefinition[] = [
   { id: "codex", label: "CODEX", sourceLabel: { en: "Codex local session", "zh-CN": "Codex 本地登录态" } },
+  { id: "claude", label: "CLAUDE", sourceLabel: { en: "Claude Code local session", "zh-CN": "Claude Code 本地登录态" } },
   { id: "qoder", label: "QODER", sourceLabel: { en: "Qoder account cache", "zh-CN": "Qoder 本地账户缓存" } },
   { id: "trae", label: "TRAE", sourceLabel: { en: "TRAE local session", "zh-CN": "TRAE 本地登录态" } },
   { id: "workbuddy", label: "WORKBUDDY", sourceLabel: { en: "WorkBuddy local session", "zh-CN": "WorkBuddy 本地登录态" } },

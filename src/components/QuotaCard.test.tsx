@@ -740,7 +740,7 @@ describe("QuotaCard platform ledger", () => {
     expect(traeRow).toHaveClass("is-drag-target");
     fireEvent.pointerUp(codexGrip, { pointerId: 1, clientY: 1 });
 
-    expect(onReorderProviders).toHaveBeenCalledWith(["qoder", "codex", "trae", "workbuddy", "volcengine", "antigravity"]);
+    expect(onReorderProviders).toHaveBeenCalledWith(["claude", "qoder", "codex", "trae", "workbuddy", "volcengine", "antigravity"]);
   });
 
   it("supports Alt plus arrow keys as a sorting alternative", () => {
@@ -761,6 +761,6 @@ describe("QuotaCard platform ledger", () => {
     );
 
     fireEvent.keyDown(screen.getByRole("listitem", { name: /Reorder CODEX/i }), { key: "ArrowDown", altKey: true });
-    expect(onReorderProviders).toHaveBeenCalledWith(["qoder", "codex", "trae", "workbuddy", "volcengine", "antigravity"]);
+    expect(onReorderProviders).toHaveBeenCalledWith(["claude", "codex", "qoder", "trae", "workbuddy", "volcengine", "antigravity"]);
   });
 });

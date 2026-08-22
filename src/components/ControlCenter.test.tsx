@@ -89,13 +89,13 @@ describe("ControlCenter provider health", () => {
     renderControlCenter();
     fireEvent.click(screen.getByRole("button", { name: "Health" }));
 
-    expect(screen.getByText("1/6 providers connected")).toBeInTheDocument();
+    expect(screen.getByText("1/7 providers connected")).toBeInTheDocument();
     expect(screen.getByText("Healthy")).toBeInTheDocument();
     expect(screen.getByText("Sign-in required")).toBeInTheDocument();
     expect(screen.getByText("Codex local session")).toBeInTheDocument();
     expect(screen.getByText("Volcengine login expired.")).toBeInTheDocument();
     expect(screen.getByText("1 samples")).toBeInTheDocument();
-    expect(screen.getAllByText(/Not checked yet/)).toHaveLength(4);
+    expect(screen.getAllByText(/Not checked yet/)).toHaveLength(5);
   });
 
   it("requests an immediate refresh from the health summary", () => {

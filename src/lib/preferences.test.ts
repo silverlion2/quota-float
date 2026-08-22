@@ -4,7 +4,7 @@ import { normalizeWidgetPreferences } from "./preferences";
 describe("widget preference migration", () => {
   it("fills new quality-of-life settings for legacy preferences", () => {
     const value = normalizeWidgetPreferences({ language: "en", providerOrder: ["qoder", "codex"] as never });
-    expect(value.providerOrder).toEqual(["qoder", "codex", "trae", "workbuddy", "volcengine", "antigravity"]);
+    expect(value.providerOrder).toEqual(["qoder", "codex", "claude", "trae", "workbuddy", "volcengine", "antigravity"]);
     expect(value.layoutMode).toBe("standard");
     expect(value.compactLayout).toBe("float");
     expect(value.barEdge).toBe("top");
@@ -47,7 +47,7 @@ describe("widget preference migration", () => {
   });
 
   it("rejects unsafe colors and never hides every provider", () => {
-    const value = normalizeWidgetPreferences({ accentColor: "red; background:url(x)", hiddenProviders: ["codex", "qoder", "trae", "workbuddy", "volcengine", "antigravity"] });
+    const value = normalizeWidgetPreferences({ accentColor: "red; background:url(x)", hiddenProviders: ["codex", "claude", "qoder", "trae", "workbuddy", "volcengine", "antigravity"] });
     expect(value.accentColor).toBe("#397ae0");
     expect(value.hiddenProviders).toEqual([]);
   });

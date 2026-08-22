@@ -12,7 +12,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [features]
 default = []
-wdio = ["dep:tauri-plugin-wdio", "dep:tauri-plugin-wdio-webdriver"]
+wdio = []
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -24,6 +24,7 @@ aes-gcm = "0.10"
 cbc = { version = "0.1", features = ["alloc", "block-padding"] }
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "6"
+futures-util = "0.3"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "system-proxy"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -38,8 +39,8 @@ tauri-plugin-window-state = "2"
 tokio = { version = "1", features = ["macros", "process", "sync", "time"] }
 tauri-plugin-dialog = "2.7.2"
 tauri-plugin-notification = "2.3.3"
-tauri-plugin-wdio = { version = "1", optional = true }
-tauri-plugin-wdio-webdriver = { version = "1", optional = true }
+tauri-plugin-wdio = "1"
+tauri-plugin-wdio-webdriver = "1"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security_Cryptography"] }

@@ -6,6 +6,7 @@ describe("provider ordering", () => {
     expect(normalizeProviderOrder(["volcengine", "codex"])).toEqual([
       "volcengine",
       "codex",
+      "claude",
       "qoder",
       "trae",
       "workbuddy",
@@ -17,6 +18,7 @@ describe("provider ordering", () => {
     expect(normalizeProviderOrder(["qoder", "qoder", "codex"])).toEqual([
       "qoder",
       "codex",
+      "claude",
       "trae",
       "workbuddy",
       "volcengine",

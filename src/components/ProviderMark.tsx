@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import codexLogo from "../../codex.svg";
+import claudeLogo from "../assets/providers/claude.svg";
 import antigravityLogo from "../assets/providers/antigravity.svg";
 import qoderLogo from "../assets/providers/qoder.svg";
 import traeLogo from "../assets/providers/trae.svg";
@@ -8,6 +9,7 @@ import workbuddyLogo from "../assets/providers/workbuddy.svg";
 
 const providerLogos: Record<string, string> = {
   codex: codexLogo,
+  claude: claudeLogo,
   qoder: qoderLogo,
   trae: traeLogo,
   workbuddy: workbuddyLogo,

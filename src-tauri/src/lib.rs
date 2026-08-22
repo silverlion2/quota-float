@@ -1,7 +1,9 @@
 mod antigravity;
+mod claude;
 mod codex;
 mod codex_usage;
 mod models;
+mod provider_registry;
 mod qoder;
 mod reset_forecast;
 mod trae;
@@ -238,57 +240,8 @@ fn apply_short_window_test_override(
     snapshots
 }
 
-async fn collect_snapshots_once(client: &reqwest::Client) -> Vec<ProviderSnapshot> {
-    let qoder_snapshot = qoder::fetch_snapshot();
-    let (
-        codex_snapshot,
-        trae_snapshot,
-        workbuddy_snapshot,
-        volcengine_snapshot,
-        antigravity_snapshot,
-    ) = tokio::join!(
-        codex::fetch_snapshot(client),
-        trae::fetch_snapshot(client),
-        workbuddy::fetch_snapshot(client),
-        volcengine::fetch_snapshot(),
-        antigravity::fetch_snapshot(),
-    );
-    let mut values = vec![codex_snapshot];
-    values.extend(qoder_snapshot);
-    values.extend(trae_snapshot);
-    values.extend(workbuddy_snapshot);
-    values.extend(volcengine_snapshot);
-    values.extend(antigravity_snapshot);
-    values
-}
-
 async fn collect_snapshots(client: &reqwest::Client) -> Vec<ProviderSnapshot> {
-    let mut values = collect_snapshots_once(client).await;
-    for delay in [400_u64, 1_200_u64] {
-        let retryable = values.iter().any(|snapshot| {
-            matches!(
-                snapshot.status.as_str(),
-                "unavailable" | "stale" | "loading"
-            )
-        });
-        if !retryable {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(delay)).await;
-        let retried = collect_snapshots_once(client).await;
-        for current in &mut values {
-            if !matches!(current.status.as_str(), "unavailable" | "stale" | "loading") {
-                continue;
-            }
-            if let Some(candidate) = retried
-                .iter()
-                .find(|candidate| candidate.provider == current.provider)
-            {
-                *current = candidate.clone();
-            }
-        }
-    }
-    values
+    provider_registry::collect(client).await
 }
 
 async fn fetch_snapshots_uncached(state: &State<'_, AppState>) -> Vec<ProviderSnapshot> {

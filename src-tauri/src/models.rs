@@ -130,6 +130,7 @@ fn default_language() -> String {
 fn default_provider_order() -> Vec<String> {
     [
         "codex",
+        "claude",
         "qoder",
         "trae",
         "workbuddy",
@@ -230,7 +231,9 @@ impl WidgetPreferences {
         self.auto_rotate_seconds = self.auto_rotate_seconds.clamp(5, 300);
         if !matches!(
             self.pinned_provider.as_deref(),
-            Some("codex" | "qoder" | "trae" | "workbuddy" | "volcengine" | "antigravity")
+            Some(
+                "codex" | "claude" | "qoder" | "trae" | "workbuddy" | "volcengine" | "antigravity"
+            )
         ) {
             self.pinned_provider = None;
         }
@@ -238,7 +241,7 @@ impl WidgetPreferences {
         for provider in self.provider_order {
             if matches!(
                 provider.as_str(),
-                "codex" | "qoder" | "trae" | "workbuddy" | "volcengine" | "antigravity"
+                "codex" | "claude" | "qoder" | "trae" | "workbuddy" | "volcengine" | "antigravity"
             ) && !provider_order.contains(&provider)
             {
                 provider_order.push(provider);
@@ -262,7 +265,13 @@ impl WidgetPreferences {
             for provider in values {
                 if matches!(
                     provider.as_str(),
-                    "codex" | "qoder" | "trae" | "workbuddy" | "volcengine" | "antigravity"
+                    "codex"
+                        | "claude"
+                        | "qoder"
+                        | "trae"
+                        | "workbuddy"
+                        | "volcengine"
+                        | "antigravity"
                 ) && !normalized.contains(&provider)
                 {
                     normalized.push(provider);
@@ -404,6 +413,7 @@ mod tests {
             vec![
                 "qoder",
                 "codex",
+                "claude",
                 "trae",
                 "workbuddy",
                 "volcengine",
@@ -417,6 +427,7 @@ mod tests {
         let preferences = WidgetPreferences {
             hidden_providers: vec![
                 "codex".into(),
+                "claude".into(),
                 "qoder".into(),
                 "trae".into(),
                 "workbuddy".into(),
