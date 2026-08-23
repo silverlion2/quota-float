@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.2 - 2026-08-23
+
+- feat: refine desktop layouts and add multi-source reset forecasting
+
 ## 0.3.1 - 2026-08-22
 
 - Add per-provider adaptive refresh scheduling, Project Focus mode, and provider monitoring pause controls to reduce idle work and avoid repeated process-spawning probes.
