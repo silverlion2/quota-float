@@ -55,6 +55,7 @@ export function UpdatePanel({ state, language, onClose, onDownload, onInstall, o
           ? t.updateCurrent
           : state.error ?? t.updateCenterSubtitle;
   const progress = state.progress?.percent;
+  const boundedProgress = progress === null || progress === undefined ? null : Math.max(0, Math.min(100, progress));
 
   return (
     <section ref={dialogRef} className="update-panel" role="dialog" aria-modal="true" aria-labelledby="app-update-title" tabIndex={-1} onMouseDown={(event) => event.stopPropagation()}>
@@ -73,8 +74,8 @@ export function UpdatePanel({ state, language, onClose, onDownload, onInstall, o
           <strong>{title}</strong>
           <small>{hint}</small>
           {state.phase === "downloading" ? (
-            <div className="update-progress" role="progressbar" aria-label={progress === null || progress === undefined ? t.updateDownloading(version ?? "") : t.updateProgress(progress)} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress ?? undefined}>
-              <span style={{ width: `${progress ?? 18}%` }} />
+            <div className="update-progress" role="progressbar" aria-label={boundedProgress === null ? t.updateDownloading(version ?? "") : t.updateProgress(boundedProgress)} aria-valuemin={0} aria-valuemax={100} aria-valuenow={boundedProgress ?? undefined}>
+              <span style={{ width: `${boundedProgress ?? 18}%` }} />
             </div>
           ) : null}
         </div>

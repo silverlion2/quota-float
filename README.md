@@ -29,7 +29,7 @@ Quota Float is an always-on-top **Codex quota monitor and coding-assistant usage
 ## Why Quota Float?
 
 - **All quotas in one place:** monitor Codex, Claude, Qoder, TRAE, WorkBuddy, Volcengine Ark Coding Plan, and Google Antigravity from one compact widget.
-- **Useful before a limit hits:** see healthy, caution, and critical states, quota pace guidance, reset timing, and configurable desktop alerts.
+- **Useful before a limit hits:** see healthy, caution, and critical states, quota pace guidance, reset timing, a freshness-gated multi-source global reset outlook, and configurable desktop alerts.
 - **Stays out of the way:** use a floating orb, Ring, or magnetic Bar attached to the top, left, or right work-area edge; expand inward on hover and keep the placement across restarts and display changes.
 - **Resilient by design:** transient failures are retried, while last-known-good values remain visible and clearly marked as stale.
 - **Private by default:** no telemetry, analytics, account modification, prompt collection, or third-party tracking.
@@ -84,6 +84,8 @@ Updater artifacts are signed with the project's Tauri update key. Windows Authen
 ## Privacy and Security
 
 Quota Float sends each provider's existing token only to that provider's official quota service; Claude credentials remain read-only, Volcengine access stays inside Ark CLI, and Antigravity is queried through its loopback-only local quota service. The app stores only its own preferences, bounded quota samples, event summaries, layout profiles, recovery points, and a sanitized incremental Codex usage index.
+
+The optional Codex global reset outlook reads three public, unauthenticated tracker endpoints without sending provider credentials, account data, quota values, or local Token counts. It rejects stale data, uses the median of fresh forecasts, exposes source count/confidence, and lets only a fresh timed announcement or corroborated outlook affect planning. Your provider-reported personal reset time remains authoritative.
 
 It does **not** store provider tokens, account IDs, prompts, chat history, raw quota responses, or local auth paths. It does not redeem reset credits or change provider account settings. See [Privacy](PRIVACY.md) and [Security](SECURITY.md) for the complete boundary.
 

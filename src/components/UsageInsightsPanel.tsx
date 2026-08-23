@@ -230,9 +230,16 @@ export function UsageInsightsPanel({
   const weekdayLabels = english ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] : ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
   const rangeText = rangeLabel(range, english);
   const forecastWindow = resetForecast?.windowHours ?? 48;
+  const forecastSourceMeta = resetForecast?.sourceCount && resetForecast.confidence
+    ? (english
+      ? ` · ${resetForecast.sourceCount} sources · ${resetForecast.confidence} confidence`
+      : ` · ${resetForecast.sourceCount} 个来源 · ${resetForecast.confidence === "high" ? "高" : resetForecast.confidence === "medium" ? "中" : "低"}置信度`)
+    : "";
   const forecastMeta = resetForecast?.resetAnnounced
     ? (english ? "Provider reset announced" : "平台已宣布重置")
-    : (english ? `Reset outlook ${Math.round(resetForecast?.score ?? 0)}% · ${forecastWindow}h` : `重置展望 ${Math.round(resetForecast?.score ?? 0)}% · ${forecastWindow} 小时`);
+    : (english
+      ? `Reset outlook ${Math.round(resetForecast?.score ?? 0)}% · ${forecastWindow}h${forecastSourceMeta}`
+      : `重置展望 ${Math.round(resetForecast?.score ?? 0)}% · ${forecastWindow} 小时${forecastSourceMeta}`);
   const tokenValue = (value: number): string => tokenLoading && !tokenReport ? "…" : knownTokenData ? compactNumber(value, language) : "—";
   const activeDays = knownTokenData ? tokenSummary.activeDays : quotaSummary.activeDays;
   const averageActiveDay = knownTokenData && tokenSummary.activeDays > 0 ? `${compactNumber(tokenSummary.totalTokens / tokenSummary.activeDays, language)} Token` : percent(quotaSummary.averageActiveDayPercent);
@@ -344,9 +351,9 @@ export function UsageInsightsPanel({
 
       {knownTokenData ? <section className="usage-model-breakdown" aria-label={english ? "Model cost breakdown" : "模型费用明细"}>
         <header><div><Database weight="duotone" /><span>{english ? "MODEL COST LEDGER" : "模型费用账本"}</span></div><small>{modelBreakdown.length} {english ? "models · filtered view" : "个模型 · 当前筛选"}</small></header>
-        <div className="usage-model-table" role="table">
-          <div className="usage-model-row usage-model-row--head" role="row"><span>{english ? "Model" : "模型"}</span><span>Token</span><span>{english ? "Sessions" : "会话"}</span><span>{english ? "Cache" : "缓存"}</span><span>{english ? "API equivalent" : "API 等价费用"}</span></div>
-          {modelBreakdown.map((model) => <div className="usage-model-row" role="row" key={model.model}><span><strong>{model.label}</strong><small>{model.model}</small></span><span><strong>{compactNumber(model.totalTokens, language)}</strong><small>{percent(model.share * 100, 0)} {english ? "share" : "占比"}</small></span><span>{model.sessions}</span><span>{percent(model.cacheHitRate * 100, 0)}</span><span className={model.pricedTokenCoverage < 1 ? "is-unpriced" : ""}>{model.pricedTokenCoverage > 0 ? money(model.cost.totalUsd) : (english ? "Unpriced" : "未定价")}</span></div>)}
+        <div className="usage-model-table" role="table" aria-colcount={5} aria-rowcount={modelBreakdown.length + 1}>
+          <div className="usage-model-row usage-model-row--head" role="row"><span role="columnheader">{english ? "Model" : "模型"}</span><span role="columnheader">Token</span><span role="columnheader">{english ? "Sessions" : "会话"}</span><span role="columnheader">{english ? "Cache" : "缓存"}</span><span role="columnheader">{english ? "API equivalent" : "API 等价费用"}</span></div>
+          {modelBreakdown.map((model) => <div className="usage-model-row" role="row" key={model.model}><span role="cell"><strong>{model.label}</strong><small>{model.model}</small></span><span role="cell"><strong>{compactNumber(model.totalTokens, language)}</strong><small>{percent(model.share * 100, 0)} {english ? "share" : "占比"}</small></span><span role="cell">{model.sessions}</span><span role="cell">{percent(model.cacheHitRate * 100, 0)}</span><span role="cell" className={model.pricedTokenCoverage < 1 ? "is-unpriced" : ""}>{model.pricedTokenCoverage > 0 ? money(model.cost.totalUsd) : (english ? "Unpriced" : "未定价")}</span></div>)}
         </div>
       </section> : null}
 

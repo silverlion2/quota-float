@@ -44,6 +44,14 @@ The app only calls these quota-related HTTPS endpoints from the local desktop pr
 - `https://copilot.tencent.com/v2/billing/meter/get-user-resource`
 - `https://copilot.tencent.com/v2/billing/meter/get-enterprise-user-usage`
 
+For the optional public Codex global-reset outlook, the desktop process also reads these unauthenticated JSON endpoints:
+
+- `https://codexresetradar.com/api/status`
+- `https://codex-reset.com/api/forecast`
+- `https://codexreset.app/api/signal`
+
+These requests do not include provider credentials, account identifiers, quota snapshots, local Token counts, or user content. Responses are freshness-checked and size-capped, and redirects are disabled.
+
 Qoder and Antigravity collection are local-only. Volcengine network requests are made by the user's installed Ark CLI.
 
 No telemetry, analytics, crash reporting, or third-party tracking is included.
@@ -57,5 +65,7 @@ Logs are intentionally generic. They must not include tokens, account IDs, raw b
 ## Accuracy Boundary
 
 Quota Float displays quota returned by provider services, local account caches, or Ark CLI. It does not estimate quota from local Token usage and does not fabricate values when the response shape is unknown.
+
+The public Codex global-reset outlook is separate from the personal reset time reported by Codex. It is labeled unofficial, uses a freshness-gated median across available public trackers, reports confidence and source count, and does not change quota planning when only one source is available or sources materially disagree. A fresh, explicitly timed announcement may be used as the temporary planning horizon until the account-level quota response confirms the reset.
 
 Token counts are available only when Codex exposes supported numeric metadata. The displayed cost is an API-equivalent estimate, not a Codex subscription bill or proof of actual API charges. Unknown models remain unpriced and reduce the displayed pricing coverage instead of inheriting a guessed rate.

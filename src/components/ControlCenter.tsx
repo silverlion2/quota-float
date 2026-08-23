@@ -1,11 +1,11 @@
-import { ArrowClockwise, ArrowCounterClockwise, Bell, ChartLineUp, ClockCounterClockwise, DownloadSimple, Eye, EyeSlash, Heartbeat, Layout, ListStar, Monitor, Moon, Plus, Sun, Trash, UploadSimple, X } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowCounterClockwise, Bell, ChartLineUp, ClockCounterClockwise, DownloadSimple, Eye, EyeSlash, GearSix, Heartbeat, Layout, ListStar, Monitor, Moon, Plus, Sun, Trash, UploadSimple, X } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
 import { useModalDialog } from "../lib/modalDialog";
 import { DEFAULT_PROVIDER_ORDER, PROVIDER_CATALOG } from "../lib/providers";
 import type { AppDiagnostics, Language, ProviderId, ProviderSnapshot, RuntimeState, SavedLayout, SnapshotStatus, WidgetPreferences } from "../types";
 import { ProviderMark } from "./ProviderMark";
 
-type Tab = "display" | "health" | "alerts" | "activity" | "system";
+type Tab = "display" | "providers" | "health" | "alerts" | "activity" | "system";
 
 interface Props {
   preferences: WidgetPreferences;
@@ -47,7 +47,7 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
   const [layoutName, setLayoutName] = useState("");
   const zh = language !== "en";
   const labels = zh ? {
-    title: "控制中心", subtitle: "显示、提醒、历史与恢复", display: "显示", alerts: "提醒", activity: "历史", system: "系统",
+    title: "控制中心", subtitle: "布局、平台、提醒、历史与恢复", display: "显示", providerTab: "平台", alerts: "提醒", activity: "历史", system: "系统",
     layout: "信息密度", compact: "紧凑", standard: "标准", detailed: "详细", accent: "强调色", rotate: "轮换间隔",
     providers: "平台显示与监控", hidden: "已隐藏", collapsed: "精简行", paused: "已暂停", monitoring: "监控中", resetOrder: "恢复默认排序", savedLayouts: "布局方案", saveLayout: "保存当前布局", noLayouts: "尚未保存布局方案",
     focusMode: "项目专注模式", focusModeHint: "降低后台刷新频率并暂停轮换与动态效果；手动刷新仍可用",
@@ -56,7 +56,7 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
     update: "更新策略", channel: "更新通道", autoUpdate: "后台自动检查和下载", autostart: "登录系统后自动启动", stable: "稳定版", beta: "测试版（手动安装）",
     diagnostics: "应用诊断", copy: "复制诊断报告", backup: "备份与迁移", export: "导出设置与历史", import: "导入备份", restore: "恢复最近自动备份",
   } : {
-    title: "Control center", subtitle: "Display, alerts, history, and recovery", display: "Display", alerts: "Alerts", activity: "Activity", system: "System",
+    title: "Control center", subtitle: "Layout, providers, alerts, history, and recovery", display: "Display", providerTab: "Providers", alerts: "Alerts", activity: "Activity", system: "System",
     layout: "Information density", compact: "Compact", standard: "Standard", detailed: "Detailed", accent: "Accent color", rotate: "Rotation interval",
     providers: "Provider display and monitoring", hidden: "Hidden", collapsed: "Condensed row", paused: "Paused", monitoring: "Monitoring", resetOrder: "Reset default order", savedLayouts: "Layout profiles", saveLayout: "Save current layout", noLayouts: "No layout profiles saved",
     focusMode: "Project focus mode", focusModeHint: "Reduces background refreshes and pauses rotation and ambient motion; manual refresh stays available",
@@ -251,8 +251,8 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
         <button type="button" onClick={onClose} aria-label="Close" data-dialog-initial-focus><X /></button>
       </header>
       <nav className="control-tabs" aria-label={labels.title}>
-        {([['display', Layout, labels.display], ['health', Heartbeat, healthLabels.tab], ['alerts', Bell, labels.alerts], ['activity', ClockCounterClockwise, labels.activity], ['system', Heartbeat, labels.system]] as const).map(([id, Icon, label]) => (
-          <button key={id} type="button" className={tab === id ? "is-active" : ""} onClick={() => setTab(id)}><Icon /><span>{label}</span></button>
+        {([['display', Layout, labels.display], ['providers', Eye, labels.providerTab], ['health', Heartbeat, healthLabels.tab], ['alerts', Bell, labels.alerts], ['activity', ClockCounterClockwise, labels.activity], ['system', GearSix, labels.system]] as const).map(([id, Icon, label]) => (
+          <button key={id} type="button" className={tab === id ? "is-active" : ""} aria-current={tab === id ? "page" : undefined} onClick={() => setTab(id)}><Icon /><span>{label}</span></button>
         ))}
       </nav>
 
@@ -353,8 +353,18 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
             <label className="display-feature-option"><ListStar /><span><strong>{appearanceLabels.riskFirst}</strong><small>{appearanceLabels.riskFirstHint}</small></span><span className="switch"><input type="checkbox" checked={preferences.riskFirst} onChange={(event) => onPreferences({ ...preferences, riskFirst: event.target.checked })} /><i /></span></label>
             <label className="display-feature-option"><ChartLineUp /><span><strong>{appearanceLabels.history}</strong><small>{appearanceLabels.historyHint}</small></span><span className="switch"><input type="checkbox" checked={preferences.showHistorySparklines} onChange={(event) => onPreferences({ ...preferences, showHistorySparklines: event.target.checked })} /><i /></span></label>
           </div>
-          <div className="control-section-title"><span>{labels.providers}</span><button type="button" onClick={() => onPreferences({ ...preferences, providerOrder: DEFAULT_PROVIDER_ORDER, hiddenProviders: [], collapsedProviders: [] })}><ArrowCounterClockwise />{labels.resetOrder}</button></div>
-          <div className="provider-settings">
+          <div className="control-section-title"><span>{labels.savedLayouts}</span></div>
+          <div className="layout-save"><input value={layoutName} onChange={(event) => setLayoutName(event.target.value)} placeholder={zh ? "方案名称" : "Profile name"} /><button type="button" onClick={saveLayout}><Plus />{labels.saveLayout}</button></div>
+          <div className="saved-layouts">{runtimeState.savedLayouts.length === 0 ? <p>{labels.noLayouts}</p> : runtimeState.savedLayouts.map((layout) => <div key={layout.id}><button type="button" onClick={() => onPreferences({ ...preferences, providerOrder: layout.providerOrder, hiddenProviders: layout.hiddenProviders, collapsedProviders: layout.collapsedProviders, layoutMode: layout.layoutMode, compactLayout: layout.compactLayout, barEdge: layout.barEdge, barOffset: layout.barOffset, expandedLayout: layout.expandedLayout, colorTheme: layout.colorTheme, appearanceMode: layout.appearanceMode, riskFirst: layout.riskFirst, showHistorySparklines: layout.showHistorySparklines, accentColor: layout.accentColor })}><strong>{layout.name}</strong><small>{layout.compactLayout}{layout.compactLayout === "bar" ? `/${layout.barEdge}` : ""} · {layout.expandedLayout} · {layout.colorTheme} · {layout.layoutMode}</small></button><button type="button" aria-label="Delete" onClick={() => onRuntimeState({ ...runtimeState, savedLayouts: runtimeState.savedLayouts.filter((item) => item.id !== layout.id) })}><Trash /></button></div>)}</div>
+        </> : null}
+
+          {tab === "providers" ? <>
+          <div className="provider-management-summary">
+            <Eye weight="duotone" />
+            <div><strong>{labels.providers}</strong><p>{zh ? "集中管理平台可见性、列表密度与后台监控。" : "Manage visibility, row density, and background monitoring in one place."}</p></div>
+            <button type="button" onClick={() => onPreferences({ ...preferences, providerOrder: DEFAULT_PROVIDER_ORDER, hiddenProviders: [], collapsedProviders: [] })}><ArrowCounterClockwise />{labels.resetOrder}</button>
+          </div>
+          <div className="provider-settings provider-settings--management">
             {PROVIDER_CATALOG.map((provider) => {
               const hidden = preferences.hiddenProviders.includes(provider.id);
               const collapsed = preferences.collapsedProviders.includes(provider.id);
@@ -362,9 +372,6 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
               return <div key={provider.id}><strong>{provider.label}</strong><span>{historyCounts.get(provider.id)} {labels.samples}</span><button type="button" className={hidden ? "is-active" : ""} onClick={() => onPreferences({ ...preferences, hiddenProviders: toggleProvider(preferences.hiddenProviders, provider.id) })}>{hidden ? <EyeSlash /> : <Eye />}{hidden ? labels.hidden : zh ? "显示" : "Visible"}</button><button type="button" className={collapsed ? "is-active" : ""} onClick={() => onPreferences({ ...preferences, collapsedProviders: toggleProvider(preferences.collapsedProviders, provider.id) })}><Layout />{labels.collapsed}</button><button type="button" className={paused ? "is-active" : ""} disabled={!paused && monitoredProviderCount <= 1} onClick={() => onPreferences({ ...preferences, pausedProviders: toggleProvider(preferences.pausedProviders, provider.id) })}><Heartbeat />{paused ? labels.paused : labels.monitoring}</button></div>;
             })}
           </div>
-          <div className="control-section-title"><span>{labels.savedLayouts}</span></div>
-          <div className="layout-save"><input value={layoutName} onChange={(event) => setLayoutName(event.target.value)} placeholder={zh ? "方案名称" : "Profile name"} /><button type="button" onClick={saveLayout}><Plus />{labels.saveLayout}</button></div>
-          <div className="saved-layouts">{runtimeState.savedLayouts.length === 0 ? <p>{labels.noLayouts}</p> : runtimeState.savedLayouts.map((layout) => <div key={layout.id}><button type="button" onClick={() => onPreferences({ ...preferences, providerOrder: layout.providerOrder, hiddenProviders: layout.hiddenProviders, collapsedProviders: layout.collapsedProviders, layoutMode: layout.layoutMode, compactLayout: layout.compactLayout, barEdge: layout.barEdge, barOffset: layout.barOffset, expandedLayout: layout.expandedLayout, colorTheme: layout.colorTheme, appearanceMode: layout.appearanceMode, riskFirst: layout.riskFirst, showHistorySparklines: layout.showHistorySparklines, accentColor: layout.accentColor })}><strong>{layout.name}</strong><small>{layout.compactLayout}{layout.compactLayout === "bar" ? `/${layout.barEdge}` : ""} · {layout.expandedLayout} · {layout.colorTheme} · {layout.layoutMode}</small></button><button type="button" aria-label="Delete" onClick={() => onRuntimeState({ ...runtimeState, savedLayouts: runtimeState.savedLayouts.filter((item) => item.id !== layout.id) })}><Trash /></button></div>)}</div>
         </> : null}
 
           {tab === "health" ? <>

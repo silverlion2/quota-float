@@ -17,8 +17,13 @@ const preview: ProviderSnapshot = {
   message: null,
 };
 const preferences: WidgetPreferences = { ...DEFAULT_WIDGET_PREFERENCES, pinnedProvider: "codex", language: "en" };
-const sortedPreferences: WidgetPreferences = { ...preferences, providerOrder: ["qoder", "codex", "trae", "workbuddy", "volcengine", "antigravity"] };
+const sortedPreferences: WidgetPreferences = { ...preferences, providerOrder: ["qoder", "codex", "claude", "trae", "workbuddy", "volcengine", "antigravity"] };
 const peerPreviews: ProviderSnapshot[] = [{
+  provider: "claude", displayName: "CLAUDE", plan: "MAX",
+  shortWindow: { remainingPercent: 58, resetsAt: new Date(Date.now() + 2.1 * 3_600_000).toISOString(), windowSeconds: 18_000 },
+  weeklyWindow: { remainingPercent: 71, resetsAt: new Date(Date.now() + 4.8 * 86_400_000).toISOString(), windowSeconds: 604_800 },
+  resetCredits: null, updatedAt: new Date().toISOString(), status: "ok", message: null,
+}, {
   provider: "qoder", displayName: "QODER", plan: "PRO", shortWindow: null, weeklyWindow: null,
   resetCredits: null, balanceRemaining: 1280, balanceUnit: "credits", updatedAt: new Date().toISOString(), status: "ok", message: null,
 }, {
@@ -70,7 +75,15 @@ const previewResetForecast: ResetForecast = {
   fetchedAt: new Date().toISOString(),
   resetAnnounced: false,
   resetAt: null,
-  sourceUrl: "https://codexresetradar.com/",
+  expectedAt: null,
+  sourceUrl: "https://codex-reset.com/",
+  sourceCount: 3,
+  confidence: "medium",
+  sources: [
+    { name: "Codex Reset", score: 62, fetchedAt: new Date().toISOString(), sourceUrl: "https://codex-reset.com/" },
+    { name: "Codex Reset Radar", score: 59, fetchedAt: new Date().toISOString(), sourceUrl: "https://codexresetradar.com/" },
+    { name: "Will Codex Reset Today", score: 67, fetchedAt: new Date().toISOString(), sourceUrl: "https://codexreset.app/" },
+  ],
 };
 
 const readyUpdate: UpdateViewState = {

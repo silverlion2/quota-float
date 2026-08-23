@@ -681,6 +681,17 @@ export const QuotaCard = memo(function QuotaCard({
         aria-hidden={overlayOpen || undefined}
         inert={overlayOpen || undefined}
       >
+      {preferences.expandedLayout === "provider-bar" ? (
+        <div className="expanded-provider-strip" aria-label={language === "en" ? "Provider quick switch" : "平台快捷切换"}>
+          <p>{language === "en" ? "Providers" : "平台"}<span>{providerDefinitions.length}</span></p>
+          <ProviderLogoSlider
+            providers={providerDefinitions.map((definition) => ({ id: definition.id, label: definition.label }))}
+            selected={snapshot.provider}
+            onSelect={onSelectProvider}
+            ariaLabel={language === "en" ? "Choose provider" : "选择平台"}
+          />
+        </div>
+      ) : null}
       <section className="primary-pane" key={snapshot.provider}>
         <header className="card-header">
           <div>
@@ -692,8 +703,8 @@ export const QuotaCard = memo(function QuotaCard({
                 <button
                   type="button"
                   className={`reset-forecast${visibleResetForecast.resetAnnounced ? " reset-forecast--announced" : ""}`}
-                  title={resetForecastTitle(language)}
-                  aria-label={resetForecastTitle(language)}
+                  title={resetForecastTitle(language, visibleResetForecast)}
+                  aria-label={resetForecastTitle(language, visibleResetForecast)}
                   onMouseDown={(event) => event.stopPropagation()}
                   onClick={() => onOpenResetForecast(visibleResetForecast.sourceUrl)}
                 >
@@ -862,7 +873,9 @@ export const QuotaOrb = memo(function QuotaOrb({ snapshot, onDrag, onHover, lang
     ? new Intl.NumberFormat(activeLanguage === "en" ? "en-US" : "zh-CN", { notation: "compact", maximumFractionDigits: 1 }).format(balance)
     : null;
   const tier = quotaTier(remaining);
-  const available = snapshot.status === "ok" && (remaining !== null || balance !== null);
+  const staleAge = Date.now() - new Date(snapshot.updatedAt).getTime();
+  const staleUsable = snapshot.status === "stale" && Number.isFinite(staleAge) && staleAge <= 30 * 60_000;
+  const available = (snapshot.status === "ok" || staleUsable) && (remaining !== null || balance !== null);
   const compactProgress = remaining ?? (available ? 100 : 0);
   const accessibleLabel = remaining !== null && orbQuota
     ? quotaAvailableLabel(orbQuota.period, remaining, activeLanguage)
@@ -895,7 +908,7 @@ export const QuotaOrb = memo(function QuotaOrb({ snapshot, onDrag, onHover, lang
       onMouseEnter={handleMouseEnter}
       onMouseLeave={() => { onHover(false); scheduleIdle(); }}
       onMouseDown={(event) => { if (event.button === 0) void onDrag(); }}
-      aria-label={available ? accessibleLabel : localizedBackendMessage(snapshot.message, activeLanguage, snapshot.displayName) ?? t.unavailableStatus}
+      aria-label={available ? `${staleUsable ? `${t.dataStale} · ` : ""}${accessibleLabel}` : localizedBackendMessage(snapshot.message, activeLanguage, snapshot.displayName) ?? t.unavailableStatus}
     >
       <div className="aurora" aria-hidden="true" />
       {available ? (

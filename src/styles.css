@@ -625,20 +625,20 @@ button { font: inherit; }
 .quota-card--style-paper.quota-orb--idle { background: rgba(242,232,214,.9); }
 
 /* Provider switching is shared by the compact Bar and its expanded ledger. */
-.provider-logo-slider { height: 34px; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); align-items: center; gap: 3px; margin: 0 0 5px; padding: 3px 5px 5px; border: 1px solid rgba(255,255,255,.07); border-radius: 12px; background: rgba(0,0,0,.16); touch-action: none; cursor: ew-resize; }
+.provider-logo-slider { height: 34px; display: grid; grid-template-columns: repeat(var(--provider-count, 1), minmax(0, 1fr)); align-items: center; gap: 3px; margin: 0 0 5px; padding: 3px 5px 5px; border: 1px solid rgba(255,255,255,.07); border-radius: 12px; background: rgba(0,0,0,.16); touch-action: none; cursor: ew-resize; }
 .provider-logo-slider button { position: relative; min-width: 0; height: 25px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 8px; color: rgba(235,240,243,.54); background: transparent; cursor: pointer; }
 .provider-logo-slider button:hover { color: rgba(245,248,250,.86); background: rgba(255,255,255,.045); }
 .provider-logo-slider button.is-active { color: #f8fafb; background: rgba(255,255,255,.07); }
 .provider-logo-slider button.is-active::after { content: ""; position: absolute; left: 30%; right: 30%; bottom: -4px; height: 2px; border-radius: 99px; background: var(--accent-color, #397ae0); box-shadow: 0 0 8px color-mix(in srgb, var(--accent-color, #397ae0) 55%, transparent); }
 .provider-logo-slider .provider-mark { width: 20px; height: 20px; margin: 0; padding: 3px; border: 0; border-radius: 6px; color: currentColor; background: transparent; box-shadow: none; }
-.provider-logo-slider--compact { width: 128px; height: 30px; gap: 1px; margin: 0; padding: 2px 2px 4px; border: 0; border-radius: 0; background: transparent; }
+.provider-logo-slider--compact { width: 140px; height: 30px; gap: 1px; margin: 0; padding: 2px 2px 4px; border: 0; border-radius: 0; background: transparent; }
 .provider-logo-slider--compact button { height: 24px; border-radius: 5px; }
 .provider-logo-slider--compact button.is-active { background: color-mix(in srgb, var(--accent-color, #397ae0) 10%, transparent); }
 .provider-logo-slider--compact button.is-active::after { left: 24%; right: 24%; bottom: -3px; }
 .provider-logo-slider--compact .provider-mark { width: 18px; height: 18px; padding: 3px; }
 
-.provider-logo-slider--vertical { grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(6, minmax(0, 1fr)); cursor: ns-resize; }
-.provider-logo-slider--compact.provider-logo-slider--vertical { width: 32px; height: 142px; padding: 2px 4px 2px 2px; }
+.provider-logo-slider--vertical { grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(var(--provider-count, 1), minmax(0, 1fr)); cursor: ns-resize; }
+.provider-logo-slider--compact.provider-logo-slider--vertical { width: 32px; height: 150px; padding: 2px 4px 2px 2px; }
 .provider-logo-slider--compact.provider-logo-slider--vertical button { width: 26px; height: auto; min-height: 21px; }
 .provider-logo-slider--compact.provider-logo-slider--vertical button.is-active::after { left: auto; right: -3px; top: 24%; bottom: 24%; width: 2px; height: auto; }
 
@@ -661,7 +661,7 @@ button { font: inherit; }
 }
 .quota-bar--top {
   display: grid;
-  grid-template-columns: 128px 1px minmax(84px, 1fr) 40px 54px 18px;
+  grid-template-columns: 140px 1px minmax(72px, 1fr) 36px 50px 18px;
   align-items: center;
   gap: 7px;
   padding: 0 10px;
@@ -671,7 +671,7 @@ button { font: inherit; }
 .quota-bar--left,
 .quota-bar--right {
   display: grid;
-  grid-template-rows: 142px 1px 56px 20px 20px 14px;
+  grid-template-rows: 150px 1px 52px 20px 20px 14px;
   grid-template-columns: minmax(0, 1fr);
   align-content: center;
   justify-items: center;
@@ -1364,10 +1364,24 @@ select:focus-visible {
 .quota-bar--right { border-right-color: transparent; }
 
 /* Expanded layout structure is independent from color theme. */
+.quota-card--expanded-provider-bar .quota-tab-panel--quota { grid-template-rows: auto auto; }
+.expanded-provider-strip {
+  min-width: 0;
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 5px 7px 6px 9px;
+  border: 1px solid rgba(45,70,105,.1);
+  border-radius: 12px;
+  background: rgba(255,255,255,.26);
+}
+.expanded-provider-strip > p { min-width: 48px; margin: 0; color: rgba(23,33,49,.56); font-size: 7px; font-weight: 780; letter-spacing: .1em; text-transform: uppercase; }
+.expanded-provider-strip > p span { display: block; margin-top: 2px; color: currentColor; font-size: 10px; letter-spacing: 0; opacity: .65; }
+.expanded-provider-strip .provider-logo-slider { width: 100%; margin: 0; }
 .quota-card--expanded-provider-bar .provider-ledger { padding-left: 16px; }
-.quota-card--expanded-provider-bar .ledger-header { height: auto; min-height: 64px; }
-.quota-card--expanded-provider-bar .ledger-header:not(:has(.card-actions)) { min-height: 28px; }
-.quota-card--expanded-provider-bar .provider-logo-slider { margin-bottom: 8px; }
+.quota-card--expanded-provider-bar .ledger-header { height: auto; min-height: 28px; }
 
 /* Stacked favors a calm reading order: quota first, full-width providers second. */
 .quota-card--expanded-stacked .quota-tab-panel--quota { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto; gap: 16px; }
@@ -2136,3 +2150,170 @@ button.usage-stat-card:hover { border-color: color-mix(in srgb, var(--accent-col
 .quota-card .usage-hour-cell { background: color-mix(in srgb, var(--ui-text) 5%, transparent); box-shadow: inset 0 0 0 1px var(--ui-border); }
 .quota-card .usage-operation-message { color: var(--ui-positive); background: color-mix(in srgb, var(--ui-positive) 9%, transparent); }
 .quota-card .operation-notice { color: var(--ui-danger); border: 1px solid color-mix(in srgb, var(--ui-danger) 18%, transparent); background: color-mix(in srgb, var(--ui-surface-strong) 86%, var(--ui-danger)); }
+
+/* Layout clarity pass: improve scanning without changing the desktop geometry contract. */
+.quota-panel-tabs button { min-height: 26px; font-size: 9.5px; }
+.quota-panel-header .quota-panel-actions button,
+.quota-panel-header .usage-indicator { width: 28px; height: 28px; }
+.provider-row,
+.quota-card--layout-compact .provider-row { height: 28px; }
+.quota-card--layout-detailed .provider-row { height: 32px; }
+.provider-row-shell { grid-template-columns: minmax(0, 1fr) 24px; }
+.provider-reorder-grip { width: 24px; height: 28px; }
+.provider-identity strong { font-size: 9.5px; }
+.provider-identity small,
+.provider-value small { font-size: 7.5px; }
+
+.quota-card .expanded-provider-strip {
+  color: var(--ui-text);
+  border-color: var(--ui-border);
+  background: var(--ui-surface);
+}
+.quota-card .expanded-provider-strip > p { color: var(--ui-muted); }
+.quota-card .expanded-provider-strip .provider-logo-slider {
+  border-color: var(--ui-border);
+  background: var(--ui-surface-strong);
+}
+.quota-card .expanded-provider-strip .provider-logo-slider button { color: var(--ui-muted); }
+.quota-card .expanded-provider-strip .provider-logo-slider button:hover,
+.quota-card .expanded-provider-strip .provider-logo-slider button.is-active { color: var(--ui-text); background: var(--ui-surface-hover); }
+
+.provider-management-summary {
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 9px;
+  border: 1px solid var(--ui-border);
+  border-radius: 11px;
+  color: var(--ui-text);
+  background: var(--ui-surface);
+}
+.provider-management-summary > svg { width: 20px; height: 20px; color: var(--accent-color, #397ae0); }
+.provider-management-summary > div { min-width: 0; }
+.provider-management-summary strong { display: block; font-size: 9px; }
+.provider-management-summary p { margin: 3px 0 0; color: var(--ui-muted); font-size: 7px; line-height: 1.35; }
+.provider-management-summary > button {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 9px;
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  color: var(--ui-text);
+  background: var(--ui-surface-strong);
+  font-size: 7.5px;
+  cursor: pointer;
+}
+.provider-management-summary > button:hover { background: var(--ui-surface-hover); }
+.provider-management-summary > button svg { width: 11px; height: 11px; }
+.provider-settings--management { margin-top: 7px; }
+.provider-settings--management > div { min-height: 34px; }
+.provider-settings--management button { min-height: 26px; }
+
+.quota-card--update-open { --overlay-min-height: 276px; }
+.update-body { grid-template-columns: 148px minmax(0, 1fr); gap: 9px; }
+.update-status,
+.update-notes { padding: 9px 10px; }
+.update-notes > div { height: 78px; font-size: 9px; line-height: 1.45; }
+.update-status strong { font-size: 11px; }
+
+.quota-tab-panel--insights .usage-insights-panel,
+.usage-insights-panel {
+  max-height: min(1070px, calc(100vh - 72px));
+  gap: 10px;
+  overflow-y: auto;
+}
+.usage-insights-header h2 { font-size: 18px; }
+.usage-insights-header small { font-size: 8px; }
+.usage-range-tabs button,
+.usage-chart-controls button { height: 28px; font-size: 8px; }
+.usage-provider-filter,
+.usage-refresh { height: 33px; }
+.usage-refresh { width: 33px; }
+.usage-provider-filter span { font-size: 7px; }
+.usage-provider-filter select { font-size: 8px; }
+.usage-dimension-filters label { height: 33px; }
+.usage-dimension-filters label > span { font-size: 7px; }
+.usage-dimension-filters select { font-size: 8px; }
+.usage-dimension-filters > small { font-size: 7px; line-height: 1.35; }
+.usage-summary-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
+.usage-summary-grid .usage-stat-card,
+.usage-summary-grid--extended .usage-stat-card { min-height: 74px; padding: 9px 10px 8px; }
+.usage-summary-grid .usage-stat-card > span { overflow: visible; font-size: 7.5px; line-height: 1.2; text-overflow: clip; white-space: normal; }
+.usage-summary-grid .usage-stat-card > span em { font-size: 6.8px; }
+.usage-summary-grid .usage-stat-card > strong { font-size: 17px; }
+.usage-summary-grid .usage-stat-card > small { overflow: visible; font-size: 7px; line-height: 1.3; text-overflow: clip; white-space: normal; }
+.usage-daily-card > header span,
+.usage-hourly-card > header span { font-size: 8.5px; }
+.usage-hour-row > span,
+.usage-hour-axis,
+.usage-daily-card > footer { font-size: 7px; }
+.usage-model-breakdown > header > div { font-size: 8.5px; }
+.usage-model-breakdown > header small { font-size: 7px; }
+.usage-model-row { min-height: 38px; font-size: 8px; }
+.usage-model-row--head { font-size: 7px; }
+.usage-model-row strong { font-size: 8.5px; }
+.usage-model-row small { font-size: 7px; }
+.usage-maintenance-panel > div:not(.usage-maintenance-actions) span,
+.usage-maintenance-panel > div:not(.usage-maintenance-actions) small,
+.usage-maintenance-actions button { font-size: 7px; }
+.usage-maintenance-panel > div:not(.usage-maintenance-actions) strong { font-size: 8px; }
+.usage-insights-footnote { font-size: 7px; }
+
+.quota-card .usage-insights-panel :is(
+  .usage-range-tabs button,
+  .usage-provider-filter span,
+  .usage-dimension-filters label > span,
+  .usage-dimension-filters > small,
+  .usage-budget-panel > div:first-child span,
+  .usage-budget-panel > label span,
+  .usage-budget-panel > button,
+  .usage-chart-controls > div:first-child,
+  .usage-daily-card > header span,
+  .usage-hourly-card > header small,
+  .usage-hour-row > span,
+  .usage-hour-axis,
+  .usage-daily-card > footer,
+  .usage-model-breakdown > header small,
+  .usage-model-row small,
+  .usage-maintenance-actions button
+) { color: var(--ui-muted); }
+.quota-card .usage-insights-panel :is(
+  .usage-provider-filter,
+  .usage-dimension-filters label,
+  .usage-budget-panel,
+  .usage-daily-card,
+  .usage-hourly-card,
+  .usage-model-breakdown,
+  .usage-maintenance-panel,
+  .usage-header-actions button
+) { border-color: var(--ui-border); background: var(--ui-surface); }
+.quota-card .usage-insights-panel :is(
+  .usage-budget-panel > div:first-child strong,
+  .usage-daily-card > header strong,
+  .usage-hourly-card > header span,
+  .usage-model-breakdown > header > div,
+  .usage-model-row strong
+) { color: var(--ui-text); }
+
+@media (max-width: 480px) {
+  .quota-card { grid-template-columns: minmax(0, 1fr); }
+  .quota-tab-panel--quota,
+  .quota-card--expanded-provider-bar .quota-tab-panel--quota { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto; }
+  .expanded-provider-strip { grid-column: 1; }
+  .provider-ledger,
+  .quota-card--expanded-provider-bar .provider-ledger { padding: 10px 0 0; border-top: 1px solid var(--ui-border); border-left: 0; }
+  .control-center { grid-template-columns: minmax(0, 1fr); grid-template-rows: 48px auto minmax(0, 1fr); }
+  .control-header { grid-column: 1; }
+  .control-tabs { grid-row: 2; display: flex; overflow-x: auto; padding: 5px 7px; }
+  .control-tabs button { min-width: 66px; }
+  .control-body { grid-column: 1; grid-row: 3; }
+  .usage-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .usage-dimension-filters { grid-template-columns: minmax(0, 1fr); }
+  .usage-budget-panel { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "summary summary" "input alert" "track track"; }
+  .update-body,
+  .diagnostics-body { grid-template-columns: minmax(0, 1fr); }
+}

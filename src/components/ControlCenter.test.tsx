@@ -4,7 +4,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_WIDGET_PREFERENCES } from "../lib/preferences";
-import type { AppDiagnostics, ProviderSnapshot, RuntimeState } from "../types";
+import type { AppDiagnostics, ProviderSnapshot, RuntimeState, WidgetPreferences } from "../types";
 import { ControlCenter } from "./ControlCenter";
 
 afterEach(cleanup);
@@ -58,7 +58,7 @@ const snapshots: ProviderSnapshot[] = [
 function renderControlCenter(
   onRefresh = vi.fn(),
   onPreferences = vi.fn(),
-  preferences = { ...DEFAULT_WIDGET_PREFERENCES, language: "en" as const },
+  preferences: WidgetPreferences = { ...DEFAULT_WIDGET_PREFERENCES, language: "en" },
   onRuntimeState = vi.fn(),
   state = runtimeState,
 ) {
@@ -68,7 +68,7 @@ function renderControlCenter(
       runtimeState={state}
       snapshots={snapshots}
       diagnostics={diagnostics}
-      language="en"
+      language={preferences.language}
       onClose={vi.fn()}
       onRefresh={onRefresh}
       onPreferences={onPreferences}
@@ -145,9 +145,57 @@ describe("ControlCenter provider health", () => {
     expect(onPreferences).toHaveBeenCalledWith(expect.objectContaining({ resourceMode: "focus" }));
   });
 
+  it("keeps provider management in an independent Providers tab", () => {
+    const onPreferences = vi.fn();
+    renderControlCenter(vi.fn(), onPreferences);
+
+    const displayTab = screen.getByRole("button", { name: "Display" });
+    const providersTab = screen.getByRole("button", { name: "Providers" });
+    expect(displayTab).toHaveAttribute("aria-current", "page");
+    expect(providersTab).not.toHaveAttribute("aria-current");
+    expect(screen.queryByText("Provider display and monitoring")).not.toBeInTheDocument();
+
+    fireEvent.click(providersTab);
+    expect(providersTab).toHaveAttribute("aria-current", "page");
+    expect(displayTab).not.toHaveAttribute("aria-current");
+    expect(screen.getByText("Provider display and monitoring")).toBeInTheDocument();
+    expect(screen.getByText("Manage visibility, row density, and background monitoring in one place.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Visible" })[0]);
+    expect(onPreferences).toHaveBeenCalledWith(expect.objectContaining({ hiddenProviders: ["codex"] }));
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Condensed row" })[0]);
+    expect(onPreferences).toHaveBeenCalledWith(expect.objectContaining({ collapsedProviders: ["codex"] }));
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Monitoring" })[0]);
+    expect(onPreferences).toHaveBeenCalledWith(expect.objectContaining({ pausedProviders: ["codex"] }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Reset default order" }));
+    expect(onPreferences).toHaveBeenCalledWith(expect.objectContaining({
+      providerOrder: DEFAULT_WIDGET_PREFERENCES.providerOrder,
+      hiddenProviders: [],
+      collapsedProviders: [],
+    }));
+  });
+
+  it("localizes the independent Providers tab in Chinese", () => {
+    renderControlCenter(
+      vi.fn(),
+      vi.fn(),
+      { ...DEFAULT_WIDGET_PREFERENCES, language: "zh-CN" },
+    );
+
+    const providersTab = screen.getByRole("button", { name: "平台" });
+    fireEvent.click(providersTab);
+    expect(providersTab).toHaveAttribute("aria-current", "page");
+    expect(screen.getByText("平台显示与监控")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "监控中" })).toHaveLength(7);
+  });
+
   it("pauses provider monitoring independently from visibility", () => {
     const onPreferences = vi.fn();
     renderControlCenter(vi.fn(), onPreferences);
+    fireEvent.click(screen.getByRole("button", { name: "Providers" }));
     fireEvent.click(screen.getAllByRole("button", { name: "Monitoring" })[0]);
     expect(onPreferences).toHaveBeenCalledWith(expect.objectContaining({ pausedProviders: ["codex"], hiddenProviders: [] }));
   });

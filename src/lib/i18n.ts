@@ -1,4 +1,4 @@
-import type { Language } from "../types";
+import type { Language, ResetForecast } from "../types";
 
 export const DEFAULT_LANGUAGE: Language = "zh-CN";
 
@@ -248,8 +248,13 @@ export function resetForecastLabel(language: Language, score: number, hours: num
   return announced ? "已宣布重置" : `${hours}小时概率 · ${score}%`;
 }
 
-export function resetForecastTitle(language: Language): string {
-  return language === "en"
-    ? "Unofficial reset likelihood from Codex Reset Radar. Open the source-first forecast."
-    : "来自 Codex Reset Radar 的非官方重置概率。打开来源优先的预测。";
+export function resetForecastTitle(language: Language, forecast: ResetForecast): string {
+  const count = forecast.sourceCount ?? forecast.sources?.length ?? 1;
+  const confidence = forecast.confidence ?? "low";
+  const sourceNames = forecast.sources?.map((source) => source.name).join(", ");
+  if (language === "en") {
+    return `Unofficial reset likelihood: ${count}-source consensus, ${confidence} confidence.${sourceNames ? ` Sources: ${sourceNames}.` : ""} Open the primary source.`;
+  }
+  const confidenceLabel = confidence === "high" ? "高" : confidence === "medium" ? "中" : "低";
+  return `非官方重置概率：综合 ${count} 个公开来源，置信度${confidenceLabel}。${sourceNames ? `来源：${sourceNames}。` : ""}打开主要来源。`;
 }

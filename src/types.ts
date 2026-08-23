@@ -45,6 +45,17 @@ export interface ResetForecast {
   fetchedAt: string;
   resetAnnounced: boolean;
   resetAt?: string | null;
+  expectedAt?: string | null;
+  sourceUrl: string;
+  sourceCount?: number;
+  confidence?: "low" | "medium" | "high";
+  sources?: ResetForecastSource[];
+}
+
+export interface ResetForecastSource {
+  name: string;
+  score: number;
+  fetchedAt: string;
   sourceUrl: string;
 }
 

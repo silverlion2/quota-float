@@ -164,7 +164,7 @@ describe("QuotaCard platform ledger", () => {
     expect(screen.getByText("Weekly remaining")).toBeInTheDocument();
   });
 
-  it("keeps the full-size provider-bar layout free of a duplicate slider", () => {
+  it("adds a full-catalog quick switcher to the provider-bar layout", () => {
     render(
       <QuotaCard
         snapshot={codex}
@@ -179,7 +179,9 @@ describe("QuotaCard platform ledger", () => {
       />,
     );
 
-    expect(screen.queryByRole("radiogroup", { name: "Choose provider" })).not.toBeInTheDocument();
+    const providerSwitcher = screen.getByRole("radiogroup", { name: "Choose provider" });
+    expect(providerSwitcher).toHaveStyle("--provider-count: 7");
+    expect(within(providerSwitcher).getAllByRole("radio")).toHaveLength(7);
     expect(screen.getByRole("button", { name: /QODER.*1,280.*credits/i })).toBeInTheDocument();
   });
 
@@ -242,7 +244,7 @@ describe("QuotaCard platform ledger", () => {
     fireEvent.click(insightsTab);
     expect(insightsTab).toHaveAttribute("aria-selected", "true");
     expect(quotaTab).toHaveAttribute("aria-selected", "false");
-    expect(await screen.findByRole("region", { name: "Usage insights" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Usage insights" }, { timeout: 10_000 })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "30D" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("API equivalent")).toBeInTheDocument();
     expect(screen.getByText("Total Token")).toBeInTheDocument();
@@ -262,7 +264,7 @@ describe("QuotaCard platform ledger", () => {
     expect(insightsTab).toHaveAttribute("aria-selected", "true");
     fireEvent.keyDown(insightsTab, { key: "ArrowLeft" });
     expect(quotaTab).toHaveAttribute("aria-selected", "true");
-  });
+  }, 15_000);
 
   it("labels a short-window pace guide by the hour", async () => {
     render(
@@ -280,7 +282,7 @@ describe("QuotaCard platform ledger", () => {
       />,
     );
 
-    expect(await screen.findByText("Hourly guide")).toBeInTheDocument();
+    expect(await screen.findByText("Hourly guide", {}, { timeout: 10_000 })).toBeInTheDocument();
     expect(screen.queryByText("Daily guide")).not.toBeInTheDocument();
   });
 

@@ -8,7 +8,9 @@ function resetForecast(score: number, windowHours = 48): ResetForecast {
     windowHours,
     fetchedAt: "2026-07-22T00:00:00Z",
     resetAnnounced: false,
-    sourceUrl: "https://codexresetradar.com/",
+    sourceUrl: "https://codex-reset.com/",
+    sourceCount: 3,
+    confidence: "medium",
   };
 }
 
@@ -158,6 +160,27 @@ describe("quota pace", () => {
     const resetsAt = new Date(2026, 6, 27, 0, 0, 0).toISOString();
 
     expect(forecastAdjustedResetAt(resetsAt, now, { ...resetForecast(80), score: Number.NaN })).toBe(resetsAt);
+  });
+
+  it("uses a fresh timed announcement instead of an uncertain midpoint", () => {
+    const now = new Date(2026, 6, 22, 0, 0, 0);
+    const resetsAt = new Date(2026, 6, 27, 0, 0, 0).toISOString();
+    const expectedAt = new Date(2026, 6, 22, 9, 30, 0).toISOString();
+
+    expect(forecastAdjustedResetAt(resetsAt, now, {
+      ...resetForecast(80),
+      resetAnnounced: true,
+      expectedAt,
+      confidence: "high",
+    })).toBe(expectedAt);
+  });
+
+  it("does not change quota planning for a low-confidence or single-source outlook", () => {
+    const now = new Date(2026, 6, 22, 0, 0, 0);
+    const resetsAt = new Date(2026, 6, 27, 0, 0, 0).toISOString();
+
+    expect(forecastAdjustedResetAt(resetsAt, now, { ...resetForecast(80), confidence: "low" })).toBe(resetsAt);
+    expect(forecastAdjustedResetAt(resetsAt, now, { ...resetForecast(80), sourceCount: 1 })).toBe(resetsAt);
   });
 
   it("captures Radar once per day and applies it to the daily suggestion", () => {

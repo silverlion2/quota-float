@@ -51,6 +51,13 @@ export function forecastAdjustedResetAt(resetsAt: string, now: Date, forecast: R
   const nowMs = now.getTime();
   if (!forecast || !Number.isFinite(guaranteedResetAt) || guaranteedResetAt <= nowMs
     || !Number.isFinite(forecast.score) || !Number.isFinite(forecast.windowHours)) return resetsAt;
+  const announcedResetAt = forecast.resetAnnounced && forecast.expectedAt
+    ? Date.parse(forecast.expectedAt)
+    : Number.NaN;
+  if (Number.isFinite(announcedResetAt) && announcedResetAt > nowMs && announcedResetAt <= guaranteedResetAt) {
+    return new Date(announcedResetAt).toISOString();
+  }
+  if (forecast.resetAnnounced || (forecast.sourceCount ?? 0) < 2 || forecast.confidence === "low") return resetsAt;
   const probability = clamp(forecast.score, 0, 100) / 100;
   const forecastWindowMs = Math.max(0, forecast.windowHours) * HOUR_MS;
   if (probability <= 0 || !Number.isFinite(forecastWindowMs) || forecastWindowMs <= 0) return resetsAt;
