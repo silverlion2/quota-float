@@ -1,6 +1,6 @@
 # Quota Float Project Memo
 
-Last updated: 2026-08-14
+Last updated: 2026-08-23
 
 This memo records durable collaboration preferences and operational defaults for future maintenance tasks. It does not replace the desktop development SOP, release checks, or an explicit authorization for the current release.
 
@@ -48,6 +48,19 @@ If any one-time setting is missing or has expired, stop before publishing and re
 - Release automation tests: `scripts/release.test.mjs`
 - Operational guide: [RELEASE.md](RELEASE.md)
 - Checklist: [GITHUB-RELEASE-CHECKLIST.md](GITHUB-RELEASE-CHECKLIST.md)
-- Latest evidence record: [RELEASE-0.2.26.md](RELEASE-0.2.26.md)
+- Latest evidence record: [RELEASE-0.3.2.md](RELEASE-0.3.2.md)
 
 The online workflow supports `patch`, `minor`, `major`, `beta`, `stable`, or an explicit `x.y.z[-beta.n]`. It keeps external `v*` tag compatibility while avoiding reliance on a second workflow being triggered by a tag created with the default GitHub Actions token.
+
+## Shipped baseline history
+
+### v0.3.2 — 2026-08-23
+
+- Feature commit: `8c97035` (`feat: refine desktop layouts and add multi-source reset forecasting`).
+- Release commit/tag: `b150889a2103dc51182248a0411c33d8af1b14db` / `v0.3.2`; release evidence was added in `6b91284`.
+- Product baseline: Dashboard, Provider Bar, and Stacked are distinct expanded layouts; the seven-provider switcher supports pointer and roving-keyboard navigation; provider management has its own Control Center tab; Insights, update, diagnostics, and compact Bar surfaces share readable responsive tokens.
+- Forecast baseline: `src-tauri/src/reset_forecast.rs` reads three fixed public, unauthenticated sources with bounded requests, freshness checks, median consensus, confidence reporting, and conservative planning safeguards. Provider credentials and personal quota values are never sent to these sources.
+- Verification baseline: 182 frontend tests and 64 Rust tests passed; production build, bundle budget, Rust formatting/check/strict Clippy, Defender scans, cross-platform publishing, updater signatures, and stable Windows upgrade smoke all passed.
+- Publication: [GitHub Release](https://github.com/silverlion2/quota-float/releases/tag/v0.3.2) and [workflow run](https://github.com/silverlion2/quota-float/actions/runs/32636990895). Windows Authenticode, macOS Developer ID signing, and macOS notarization remain unconfigured and are disclosed in the release record.
+
+Keep detailed asset inventories, signing state, and per-run evidence in versioned `docs/RELEASE-*.md` records; keep this section as the concise current product/release baseline for future work.

@@ -2,7 +2,12 @@
 
 ## 0.3.2 - 2026-08-23
 
-- feat: refine desktop layouts and add multi-source reset forecasting
+- Refine Dashboard, Provider Bar, Stacked, Insights, Control Center, update, diagnostics, and compact Bar layouts.
+- Add a seven-provider quick switcher with roving keyboard focus and responsive density improvements.
+- Replace the single-source Codex global-reset outlook with a freshness-gated median across Codex Reset, Codex Reset Radar, and Will Codex Reset Today.
+- Report forecast source count and confidence, prefer fresh explicitly timed announcements, and prevent stale, single-source, or materially disagreeing outlooks from changing quota planning.
+- Bound public forecast collection to three fixed unauthenticated HTTPS endpoints, a five-second fetch window, and 128 KiB per response without sending credentials or account data.
+- Add Rust normalization/consensus tests, TypeScript planning safeguards, component coverage, and updated privacy/security documentation.
 
 ## 0.3.1 - 2026-08-22
 

@@ -18,9 +18,11 @@
 | Float/Ring | 原有吸附行为 | 不使用 Bar 磁吸结果，保持原窗口吸附路径 | Rust 几何回归、组件测试 |
 | 数据 | TRAE credits | 各 entitlement pack 独立计算后汇总，不相互抵扣 | Rust 解析器回归测试 |
 | 数据 | 正常/过期/登出/缺字段 | 不崩溃、不猜测额度、保留 last-known-good 并安全标记 | Provider/快照单元测试 |
+| Codex 全局重置展望 | 三源正常、部分失败、过期、异常窗口、分歧、定时官宣 | 仅纳入 6 小时内的 48h 数据；中位数抗离群；展示来源数/置信度；低置信度或单源不改变规划；定时官宣优先于概率中点 | Rust `reset_forecast`、TypeScript `quotaPace` 与组件测试 |
 | Provider registry | 并发、超时、临时失败与定向重试 | 固定顺序返回；慢平台被限制；只重试临时失败组；健康平台不重复请求 | Rust registry 单元测试、每周 Windows/macOS compatibility workflow |
 | 自适应刷新 | 健康、临界、异常平台与 Balanced/Project Focus 模式 | 各平台使用独立时钟和分级间隔；只查询到期且未暂停的平台；Volcengine/Antigravity 不做同轮进程级重试 | TypeScript refresh policy、bridge/merge 与 Rust registry 单元测试 |
 | 项目专注 | 开关专注模式、暂停/恢复平台、手动刷新 | 自动轮播和无限环境动画停止；自动刷新降频；至少保留一个监控平台；手动刷新保持可用 | 偏好归一化、控制中心组件和样式回归测试 |
+| 展开布局与平台切换 | Dashboard、Provider Bar、Stacked、七平台快速切换、窄窗口 | 三种信息层级明确区分；横向/纵向切换器完整显示目录；方向键与 Home/End roving focus 可用；窄窗口无关键内容溢出 | QuotaCard、ProviderLogoSlider、ControlCenter 组件/无障碍测试与响应式样式审查 |
 | Claude | 正常、多窗口、登出、缺字段、超大响应 | 利用率转换为剩余比例；只读复用 Claude Code OAuth；未知结构不猜测 | Rust 合成 fixture 与凭据发现测试 |
 | Token 洞察 | Codex session metadata / `turn_context` / `token_count` | 只保留项目 basename、规范化终端、模型名、哈希会话键与数值计数；忽略正文与过期事件 | Rust 元数据解析与安全维度测试 |
 | 增量索引 | 初次、未变化、追加、截断/重建 | 首次全建；未变化零正文读取复用；追加从 cursor 续读；异常或手动操作安全重建 | Rust 持久化索引测试与 UI 重建入口 |
@@ -35,12 +37,12 @@
 
 交付时执行 `docs/DESKTOP-DEVELOPMENT-SOP.md` 的完整 fast handoff gate；本轮实际测试数量和命令结果记录在任务交付说明中，避免文档数字随测试增删而失真。
 
-## v0.2.20 自动发布证据
+## v0.3.2 自动发布证据
 
-- 本地发布门槛：132 个前端测试、45 个 Rust 测试、生产构建、`fmt`、`check`、严格 `clippy`、diff 与版本一致性检查全部通过。
-- GitHub Actions：`verify`、Windows Defender 预检、Windows NSIS 发布、macOS Universal 发布和 Windows `upgrade-smoke` 全部成功。
+- 本地发布门槛：182 个前端测试、64 个 Rust 测试、生产构建、bundle budget、`fmt`、`check`、严格 `clippy`、diff 与版本一致性检查全部通过。
+- GitHub Actions：`verify`、Windows Defender 预检、Windows NSIS 发布、macOS Universal 发布、`finalize` 和 Windows `upgrade-smoke` 全部成功。
 - 公开 Release：`latest.json`、Windows 安装包及签名、macOS Universal DMG、macOS updater archive 及签名均已上传。
-- 最新完整证据、链接和产物清单见 [RELEASE-0.2.26.md](RELEASE-0.2.26.md)。
+- 最新完整证据、链接、产物清单与签名限制见 [RELEASE-0.3.2.md](RELEASE-0.3.2.md)。
 
 这些结果证明构建、扫描、打包、更新签名和自动升级路径成功；它们不替代下列原生窗口视觉/交互矩阵。
 

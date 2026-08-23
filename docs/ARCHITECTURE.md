@@ -8,12 +8,26 @@ Quota Float is a local-first Tauri desktop application. React renders the widget
 
 | Layer | Primary files | Responsibility |
 | --- | --- | --- |
-| Presentation | `src/App.tsx`, `src/components/*`, `src/styles.css` | Compact/expanded layouts, provider selection, alerts, status center, accessibility, themes |
-| Frontend domain | `src/lib/*` | Preference/runtime normalization, quota pace, reset detection, history, update state, last-known-good merging |
+| Presentation | `src/App.tsx`, `src/components/*`, `src/styles.css` | Distinct compact/expanded layouts, full-catalog provider selection, alerts, status center, accessibility, responsive themes |
+| Frontend domain | `src/lib/*` | Preference/runtime normalization, quota pace, forecast planning safeguards, reset detection, history, update state, last-known-good merging |
 | Desktop bridge | `src/lib/bridge.ts` | Typed Tauri commands/events, serialized writes, drag stability detection, browser mocks |
 | Native orchestration | `src-tauri/src/lib.rs`, `src-tauri/src/models.rs`, `src-tauri/src/codex_usage.rs` | Commands, window state, physical-pixel geometry, persistence, bounded local Token aggregation, backups, tray, lifecycle |
 | Provider registry | `src-tauri/src/provider_registry.rs` | Stable ordering, selected-provider collection, adapter timeouts, and bounded transient retries for non-process-spawning adapters |
 | Provider adapters | `src-tauri/src/{codex,claude,qoder,trae,workbuddy,volcengine,antigravity}.rs` | Read-only discovery, request/parsing, provider-specific error isolation |
+| Public reset outlook | `src-tauri/src/reset_forecast.rs`, `src/lib/quotaPace.ts`, `src-tauri/capabilities/default.json` | Fixed-origin public forecast collection, freshness/schema validation, robust consensus, timed-announcement handling, conservative planning integration, and source-link allowlisting |
+
+## Repository structure
+
+| Path | Ownership and contents |
+| --- | --- |
+| `src/components/` | React surfaces and interaction boundaries: compact/expanded quota cards, full provider switcher, Control Center tabs, Insights, diagnostics, and update UI |
+| `src/lib/` | Browser-safe domain logic, typed bridge calls, refresh/pace policy, history, preferences, pricing, exports, and synthetic preview data |
+| `src-tauri/src/` | Native-only credential access, provider adapters, public reset aggregation, persistence, geometry, notifications, tray, updater, and sanitized Codex indexing |
+| `src-tauri/capabilities/` and `src-tauri/gen/schemas/` | Auditable Tauri permission source plus generated capability schema; capability changes must keep these synchronized |
+| `scripts/` | Version/release helpers, bundle budgets, compatibility checks, Windows Defender verification, and release automation tests |
+| `.github/workflows/` | CI, provider compatibility, security, release/publish, signing, and upgrade-smoke orchestration |
+| `docs/` | Desktop SOP, architecture, project baseline/history, test matrix, distribution guidance, and immutable per-version release evidence |
+| `assets/` and `docs/images/` | Application icons and user-facing documentation screenshots |
 
 ## Data flow
 
@@ -30,6 +44,18 @@ The Insights tab lazily requests a separate 90-day Codex Token report. Rust stre
 React applies range and dimension filters, derives session/activity/cache metrics, and evaluates each model against the versioned standard-API price catalog in `src/lib/openaiPricing.ts`. It then builds comparisons, charts, per-model cost rows, and a local monthly budget outlook. CSV/JSON exports aggregate away session keys and alias projects; the SVG share card exports summary metrics only. Native export writes only an explicitly selected `.csv`, `.json`, or `.svg` target.
 
 Provider failures are partial: one unavailable adapter must not erase healthy providers. A transient failure retains the last valid value with a stale status; signed-out and malformed responses receive explicit non-secret errors.
+
+## Public Codex reset outlook flow
+
+The global reset outlook is informational and remains separate from the personal quota reset time reported by Codex:
+
+1. When Codex is included in a refresh, `App.tsx` requests quota snapshots and the public reset outlook in parallel.
+2. `reset_forecast.rs` concurrently reads three fixed unauthenticated JSON endpoints—Codex Reset, Codex Reset Radar, and Will Codex Reset Today—under a five-second overall boundary. Each response is capped at 128 KiB; the shared native HTTP client disables redirects and sends no provider credential, account identifier, quota value, or local Token count.
+3. Each source must expose a 48-hour forecast and a timestamp no older than six hours. Fresh scores are normalized to `0…100`; the displayed score is their median so one lagging or extreme tracker cannot dominate.
+4. Confidence is derived from source count and score spread. A fresh explicitly timed announcement takes priority and contributes its published time-window midpoint as `expectedAt`; otherwise materially disagreeing or single-source results remain low-confidence.
+5. React exposes the source list/count and confidence. Quota planning retains the provider-reported personal `resetsAt` when the outlook is low-confidence or uncorroborated. A corroborated medium/high-confidence probability may produce a bounded probability-weighted planning horizon, while a fresh exact announcement supersedes that estimate only when it precedes the personal reset.
+
+Failure is fail-closed: stale, malformed, oversized, redirected, timed-out, or unexpected-window responses are discarded independently. If no valid source remains, no public outlook is shown and provider quota collection continues unaffected.
 
 ## Preferences and recovery
 
@@ -64,6 +90,7 @@ The bridge waits for native drag position stability, asks Rust to resolve the ed
 - Credentials go only to the corresponding official provider endpoint or a documented loopback-only local service.
 - Provider credentials, account identifiers, auth paths, prompts, chats, raw session records, and raw provider responses are neither persisted nor included in diagnostics. Only the documented sanitized Token cursor/index is persisted locally.
 - Provider reads are non-mutating: no reset redemption, account updates, or provider configuration writes.
+- Public reset-outlook requests are unauthenticated reads to three fixed HTTPS origins and never receive provider credentials, account data, quota values, or local Token counts.
 - Import/export file selection is native-owned; the webview never supplies arbitrary filesystem paths.
 - Browser preview and tests use synthetic or fixture data.
 
@@ -72,9 +99,10 @@ See `PRIVACY.md`, `SECURITY.md`, and `docs/DESKTOP-DEVELOPMENT-SOP.md` for the c
 ## Verification architecture
 
 - TypeScript pure-function tests cover migration, clamping, pace, reset/history behavior, price calculation, filtering, budget forecasting, and anonymized exports.
-- Component tests cover compact/expanded layouts, themes, provider selection, Insights tab behavior, accessibility, hover timing and saved layouts.
+- Component tests cover compact/expanded layout differentiation, themes, the seven-provider pointer/keyboard switcher, Control Center tabs, Insights behavior, accessibility, hover timing and saved layouts.
 - Bridge tests cover command payloads, serialized writes and drag-result persistence.
 - Rust tests cover provider parsing, preference normalization, bounded/incremental Token indexing, and multi-monitor/DPI/work-area geometry.
+- Reset-outlook tests cover live response shapes, freshness and window rejection, robust median consensus, confidence, and timed-announcement priority; TypeScript tests cover conservative planning fallbacks.
 - A scheduled Windows/macOS compatibility workflow runs every provider's synthetic fixtures without credentials.
 - Native WebDriver smoke tests launch the compiled Windows application and exercise the Tauri bridge and primary overlays.
 - Production builds enforce JavaScript/CSS size budgets after lazy-loading secondary panels.
