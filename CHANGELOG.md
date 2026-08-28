@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.4 - 2026-08-28
+
+- fix: keep vertical provider list in provider bar
+
 ## 0.3.3 - 2026-08-28
 
 - feat: add bottleneck layout and detachable cockpit panels
