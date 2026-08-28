@@ -23,7 +23,7 @@
 | Provider registry | 并发、超时、临时失败与定向重试 | 固定顺序返回；慢平台被限制；只重试临时失败组；健康平台不重复请求 | Rust registry 单元测试、每周 Windows/macOS compatibility workflow |
 | 自适应刷新 | 健康、临界、异常平台与 Balanced/Project Focus 模式 | 各平台使用独立时钟和分级间隔；只查询到期且未暂停的平台；Volcengine/Antigravity 不做同轮进程级重试 | TypeScript refresh policy、bridge/merge 与 Rust registry 单元测试 |
 | 项目专注 | 开关专注模式、暂停/恢复平台、手动刷新 | 自动轮播和无限环境动画停止；自动刷新降频；至少保留一个监控平台；手动刷新保持可用 | 偏好归一化、控制中心组件和样式回归测试 |
-| 展开布局与平台切换 | Dashboard、Cockpit、Provider Bar、Stacked、七平台快速切换、窄窗口 | 四种信息层级明确区分；每个展开态最多一套平台导航；方向键与 Home/End roving focus 可用；窄窗口无关键内容溢出 | QuotaCard、ProviderLogoSlider、ControlCenter 组件/无障碍测试与响应式样式审查 |
+| 展开布局与平台切换 | Dashboard、Cockpit、Provider Bar、Stacked、七平台快速切换、窄窗口 | 四种信息层级明确区分；Provider Bar 仅保留右侧纵向平台列表，Cockpit 仅保留顶部横向平台导航；方向键与 Home/End roving focus 可用；窄窗口无关键内容溢出 | QuotaCard、ProviderLogoSlider、ControlCenter 组件/无障碍测试与响应式样式审查 |
 | Cockpit 局部聚焦 | 额度、节奏、90 天用量区块放大与恢复 | 选定区块成为唯一主体并触发窗口内容高度同步；恢复后回到三块一屏布局；切换平台或布局时清除聚焦 | QuotaCard 组件测试、浏览器合成预览与动态尺寸观察 |
 | Cockpit 独立窗 | 拆出额度、节奏或 90 天用量 | 区域与平台 ID 通过 allowlist；子窗仅获事件/窗口最小权限并经原生只读命令读取缓存与本地历史；关闭子窗不隐藏主窗；三个固定尺寸无裁切 | Rust 目标校验、桥接/组件测试、Chrome 合成截图；Tauri 实机烟测待执行 |
 | Claude | 正常、多窗口、登出、缺字段、超大响应 | 利用率转换为剩余比例；只读复用 Claude Code OAuth；未知结构不猜测 | Rust 合成 fixture 与凭据发现测试 |

@@ -164,8 +164,8 @@ describe("QuotaCard platform ledger", () => {
     expect(screen.getByText("Weekly remaining")).toBeInTheDocument();
   });
 
-  it("uses one full-catalog switcher in the provider-bar layout", () => {
-    render(
+  it("keeps the vertical provider ledger and removes the horizontal switcher in the provider-bar layout", () => {
+    const { container } = render(
       <QuotaCard
         snapshot={codex}
         snapshots={[codex, qoder]}
@@ -179,11 +179,10 @@ describe("QuotaCard platform ledger", () => {
       />,
     );
 
-    const providerSwitcher = screen.getByRole("radiogroup", { name: "Choose provider" });
-    expect(providerSwitcher).toHaveStyle("--provider-count: 7");
-    expect(within(providerSwitcher).getAllByRole("radio")).toHaveLength(7);
-    expect(screen.getAllByRole("radiogroup", { name: "Choose provider" })).toHaveLength(1);
-    expect(screen.queryByRole("button", { name: /QODER.*1,280.*credits/i })).not.toBeInTheDocument();
+    expect(container.querySelector(".expanded-provider-strip")).not.toBeInTheDocument();
+    expect(container.querySelector(".provider-ledger")).toBeInTheDocument();
+    expect(screen.queryByRole("radiogroup", { name: "Choose provider" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /QODER.*1,280.*credits/i })).toBeInTheDocument();
   });
 
   it("renders the cockpit overview and enlarges one region in place", () => {

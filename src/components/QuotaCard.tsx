@@ -835,7 +835,7 @@ export const QuotaCard = memo(function QuotaCard({
         aria-hidden={overlayOpen || undefined}
         inert={overlayOpen || undefined}
       >
-      {preferences.expandedLayout === "provider-bar" || preferences.expandedLayout === "cockpit" ? (
+      {preferences.expandedLayout === "cockpit" ? (
         <div className="expanded-provider-strip" aria-label={language === "en" ? "Provider quick switch" : "平台快捷切换"}>
           <p>{language === "en" ? "Providers" : "平台"}<span>{providerDefinitions.length}</span></p>
           <ProviderLogoSlider
@@ -951,7 +951,6 @@ export const QuotaCard = memo(function QuotaCard({
         )}
       </section>
 
-      {preferences.expandedLayout !== "provider-bar" ? (
       <aside className="provider-ledger" aria-hidden={overlayOpen || undefined} inert={overlayOpen || undefined}>
         <header className="ledger-header">
           <p>{t.allServices}<span>{providerDefinitions.length}/{PROVIDER_CATALOG.length}</span>{preferences.riskFirst ? <b>{language === "en" ? "RISK FIRST" : "风险优先"}</b> : null}</p>
@@ -993,7 +992,6 @@ export const QuotaCard = memo(function QuotaCard({
           ))}
         </div>
       </aside>
-      ) : null}
       </>
       )}
       </div>

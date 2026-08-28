@@ -1437,7 +1437,6 @@ select:focus-visible {
 .quota-bar--right { border-right-color: transparent; }
 
 /* Expanded layout structure is independent from color theme. */
-.quota-card--expanded-provider-bar .quota-tab-panel--quota { grid-template-rows: auto auto; }
 .expanded-provider-strip {
   min-width: 0;
   grid-column: 1 / -1;
@@ -1453,8 +1452,6 @@ select:focus-visible {
 .expanded-provider-strip > p { min-width: 48px; margin: 0; color: rgba(23,33,49,.56); font-size: 7px; font-weight: 780; letter-spacing: .1em; text-transform: uppercase; }
 .expanded-provider-strip > p span { display: block; margin-top: 2px; color: currentColor; font-size: 10px; letter-spacing: 0; opacity: .65; }
 .expanded-provider-strip .provider-logo-slider { width: 100%; margin: 0; }
-.quota-card--expanded-provider-bar .provider-ledger { padding-left: 16px; }
-.quota-card--expanded-provider-bar .ledger-header { height: auto; min-height: 28px; }
 
 /* Stacked favors a calm reading order: quota first, full-width providers second. */
 .quota-card--expanded-stacked .quota-tab-panel--quota { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto; gap: 16px; }
@@ -1514,11 +1511,8 @@ select:focus-visible {
 .quota-window header > span { font-size: 12px; }
 .quota-pace-hint,
 .quota-pace-hint small { font-size: 8px; line-height: 1.35; }
-.provider-ledger,
-.quota-card--expanded-provider-bar .provider-ledger { padding-left: 11px; }
-.ledger-header,
-.quota-card--expanded-provider-bar .ledger-header,
-.quota-card--expanded-provider-bar .ledger-header:not(:has(.card-actions)) { min-height: 22px; gap: 3px; }
+.provider-ledger { padding-left: 11px; }
+.ledger-header { min-height: 22px; gap: 3px; }
 .ledger-header > p { font-size: 9px; }
 .ledger-header > p span { font-size: 8px; }
 .provider-list { gap: 1px; }
@@ -1605,7 +1599,6 @@ button.usage-stat-card:hover { border-color: color-mix(in srgb, var(--accent-col
 .update-header > button { width: 26px; height: 26px; }
 .control-tabs { gap: 3px; padding: 8px 6px; }
 .control-tabs button { min-height: 30px; gap: 6px; padding: 0 8px; border-radius: 8px; font-size: 8px; }
-.control-tabs svg { width: 12px; height: 12px; }
 .control-body { padding: 9px 11px 12px; }
 .control-grid { gap: 7px 9px; }
 .control-field { gap: 4px; font-size: 8px; }
@@ -2252,13 +2245,11 @@ button.usage-stat-card:hover { border-color: color-mix(in srgb, var(--accent-col
 .quota-card .expanded-provider-strip .provider-logo-slider button.is-active { color: var(--ui-text); background: var(--ui-surface-hover); }
 
 /* Cockpit keeps one provider navigator and turns the body into three focusable regions. */
-.quota-card--expanded-provider-bar .quota-tab-panel--quota,
 .quota-card--expanded-cockpit .quota-tab-panel--quota {
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto auto;
   gap: 9px;
 }
-.quota-card--expanded-provider-bar .primary-pane { min-height: 138px; padding: 2px 4px 0; }
 .cockpit-dashboard {
   min-width: 0;
   display: grid;
@@ -2516,11 +2507,9 @@ button.usage-stat-card:hover { border-color: color-mix(in srgb, var(--accent-col
 
 @media (max-width: 480px) {
   .quota-card { grid-template-columns: minmax(0, 1fr); }
-  .quota-tab-panel--quota,
-  .quota-card--expanded-provider-bar .quota-tab-panel--quota { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto; }
+  .quota-tab-panel--quota { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto; }
   .expanded-provider-strip { grid-column: 1; }
-  .provider-ledger,
-  .quota-card--expanded-provider-bar .provider-ledger { padding: 10px 0 0; border-top: 1px solid var(--ui-border); border-left: 0; }
+  .provider-ledger { padding: 10px 0 0; border-top: 1px solid var(--ui-border); border-left: 0; }
   .control-center { grid-template-columns: minmax(0, 1fr); grid-template-rows: 48px auto minmax(0, 1fr); }
   .control-header { grid-column: 1; }
   .control-tabs { grid-row: 2; display: flex; overflow-x: auto; padding: 5px 7px; }
