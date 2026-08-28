@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.3 - 2026-08-28
+
+- feat: add bottleneck layout and detachable cockpit panels
+- docs: record v0.3.2 project history and structure
+- docs: record v0.3.2 release evidence
+
 ## 0.3.2 - 2026-08-23
 
 - Refine Dashboard, Provider Bar, Stacked, Insights, Control Center, update, diagnostics, and compact Bar layouts.
