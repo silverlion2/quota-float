@@ -168,6 +168,8 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
     ringHint: "环形进度指标",
     bar: "横条",
     barHint: "可磁吸顶部或左右边缘",
+    bottleneck: "瓶颈",
+    bottleneckHint: "按风险排列每个平台最紧张的窗口",
     barEdge: "横条吸附边缘",
     barEdgeHint: "拖动横条靠近另一边缘也会更新此选项",
     top: "顶部",
@@ -175,8 +177,10 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
     right: "右侧",
     dashboard: "仪表板",
     dashboardHint: "指标与平台列表",
+    cockpit: "驾驶舱",
+    cockpitHint: "额度、节奏与 90 天用量一屏聚合",
     providerBar: "平台栏",
-    providerBarHint: "强化完整平台列表",
+    providerBarHint: "单一平台快切栏与当前指标",
     stacked: "纵向堆叠",
     stackedHint: "主指标位于平台列表上方",
     colorSection: "颜色",
@@ -200,6 +204,8 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
     ringHint: "Circular progress metric",
     bar: "Bar",
     barHint: "Magnetic top or side rail",
+    bottleneck: "Bottleneck",
+    bottleneckHint: "Risk-sorted tightest window for every provider",
     barEdge: "Bar attachment edge",
     barEdgeHint: "Dragging the Bar near another edge updates this choice",
     top: "Top",
@@ -207,8 +213,10 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
     right: "Right",
     dashboard: "Dashboard",
     dashboardHint: "Metric and provider ledger",
+    cockpit: "Cockpit",
+    cockpitHint: "Quota, pace, and 90-day usage at a glance",
     providerBar: "Provider bar",
-    providerBarHint: "Emphasizes the full provider ledger",
+    providerBarHint: "One provider switcher with the active metric",
     stacked: "Stacked",
     stackedHint: "Metric above the provider ledger",
     colorSection: "Color",
@@ -272,9 +280,10 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
                   ["float", customizationLabels.float, customizationLabels.floatHint],
                   ["ring", customizationLabels.ring, customizationLabels.ringHint],
                   ["bar", customizationLabels.bar, customizationLabels.barHint],
+                  ["bottleneck", customizationLabels.bottleneck, customizationLabels.bottleneckHint],
                 ] as const).map(([id, label, hint]) => (
                   <button key={id} type="button" role="radio" aria-checked={preferences.compactLayout === id} className={`layout-option layout-option--${id}${preferences.compactLayout === id ? " is-active" : ""}`} onClick={() => onPreferences({ ...preferences, compactLayout: id })}>
-                    <i aria-hidden="true">{id === "float" ? <span className="layout-float-value">67<small>%</small></span> : id === "ring" ? <span className="layout-ring-value">67<small>%</small></span> : <><ProviderMark provider="codex" label="Codex" /><span className="layout-bar-value">74%</span></>}</i>
+                    <i aria-hidden="true">{id === "float" ? <span className="layout-float-value">67<small>%</small></span> : id === "ring" ? <span className="layout-ring-value">67<small>%</small></span> : id === "bottleneck" ? <><ProviderMark provider="claude" label="Claude" /><span className="layout-bar-value">18%</span><ProviderMark provider="codex" label="Codex" /><span className="layout-bar-value">74%</span></> : <><ProviderMark provider="codex" label="Codex" /><span className="layout-bar-value">74%</span></>}</i>
                     <span><strong>{label}</strong><small>{hint}</small></span>
                   </button>
                 ))}
@@ -285,6 +294,7 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
               <div className="layout-options" role="radiogroup" aria-label={customizationLabels.expandedLayout}>
                 {([
                   ["dashboard", customizationLabels.dashboard, customizationLabels.dashboardHint],
+                  ["cockpit", customizationLabels.cockpit, customizationLabels.cockpitHint],
                   ["provider-bar", customizationLabels.providerBar, customizationLabels.providerBarHint],
                   ["stacked", customizationLabels.stacked, customizationLabels.stackedHint],
                 ] as const).map(([id, label, hint]) => (
@@ -296,7 +306,7 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
               </div>
             </fieldset>
           </div>
-          {preferences.compactLayout === "bar" ? (
+          {preferences.compactLayout === "bar" || preferences.compactLayout === "bottleneck" ? (
             <fieldset className="bar-edge-choice">
               <legend><span>{customizationLabels.barEdge}</span><small>{customizationLabels.barEdgeHint}</small></legend>
               <div className="bar-edge-options" role="radiogroup" aria-label={customizationLabels.barEdge}>
@@ -355,7 +365,7 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
           </div>
           <div className="control-section-title"><span>{labels.savedLayouts}</span></div>
           <div className="layout-save"><input value={layoutName} onChange={(event) => setLayoutName(event.target.value)} placeholder={zh ? "方案名称" : "Profile name"} /><button type="button" onClick={saveLayout}><Plus />{labels.saveLayout}</button></div>
-          <div className="saved-layouts">{runtimeState.savedLayouts.length === 0 ? <p>{labels.noLayouts}</p> : runtimeState.savedLayouts.map((layout) => <div key={layout.id}><button type="button" onClick={() => onPreferences({ ...preferences, providerOrder: layout.providerOrder, hiddenProviders: layout.hiddenProviders, collapsedProviders: layout.collapsedProviders, layoutMode: layout.layoutMode, compactLayout: layout.compactLayout, barEdge: layout.barEdge, barOffset: layout.barOffset, expandedLayout: layout.expandedLayout, colorTheme: layout.colorTheme, appearanceMode: layout.appearanceMode, riskFirst: layout.riskFirst, showHistorySparklines: layout.showHistorySparklines, accentColor: layout.accentColor })}><strong>{layout.name}</strong><small>{layout.compactLayout}{layout.compactLayout === "bar" ? `/${layout.barEdge}` : ""} · {layout.expandedLayout} · {layout.colorTheme} · {layout.layoutMode}</small></button><button type="button" aria-label="Delete" onClick={() => onRuntimeState({ ...runtimeState, savedLayouts: runtimeState.savedLayouts.filter((item) => item.id !== layout.id) })}><Trash /></button></div>)}</div>
+          <div className="saved-layouts">{runtimeState.savedLayouts.length === 0 ? <p>{labels.noLayouts}</p> : runtimeState.savedLayouts.map((layout) => <div key={layout.id}><button type="button" onClick={() => onPreferences({ ...preferences, providerOrder: layout.providerOrder, hiddenProviders: layout.hiddenProviders, collapsedProviders: layout.collapsedProviders, layoutMode: layout.layoutMode, compactLayout: layout.compactLayout, barEdge: layout.barEdge, barOffset: layout.barOffset, expandedLayout: layout.expandedLayout, colorTheme: layout.colorTheme, appearanceMode: layout.appearanceMode, riskFirst: layout.riskFirst, showHistorySparklines: layout.showHistorySparklines, accentColor: layout.accentColor })}><strong>{layout.name}</strong><small>{layout.compactLayout}{layout.compactLayout === "bar" || layout.compactLayout === "bottleneck" ? `/${layout.barEdge}` : ""} · {layout.expandedLayout} · {layout.colorTheme} · {layout.layoutMode}</small></button><button type="button" aria-label="Delete" onClick={() => onRuntimeState({ ...runtimeState, savedLayouts: runtimeState.savedLayouts.filter((item) => item.id !== layout.id) })}><Trash /></button></div>)}</div>
         </> : null}
 
           {tab === "providers" ? <>

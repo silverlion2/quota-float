@@ -1,8 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { QuotaBar, QuotaCard, QuotaOrb } from "./components/QuotaCard";
+import { QuotaBar, QuotaBottleneckBar, QuotaCard, QuotaOrb } from "./components/QuotaCard";
 import { EMPTY_UPDATE_STATE } from "./components/UpdatePanel";
 import type { UpdateViewState } from "./components/UpdatePanel";
-import { applyAppData, createAutomaticBackup, exportAppData, fetchCodexResetForecast, fetchSnapshots, getAppDiagnostics, getAutostartEnabled, getPreferences, getRuntimeState, getVolcengineDiagnostics, importAppData, listenDesktopEvents, openExternalUrl, reconnectVolcengine, resizeWidgetToContent, restoreLatestBackup, sendDesktopNotification, setAlwaysOnTop, setAutostartEnabled, setWidgetExpanded, startDragging, updatePreferences, updateRuntimeState } from "./lib/bridge";
+import { applyAppData, createAutomaticBackup, exportAppData, fetchCodexResetForecast, fetchSnapshots, getAppDiagnostics, getAutostartEnabled, getPreferences, getRuntimeState, getVolcengineDiagnostics, importAppData, listenDesktopEvents, notifyFocusPanels, openExternalUrl, openFocusPanel, reconnectVolcengine, resizeWidgetToContent, restoreLatestBackup, sendDesktopNotification, setAlwaysOnTop, setAutostartEnabled, setWidgetExpanded, startDragging, updatePreferences, updateRuntimeState } from "./lib/bridge";
 import { checkForAppUpdate, discardAppUpdate, downloadAppUpdate, installAppUpdate, openReleasePage } from "./lib/appUpdate";
 import type { AppUpdateInfo } from "./lib/appUpdate";
 import { copy, nextLanguage, normalizeLanguage } from "./lib/i18n";
@@ -17,7 +17,7 @@ import { resolveAppearanceMode, systemPrefersDark } from "./lib/appearance";
 import { loadStartupState } from "./lib/startup";
 import { runSingleFlight, type SingleFlightState } from "./lib/singleFlight";
 import { monitoredProviderIds, nextProviderRefreshDelay, providersDueForRefresh, type ProviderAttemptTimes } from "./lib/refreshPolicy";
-import type { AppDiagnostics, ProviderId, ProviderSnapshot, ResetForecast, RuntimeState, VolcengineDiagnostics, WidgetPreferences } from "./types";
+import type { AppDiagnostics, CockpitRegion, ProviderId, ProviderSnapshot, ResetForecast, RuntimeState, VolcengineDiagnostics, WidgetPreferences } from "./types";
 
 const DEFAULT_PREFS = DEFAULT_WIDGET_PREFERENCES;
 const ControlCenter = lazy(() => import("./components/ControlCenter").then((module) => ({ default: module.ControlCenter })));
@@ -349,6 +349,16 @@ export default function App() {
     ? orderedSnapshots.find((item) => item.provider === visiblePinnedProvider) ?? orderedSnapshots[0]
     : orderedSnapshots[activeIndex % Math.max(1, orderedSnapshots.length)];
 
+  useEffect(() => {
+    void notifyFocusPanels().catch(() => undefined);
+  }, [preferences.accentColor, preferences.appearanceMode, preferences.colorTheme, preferences.language, runtimeState, snapshots]);
+
+  const handleDetachCockpitRegion = useCallback((region: CockpitRegion) => {
+    if (!current) return;
+    void openFocusPanel(region, current.provider)
+      .catch((error) => setOperationError(errorMessage(error, language === "en" ? "Detached panel could not be opened." : "无法打开独立面板。")));
+  }, [current, language]);
+
   const savePreferences = useCallback((next: WidgetPreferences) => {
     const sequence = ++preferenceSaveSequence.current;
     const normalized = normalizeWidgetPreferences(next);
@@ -372,7 +382,7 @@ export default function App() {
       .then((placement) => {
         if (!placement) return;
         const currentPreferences = preferencesRef.current;
-        if (currentPreferences.compactLayout !== "bar"
+        if (currentPreferences.compactLayout !== "bar" && currentPreferences.compactLayout !== "bottleneck"
           || (currentPreferences.barEdge === placement.edge && Math.abs(currentPreferences.barOffset - placement.offset) < 0.0001)) return;
         savePreferences({ ...currentPreferences, barEdge: placement.edge, barOffset: placement.offset });
       })
@@ -570,6 +580,19 @@ export default function App() {
         onDrag={handleDrag}
         onHover={handleHover}
       />
+    ) : preferences.compactLayout === "bottleneck" ? (
+      <QuotaBottleneckBar
+        snapshot={current}
+        snapshots={orderedSnapshots}
+        language={language}
+        colorTheme={preferences.colorTheme}
+        accentColor={preferences.accentColor}
+        resolvedAppearance={resolvedAppearance}
+        edge={preferences.barEdge}
+        onSelectProvider={selectCompactProvider}
+        onDrag={handleDrag}
+        onHover={handleHover}
+      />
     ) : (
       <QuotaOrb
         snapshot={current}
@@ -622,6 +645,7 @@ export default function App() {
       paceBaselines={runtimeState.dailyPaceBaselines}
       history={runtimeState.history}
       dailyUsage={runtimeState.dailyUsage}
+      onDetachCockpitRegion={handleDetachCockpitRegion}
       updateState={updateState}
       updateOpen={updateOpen}
       onUpdateOpen={handleUpdateOpen}

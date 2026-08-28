@@ -6,10 +6,11 @@
 | --- | --- | --- | --- |
 | 偏好 | 旧版本缺少 Bar 字段 | 自动迁移为 `top` + `0.5` | TypeScript/Rust 归一化测试 |
 | 偏好 | 非法边缘、NaN、越界 offset | 边缘回退 Top；有限数值限制到 `0…1`，无效值回退 `0.5` | TypeScript/Rust 归一化测试 |
-| 布局方案 | 保存、恢复、导出/导入 Bar 位置 | `barEdge` 与 `barOffset` 随现有 schema 保存，不包含凭据 | 组件测试、运行时归一化测试 |
+| 布局方案 | 保存、恢复、导出/导入 Bar/Bottleneck 位置 | `barEdge` 与 `barOffset` 随现有 schema 保存，不包含凭据 | 组件测试、运行时归一化测试 |
 | Bar UI | Top 水平条 | `400×38`，平台横向排列，额度/重置/状态/新鲜度可读 | 组件、样式与 Rust 尺寸测试 |
 | Bar UI | Left/Right 侧轨 | `64×320`，平台纵向排列，所有文本保持正向，贴边侧平直、内侧圆角 | 组件、主题、方向与无障碍测试 |
-| Bar UI | 平台选择与悬停 | 点击/横纵拖动切换平台；650ms 后展开，移出取消 | 组件回归测试 |
+| Bar UI | 平台选择与悬停 | Logo 区点击/横纵拖动只切换平台；指标区停留 650ms 后展开，移出取消 | 组件回归测试 |
+| Bottleneck UI | 最紧张窗口排序与切换 | 每个平台显示最低剩余额度周期；异常状态优先、百分比升序、余额型随后；点击平台只切换，摘要区停留 650ms 或点击才展开 | 组件回归测试、顶部/侧边浏览器截图 |
 | Bar geometry | 三边与 offsets `0/0.5/1` | 使用可用工作区定位并包含透明安全边距 | Rust 几何测试 |
 | Bar geometry | 24px 磁吸与角落 | 最近 Top/Left/Right；角落等距保留当前边缘；Bottom 不参与 | Rust 几何测试 |
 | Bar geometry | 负坐标、任务栏、多 DPI | 负原点、非零工作区原点、100/125/150% 方向尺寸正确 | Rust 几何测试 |
@@ -22,7 +23,9 @@
 | Provider registry | 并发、超时、临时失败与定向重试 | 固定顺序返回；慢平台被限制；只重试临时失败组；健康平台不重复请求 | Rust registry 单元测试、每周 Windows/macOS compatibility workflow |
 | 自适应刷新 | 健康、临界、异常平台与 Balanced/Project Focus 模式 | 各平台使用独立时钟和分级间隔；只查询到期且未暂停的平台；Volcengine/Antigravity 不做同轮进程级重试 | TypeScript refresh policy、bridge/merge 与 Rust registry 单元测试 |
 | 项目专注 | 开关专注模式、暂停/恢复平台、手动刷新 | 自动轮播和无限环境动画停止；自动刷新降频；至少保留一个监控平台；手动刷新保持可用 | 偏好归一化、控制中心组件和样式回归测试 |
-| 展开布局与平台切换 | Dashboard、Provider Bar、Stacked、七平台快速切换、窄窗口 | 三种信息层级明确区分；横向/纵向切换器完整显示目录；方向键与 Home/End roving focus 可用；窄窗口无关键内容溢出 | QuotaCard、ProviderLogoSlider、ControlCenter 组件/无障碍测试与响应式样式审查 |
+| 展开布局与平台切换 | Dashboard、Cockpit、Provider Bar、Stacked、七平台快速切换、窄窗口 | 四种信息层级明确区分；每个展开态最多一套平台导航；方向键与 Home/End roving focus 可用；窄窗口无关键内容溢出 | QuotaCard、ProviderLogoSlider、ControlCenter 组件/无障碍测试与响应式样式审查 |
+| Cockpit 局部聚焦 | 额度、节奏、90 天用量区块放大与恢复 | 选定区块成为唯一主体并触发窗口内容高度同步；恢复后回到三块一屏布局；切换平台或布局时清除聚焦 | QuotaCard 组件测试、浏览器合成预览与动态尺寸观察 |
+| Cockpit 独立窗 | 拆出额度、节奏或 90 天用量 | 区域与平台 ID 通过 allowlist；子窗仅获事件/窗口最小权限并经原生只读命令读取缓存与本地历史；关闭子窗不隐藏主窗；三个固定尺寸无裁切 | Rust 目标校验、桥接/组件测试、Chrome 合成截图；Tauri 实机烟测待执行 |
 | Claude | 正常、多窗口、登出、缺字段、超大响应 | 利用率转换为剩余比例；只读复用 Claude Code OAuth；未知结构不猜测 | Rust 合成 fixture 与凭据发现测试 |
 | Token 洞察 | Codex session metadata / `turn_context` / `token_count` | 只保留项目 basename、规范化终端、模型名、哈希会话键与数值计数；忽略正文与过期事件 | Rust 元数据解析与安全维度测试 |
 | 增量索引 | 初次、未变化、追加、截断/重建 | 首次全建；未变化零正文读取复用；追加从 cursor 续读；异常或手动操作安全重建 | Rust 持久化索引测试与 UI 重建入口 |

@@ -96,7 +96,7 @@ function savedLayout(value: unknown): RuntimeState["savedLayouts"][number] | nul
   if (!candidate || typeof candidate.id !== "string" || candidate.id.length === 0 || candidate.id.length > 160
     || typeof candidate.name !== "string" || candidate.name.trim().length === 0 || !validDate(candidate.createdAt)) return null;
   const layoutMode = candidate.layoutMode === "compact" || candidate.layoutMode === "detailed" ? candidate.layoutMode : candidate.layoutMode === "standard" ? "standard" : null;
-  const compactLayout = candidate.compactLayout === "bar" || candidate.compactLayout === "ring" || candidate.compactLayout === "float"
+  const compactLayout = candidate.compactLayout === "bottleneck" || candidate.compactLayout === "bar" || candidate.compactLayout === "ring" || candidate.compactLayout === "float"
     ? candidate.compactLayout
     : candidate.visualStyle === "island" ? "bar" : "float";
   const barEdge = candidate.barEdge === "left" || candidate.barEdge === "right" || candidate.barEdge === "top"
@@ -105,7 +105,7 @@ function savedLayout(value: unknown): RuntimeState["savedLayouts"][number] | nul
   const barOffset = typeof candidate.barOffset === "number" && Number.isFinite(candidate.barOffset)
     ? Math.max(0, Math.min(1, candidate.barOffset))
     : 0.5;
-  const expandedLayout = candidate.expandedLayout === "provider-bar" || candidate.expandedLayout === "stacked" || candidate.expandedLayout === "dashboard"
+  const expandedLayout = candidate.expandedLayout === "cockpit" || candidate.expandedLayout === "provider-bar" || candidate.expandedLayout === "stacked" || candidate.expandedLayout === "dashboard"
     ? candidate.expandedLayout
     : candidate.visualStyle === "island" ? "provider-bar" : "dashboard";
   const colorTheme = candidate.colorTheme === "graphite" || candidate.colorTheme === "paper" || candidate.colorTheme === "aurora"

@@ -1,4 +1,4 @@
-import type { AppDiagnostics, BarPlacement, CodexTokenUsageReport, CompactLayout, ProviderSnapshot, ResetForecast, RuntimeState, VolcengineDiagnostics, WidgetPreferences } from "../types";
+import type { AppDiagnostics, BarPlacement, CockpitRegion, CodexTokenUsageReport, CompactLayout, ProviderId, ProviderSnapshot, ResetForecast, RuntimeState, VolcengineDiagnostics, WidgetPreferences } from "../types";
 import { EMPTY_RUNTIME_STATE, normalizeRuntimeState } from "./activity";
 import { DEFAULT_WIDGET_PREFERENCES } from "./preferences";
 
@@ -320,6 +320,42 @@ export async function setAlwaysOnTop(alwaysOnTop: boolean): Promise<WidgetPrefer
   if (!isTauri()) return { ...defaultPreferences, alwaysOnTop };
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<WidgetPreferences>("set_widget_always_on_top", { alwaysOnTop });
+}
+
+export async function openFocusPanel(region: CockpitRegion, provider: ProviderId): Promise<void> {
+  if (!isTauri()) {
+    window.open(`?focusPanel=${region}&provider=${provider}`, `quota-focus-${region}-${provider}`, "popup,width=560,height=360");
+    return;
+  }
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("open_focus_panel", { region, provider });
+}
+
+export async function notifyFocusPanels(): Promise<void> {
+  if (!isTauri()) return;
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("notify_focus_panels");
+}
+
+export async function listenFocusPanelUpdates(onUpdate: () => void): Promise<() => void> {
+  if (!isTauri()) return () => undefined;
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen("focus-panel-updated", onUpdate);
+}
+
+export async function closeFocusPanel(): Promise<void> {
+  if (!isTauri()) {
+    window.close();
+    return;
+  }
+  const { getCurrentWindow } = await import("@tauri-apps/api/window");
+  await getCurrentWindow().close();
+}
+
+export async function startFocusPanelDragging(): Promise<void> {
+  if (!isTauri()) return;
+  const { getCurrentWindow } = await import("@tauri-apps/api/window");
+  await getCurrentWindow().startDragging();
 }
 
 interface WorkAreaPayload {

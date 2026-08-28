@@ -5,7 +5,7 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProviderSnapshot, VolcengineDiagnostics, WidgetPreferences } from "../types";
 import { DEFAULT_WIDGET_PREFERENCES } from "../lib/preferences";
-import { QuotaBar, QuotaCard, QuotaOrb } from "./QuotaCard";
+import { QuotaBar, QuotaBottleneckBar, QuotaCard, QuotaOrb } from "./QuotaCard";
 
 const codex: ProviderSnapshot = {
   provider: "codex",
@@ -164,7 +164,7 @@ describe("QuotaCard platform ledger", () => {
     expect(screen.getByText("Weekly remaining")).toBeInTheDocument();
   });
 
-  it("adds a full-catalog quick switcher to the provider-bar layout", () => {
+  it("uses one full-catalog switcher in the provider-bar layout", () => {
     render(
       <QuotaCard
         snapshot={codex}
@@ -182,7 +182,63 @@ describe("QuotaCard platform ledger", () => {
     const providerSwitcher = screen.getByRole("radiogroup", { name: "Choose provider" });
     expect(providerSwitcher).toHaveStyle("--provider-count: 7");
     expect(within(providerSwitcher).getAllByRole("radio")).toHaveLength(7);
-    expect(screen.getByRole("button", { name: /QODER.*1,280.*credits/i })).toBeInTheDocument();
+    expect(screen.getAllByRole("radiogroup", { name: "Choose provider" })).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: /QODER.*1,280.*credits/i })).not.toBeInTheDocument();
+  });
+
+  it("renders the cockpit overview and enlarges one region in place", () => {
+    const { container } = render(
+      <QuotaCard
+        snapshot={codex}
+        snapshots={[codex, qoder]}
+        preferences={{ ...preferences, expandedLayout: "cockpit" }}
+        history={[
+          { provider: "codex", capturedAt: "2026-08-20T00:00:00Z", metric: 82, metricKind: "percent", status: "ok", resetsAt: "2026-08-30T00:00:00Z" },
+          { provider: "codex", capturedAt: "2026-08-21T00:00:00Z", metric: 74, metricKind: "percent", status: "ok", resetsAt: "2026-08-30T00:00:00Z" },
+        ]}
+        dailyUsage={[{ provider: "codex", localDate: "2026-08-27", observedUsedPercent: 8, sampleCount: 3, updatedAt: "2026-08-27T12:00:00Z" }]}
+        onSelectProvider={noop}
+        onLock={noop}
+        onLanguage={noop}
+        onDrag={noop}
+        onHover={noop}
+        consumingProviders={new Set()}
+      />,
+    );
+
+    const cockpit = screen.getByLabelText("Quota cockpit");
+    expect(cockpit).toHaveAttribute("data-focus", "none");
+    expect(screen.getByText("Quota snapshot")).toBeInTheDocument();
+    expect(screen.getByText("Pace plan")).toBeInTheDocument();
+    expect(screen.getByLabelText("90-day observed usage heatmap").querySelectorAll(".cockpit-day")).toHaveLength(91);
+    expect(screen.getAllByRole("radiogroup", { name: "Choose provider" })).toHaveLength(1);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Enlarge this area" })[2]);
+    expect(cockpit).toHaveAttribute("data-focus", "activity");
+    expect(screen.getByRole("button", { name: "Restore dashboard" })).toHaveAttribute("aria-pressed", "true");
+    expect(container.querySelector(".quota-card")).toHaveClass("quota-card--expanded-cockpit");
+  });
+
+  it("detaches a selected cockpit region without changing its in-place focus", () => {
+    const onDetach = vi.fn();
+    render(
+      <QuotaCard
+        snapshot={codex}
+        snapshots={[codex]}
+        preferences={{ ...preferences, expandedLayout: "cockpit" }}
+        onSelectProvider={noop}
+        onLock={noop}
+        onLanguage={noop}
+        onDrag={noop}
+        onHover={noop}
+        onDetachCockpitRegion={onDetach}
+        consumingProviders={new Set()}
+      />,
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Detach this area" })[1]);
+    expect(onDetach).toHaveBeenCalledWith("pace");
+    expect(screen.getByLabelText("Quota cockpit")).toHaveAttribute("data-focus", "none");
   });
 
   it("shows risk-first values and local history trails", () => {
@@ -417,7 +473,7 @@ describe("QuotaCard platform ledger", () => {
     expect(onSelectProvider).toHaveBeenCalledWith("antigravity");
   });
 
-  it("delays Bar expansion so the provider slider remains usable", () => {
+  it("keeps provider selection compact and only expands from the detail zone", () => {
     vi.useFakeTimers();
     const onHover = vi.fn();
     render(
@@ -431,11 +487,44 @@ describe("QuotaCard platform ledger", () => {
         onHover={onHover}
       />,
     );
-    const bar = screen.getByLabelText(/CODEX 74% left On track/i);
-    fireEvent.mouseEnter(bar);
+    const slider = screen.getByRole("radiogroup", { name: "Choose provider" });
+    fireEvent.mouseOver(slider);
+    act(() => vi.advanceTimersByTime(650));
+    expect(onHover).not.toHaveBeenCalledWith(true);
+
+    fireEvent.mouseOver(screen.getByText("On track"));
     act(() => vi.advanceTimersByTime(649));
     expect(onHover).not.toHaveBeenCalledWith(true);
     act(() => vi.advanceTimersByTime(1));
+    expect(onHover).toHaveBeenCalledWith(true);
+  });
+
+  it("sorts every provider by its tightest window and keeps provider clicks switch-only", () => {
+    vi.useFakeTimers();
+    const onSelectProvider = vi.fn();
+    const onHover = vi.fn();
+    render(
+      <QuotaBottleneckBar
+        snapshot={codex}
+        snapshots={[codex, volcengine, antigravity]}
+        edge="top"
+        language="en"
+        onSelectProvider={onSelectProvider}
+        onDrag={noop}
+        onHover={onHover}
+      />,
+    );
+
+    const providers = screen.getAllByRole("radio");
+    expect(providers[0]).toHaveAccessibleName("VOLCENGINE · Month · 45%");
+    expect(screen.getByRole("radio", { name: "CODEX · Week · 74%" })).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(screen.getByRole("radio", { name: "ANTIGRAVITY · 5 hours · 68%" }));
+    act(() => vi.advanceTimersByTime(650));
+    expect(onSelectProvider).toHaveBeenCalledWith("antigravity");
+    expect(onHover).not.toHaveBeenCalledWith(true);
+
+    fireEvent.mouseOver(screen.getByRole("button", { name: "Expand bottleneck details" }));
+    act(() => vi.advanceTimersByTime(650));
     expect(onHover).toHaveBeenCalledWith(true);
   });
 

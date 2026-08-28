@@ -6,6 +6,8 @@ import {
   fetchCodexTokenUsage,
   getVolcengineDiagnostics,
   listenDesktopEvents,
+  notifyFocusPanels,
+  openFocusPanel,
   reconnectVolcengine,
   resizeWidgetToContent,
   setWidgetExpanded,
@@ -104,6 +106,13 @@ describe("widget transitions", () => {
     await reconnectVolcengine();
     expect(api.invoke).toHaveBeenCalledWith("get_volcengine_diagnostics");
     expect(api.invoke).toHaveBeenCalledWith("reconnect_volcengine");
+  });
+
+  it("opens and refreshes detached panels through bounded native commands", async () => {
+    await openFocusPanel("pace", "codex");
+    await notifyFocusPanels();
+    expect(api.invoke).toHaveBeenCalledWith("open_focus_panel", { region: "pace", provider: "codex" });
+    expect(api.invoke).toHaveBeenCalledWith("notify_focus_panels");
   });
 
   it("requests the bounded Codex token metadata report with an explicit refresh flag", async () => {

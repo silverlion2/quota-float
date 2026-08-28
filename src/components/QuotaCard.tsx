@@ -1,13 +1,13 @@
-import { ArrowClockwise, ArrowsInSimple, ArrowsOutSimple, CheckCircle, ClockCounterClockwise, CloudArrowDown, CloudSlash, DotsSixVertical, Gauge, GearSix, Pulse, PushPin, PushPinSlash, SignIn, SpinnerGap, WarningCircle, X } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowSquareOut, ArrowsInSimple, ArrowsOutSimple, CheckCircle, ClockCounterClockwise, CloudArrowDown, CloudSlash, DotsSixVertical, Gauge, GearSix, Pulse, PushPin, PushPinSlash, SignIn, SpinnerGap, WarningCircle, X } from "@phosphor-icons/react";
 import { lazy, memo, Suspense, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { clampPercent, formatDateTime, formatResetDate, formatResetTime, quotaTier } from "../lib/format";
 import { copy, normalizeLanguage, resetForecastLabel, resetForecastTitle } from "../lib/i18n";
 import { useModalDialog } from "../lib/modalDialog";
 import { normalizeProviderOrder, PROVIDER_CATALOG, type ProviderDefinition } from "../lib/providers";
-import { recentPercentageHistory, sortProviderIdsByRisk } from "../lib/providerPresentation";
-import { calculateQuotaPace, paceBaselineKey, trackedQuotaWindows, type NamedQuotaWindow, type QuotaPace, type QuotaPeriod } from "../lib/quotaPace";
+import { recentPercentageHistory, snapshotRemainingPercent, sortProviderIdsByRisk } from "../lib/providerPresentation";
+import { calculateQuotaPace, localDateKey, paceBaselineKey, trackedQuotaWindows, type NamedQuotaWindow, type QuotaPace, type QuotaPeriod } from "../lib/quotaPace";
 import type { RecentCodexReset } from "../lib/resetDetection";
-import type { BarEdge, ColorTheme, CompactLayout, DailyPaceBaseline, DailyUsageSummary, Language, ProviderId, ProviderSnapshot, QuotaHistoryPoint, ResetForecast, ResolvedAppearance, VolcengineDiagnostics, WidgetPreferences } from "../types";
+import type { BarEdge, CockpitRegion, ColorTheme, CompactLayout, DailyPaceBaseline, DailyUsageSummary, Language, ProviderId, ProviderSnapshot, QuotaHistoryPoint, ResetForecast, ResolvedAppearance, VolcengineDiagnostics, WidgetPreferences } from "../types";
 import { ProviderMark } from "./ProviderMark";
 import { ProviderLogoSlider } from "./ProviderLogoSlider";
 import { EMPTY_UPDATE_STATE, UpdatePanel, type UpdateViewState } from "./UpdatePanel";
@@ -58,6 +58,7 @@ interface Props {
   controlCenter?: ReactNode;
   controlOpen?: boolean;
   onControlOpen?: () => void;
+  onDetachCockpitRegion?: (region: CockpitRegion) => void;
   initialShowCreditTip?: boolean;
   initialInsightsOpen?: boolean;
 }
@@ -381,6 +382,155 @@ function VolcengineDiagnosticsPanel({
   );
 }
 
+export interface CockpitDashboardProps {
+  snapshot: ProviderSnapshot;
+  history: QuotaHistoryPoint[];
+  dailyUsage: DailyUsageSummary[];
+  paceBaselines: Record<string, DailyPaceBaseline>;
+  language: Language;
+  focusedRegion: CockpitRegion | null;
+  onFocusRegion: (region: CockpitRegion | null) => void;
+  onDetachRegion?: (region: CockpitRegion) => void;
+  detached?: boolean;
+}
+
+function cockpitTrendPoints(values: number[]): string {
+  if (values.length < 2) return "";
+  return values.map((value, index) => {
+    const x = (index / (values.length - 1)) * 160;
+    const y = 46 - (clampPercent(value) / 100) * 42;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+}
+
+export function CockpitDashboard({
+  snapshot,
+  history,
+  dailyUsage,
+  paceBaselines,
+  language,
+  focusedRegion,
+  onFocusRegion,
+  onDetachRegion,
+  detached = false,
+}: CockpitDashboardProps) {
+  const windows = trackedQuotaWindows(snapshot);
+  const headlineWindow = windows.find(({ period }) => period === "weekly") ?? windows[0] ?? null;
+  const remaining = headlineWindow ? clampPercent(headlineWindow.window.remainingPercent) : null;
+  const balance = snapshot.balanceRemaining ?? null;
+  const unlimited = snapshot.balanceUnit === "unlimited";
+  const headlineValue = remaining !== null
+    ? `${remaining}%`
+    : unlimited
+      ? "∞"
+      : balance !== null
+        ? new Intl.NumberFormat(language === "en" ? "en-US" : "zh-CN", { notation: "compact", maximumFractionDigits: 1 }).format(balance)
+        : "—";
+  const historyValues = recentPercentageHistory(history, snapshot.provider, 24);
+  if (remaining !== null && historyValues.at(-1) !== remaining) historyValues.push(remaining);
+  const trendPoints = cockpitTrendPoints(historyValues);
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  const usageByDate = new Map(
+    dailyUsage
+      .filter((item) => item.provider === snapshot.provider)
+      .map((item) => [item.localDate, item.observedUsedPercent] as const),
+  );
+  const activityDays = Array.from({ length: 91 }, (_, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() - (90 - index));
+    const dateKey = localDateKey(date);
+    const value = usageByDate.get(dateKey) ?? null;
+    const level = value === null || value <= 0 ? 0 : value < 3 ? 1 : value < 8 ? 2 : value < 16 ? 3 : 4;
+    return { dateKey, value, level };
+  });
+  const observedTotal = activityDays.reduce((total, item) => total + (item.value ?? 0), 0);
+  const periodLabels: Record<QuotaPeriod, string> = language === "en"
+    ? { "5h": "5 hours", weekly: "Week", monthly: "Month" }
+    : { "5h": "5 小时", weekly: "本周", monthly: "本月" };
+  const focusLabel = (region: CockpitRegion) => focusedRegion === region
+    ? (language === "en" ? "Restore dashboard" : "恢复驾驶舱")
+    : (language === "en" ? "Enlarge this area" : "放大这个区域");
+  const toggleFocus = (region: CockpitRegion) => onFocusRegion(focusedRegion === region ? null : region);
+  const detachLabel = language === "en" ? "Detach this area" : "拆出这个区域";
+
+  const panelActions = (region: CockpitRegion) => detached ? null : (
+    <div className="cockpit-panel-actions">
+      {onDetachRegion ? (
+        <button type="button" className="cockpit-focus-button cockpit-detach-button" aria-label={detachLabel} title={detachLabel} onMouseDown={(event) => event.stopPropagation()} onClick={() => onDetachRegion(region)}>
+          <ArrowSquareOut />
+        </button>
+      ) : null}
+      <button type="button" className="cockpit-focus-button" aria-label={focusLabel(region)} aria-pressed={focusedRegion === region} onMouseDown={(event) => event.stopPropagation()} onClick={() => toggleFocus(region)}>
+        {focusedRegion === region ? <ArrowsInSimple /> : <ArrowsOutSimple />}
+      </button>
+    </div>
+  );
+
+  return (
+    <section className={`cockpit-dashboard${detached ? " cockpit-dashboard--detached" : ""}`} data-focus={focusedRegion ?? "none"} aria-label={language === "en" ? "Quota cockpit" : "额度驾驶舱"}>
+      <article className="cockpit-panel cockpit-panel--overview">
+        <header>
+          <div><span>{language === "en" ? "Quota snapshot" : "额度快照"}</span><small>{snapshot.displayName} · {snapshot.plan ?? (language === "en" ? "Local account" : "本地账户")}</small></div>
+          {panelActions("overview")}
+        </header>
+        <div className="cockpit-overview-body">
+          <div className="cockpit-ring" style={{ "--cockpit-progress": `${Math.round((remaining ?? (unlimited ? 100 : 0)) * 3.6)}deg` } as CSSProperties} role="img" aria-label={remaining !== null ? `${headlineValue} ${language === "en" ? "remaining" : "剩余"}` : headlineValue}>
+            <div><strong>{headlineValue}</strong><small>{remaining !== null ? (language === "en" ? "remaining" : "剩余") : snapshot.balanceUnit ?? ""}</small></div>
+          </div>
+          <div className="cockpit-trend">
+            <div><span>{language === "en" ? "Recent quota" : "近期额度"}</span><small>{historyValues.length >= 2 ? (language === "en" ? `${historyValues.length} local samples` : `${historyValues.length} 个本地样本`) : (language === "en" ? "Collecting local samples" : "正在积累本地样本")}</small></div>
+            {trendPoints ? (
+              <svg viewBox="0 0 160 50" preserveAspectRatio="none" aria-hidden="true">
+                <defs><linearGradient id="cockpit-trend-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="currentColor" stopOpacity=".24" /><stop offset="1" stopColor="currentColor" stopOpacity="0" /></linearGradient></defs>
+                <path d={`M 0 50 L ${trendPoints.replaceAll(" ", " L ")} L 160 50 Z`} />
+                <polyline points={trendPoints} />
+              </svg>
+            ) : <div className="cockpit-empty-line" aria-hidden="true" />}
+          </div>
+        </div>
+      </article>
+
+      <article className="cockpit-panel cockpit-panel--pace">
+        <header>
+          <div><span>{language === "en" ? "Pace plan" : "节奏计划"}</span><small>{language === "en" ? "Remaining vs. today's plan" : "剩余额度与今日计划"}</small></div>
+          {panelActions("pace")}
+        </header>
+        <div className="cockpit-pace-list">
+          {windows.length > 0 ? windows.map(({ period, window }) => {
+            const windowRemaining = clampPercent(window.remainingPercent);
+            const pace = calculateQuotaPace(window, new Date(), paceBaselines[paceBaselineKey(snapshot.provider, period)] ?? null);
+            const paceLabel = pace.status === "on_track"
+              ? (language === "en" ? "On track" : "节奏正常")
+              : pace.status === "over_pace"
+                ? (language === "en" ? `${pace.overByPercent.toFixed(1)}% over` : `超出 ${pace.overByPercent.toFixed(1)}%`)
+                : (language === "en" ? "Learning" : "学习中");
+            return (
+              <div className={`cockpit-pace-row cockpit-pace-row--${pace.status}`} key={period}>
+                <div><strong>{periodLabels[period]}</strong><span>{windowRemaining}%</span><small>{paceLabel}</small></div>
+                <div className="cockpit-pace-track" role="progressbar" aria-label={`${periodLabels[period]} ${windowRemaining}%`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={windowRemaining}><i style={{ width: `${windowRemaining}%` }} /></div>
+              </div>
+            );
+          }) : (
+            <div className="cockpit-balance-fallback"><strong>{headlineValue}</strong><span>{unlimited ? (language === "en" ? "Unlimited plan" : "不限量计划") : snapshot.balanceUnit ?? (language === "en" ? "No quota window" : "暂无额度周期")}</span></div>
+          )}
+        </div>
+      </article>
+
+      <article className="cockpit-panel cockpit-panel--activity">
+        <header>
+          <div><span>{language === "en" ? "Last 90 days" : "近 90 天用量"}</span><small>{language === "en" ? `Observed use ${observedTotal.toFixed(1)}%` : `观测用量合计 ${observedTotal.toFixed(1)}%`}</small></div>
+          {panelActions("activity")}
+        </header>
+        <div className="cockpit-heatmap" aria-label={language === "en" ? "90-day observed usage heatmap" : "90 天观测用量热力图"}>
+          {activityDays.map((item) => <span key={item.dateKey} className={`cockpit-day cockpit-day--${item.level}`} title={`${item.dateKey} · ${item.value === null ? (language === "en" ? "No sample" : "无样本") : `${item.value.toFixed(1)}%`}`} />)}
+        </div>
+        <footer><span>{language === "en" ? "Less" : "少"}</span>{[0, 1, 2, 3, 4].map((level) => <i key={level} className={`cockpit-day cockpit-day--${level}`} />)}<span>{language === "en" ? "More" : "多"}</span></footer>
+      </article>
+    </section>
+  );
+}
+
 export const QuotaCard = memo(function QuotaCard({
   snapshot,
   snapshots,
@@ -424,12 +574,14 @@ export const QuotaCard = memo(function QuotaCard({
   controlCenter = null,
   controlOpen = false,
   onControlOpen = () => undefined,
+  onDetachCockpitRegion,
   initialShowCreditTip = false,
   initialInsightsOpen = false,
   collapsing = false,
 }: Props) {
   const [showCreditTip, setShowCreditTip] = useState(initialShowCreditTip);
   const [insightsOpen, setInsightsOpen] = useState(initialInsightsOpen);
+  const [cockpitFocus, setCockpitFocus] = useState<CockpitRegion | null>(null);
   const [draggedProvider, setDraggedProvider] = useState<ProviderId | null>(null);
   const [dragTargetProvider, setDragTargetProvider] = useState<ProviderId | null>(null);
   const [dragTargetAfter, setDragTargetAfter] = useState(false);
@@ -513,6 +665,8 @@ export const QuotaCard = memo(function QuotaCard({
   const resetMarker = snapshot.provider === "codex" && snapshot.status === "ok" ? recentCodexReset : null;
   const visibleResetForecast = snapshot.provider === "codex" ? resetForecast : null;
 
+  useEffect(() => setCockpitFocus(null), [preferences.expandedLayout, snapshot.provider]);
+
   const commitProviderOrder = (source: ProviderId, target: ProviderId, after = false) => {
     const order = providerDefinitions.map((definition) => definition.id);
     const sourceIndex = order.indexOf(source);
@@ -574,7 +728,7 @@ export const QuotaCard = memo(function QuotaCard({
 
   return (
     <main
-      className={`quota-card quota-card--${snapshot.status} quota-card--${tier} quota-card--layout-${preferences.layoutMode} quota-card--expanded-${preferences.expandedLayout} quota-card--style-${preferences.colorTheme} quota-card--theme-${resolvedAppearance} quota-card--origin-${preferences.compactLayout === "bar" ? preferences.barEdge : "center"}${overlayOpen ? " quota-card--overlay-open" : ""}${diagnosticsOpen ? " quota-card--diagnostics-open" : ""}${updateOpen ? " quota-card--update-open" : ""}${insightsOpen ? " quota-card--insights-open" : ""}${collapsing ? " quota-card--collapsing" : ""}`}
+      className={`quota-card quota-card--${snapshot.status} quota-card--${tier} quota-card--layout-${preferences.layoutMode} quota-card--expanded-${preferences.expandedLayout} quota-card--style-${preferences.colorTheme} quota-card--theme-${resolvedAppearance} quota-card--origin-${preferences.compactLayout === "bar" || preferences.compactLayout === "bottleneck" ? preferences.barEdge : "center"}${overlayOpen ? " quota-card--overlay-open" : ""}${diagnosticsOpen ? " quota-card--diagnostics-open" : ""}${updateOpen ? " quota-card--update-open" : ""}${insightsOpen ? " quota-card--insights-open" : ""}${collapsing ? " quota-card--collapsing" : ""}`}
       style={{ "--accent-color": preferences.accentColor } as CSSProperties}
       onMouseEnter={() => onHover(true)}
       onMouseLeave={() => onHover(false)}
@@ -681,7 +835,7 @@ export const QuotaCard = memo(function QuotaCard({
         aria-hidden={overlayOpen || undefined}
         inert={overlayOpen || undefined}
       >
-      {preferences.expandedLayout === "provider-bar" ? (
+      {preferences.expandedLayout === "provider-bar" || preferences.expandedLayout === "cockpit" ? (
         <div className="expanded-provider-strip" aria-label={language === "en" ? "Provider quick switch" : "平台快捷切换"}>
           <p>{language === "en" ? "Providers" : "平台"}<span>{providerDefinitions.length}</span></p>
           <ProviderLogoSlider
@@ -692,6 +846,19 @@ export const QuotaCard = memo(function QuotaCard({
           />
         </div>
       ) : null}
+      {preferences.expandedLayout === "cockpit" ? (
+        <CockpitDashboard
+          snapshot={snapshot}
+          history={history}
+          dailyUsage={dailyUsage}
+          paceBaselines={paceBaselines}
+          language={language}
+          focusedRegion={cockpitFocus}
+          onFocusRegion={setCockpitFocus}
+          onDetachRegion={onDetachCockpitRegion}
+        />
+      ) : (
+      <>
       <section className="primary-pane" key={snapshot.provider}>
         <header className="card-header">
           <div>
@@ -784,6 +951,7 @@ export const QuotaCard = memo(function QuotaCard({
         )}
       </section>
 
+      {preferences.expandedLayout !== "provider-bar" ? (
       <aside className="provider-ledger" aria-hidden={overlayOpen || undefined} inert={overlayOpen || undefined}>
         <header className="ledger-header">
           <p>{t.allServices}<span>{providerDefinitions.length}/{PROVIDER_CATALOG.length}</span>{preferences.riskFirst ? <b>{language === "en" ? "RISK FIRST" : "风险优先"}</b> : null}</p>
@@ -825,6 +993,9 @@ export const QuotaCard = memo(function QuotaCard({
           ))}
         </div>
       </aside>
+      ) : null}
+      </>
+      )}
       </div>
 
       <div
@@ -1002,15 +1173,24 @@ export const QuotaBar = memo(function QuotaBar({
     }
   };
 
+  const scheduleHover = () => {
+    if (hoverTimer.current !== null) return;
+    hoverTimer.current = window.setTimeout(() => onHover(true), 650);
+  };
+
   useEffect(() => () => cancelHover(), []);
 
   return (
     <main
       className={`quota-bar quota-bar--${edge} quota-card--${snapshot.status} quota-card--${quotaTier(remaining)} quota-card--compact-bar quota-card--style-${colorTheme} quota-card--theme-${resolvedAppearance}`}
       style={{ "--accent-color": accentColor, "--bar-progress": `${progress}%` } as CSSProperties}
-      onMouseEnter={() => {
-        cancelHover();
-        hoverTimer.current = window.setTimeout(() => onHover(true), 650);
+      onMouseOver={(event) => {
+        const target = event.target instanceof Element ? event.target : null;
+        if (target?.closest(".provider-logo-slider")) {
+          cancelHover();
+          return;
+        }
+        scheduleHover();
       }}
       onMouseLeave={() => {
         cancelHover();
@@ -1039,6 +1219,123 @@ export const QuotaBar = memo(function QuotaBar({
       <span className="bar-reset">{quota ? compactResetTime(quota.window.resetsAt) : snapshot.balanceUnit ?? "—"}</span>
       <span className={`bar-status bar-status--${healthy ? "ok" : "attention"}`}><i />{status}</span>
       <span className="bar-freshness">{compactFreshness(snapshot.updatedAt)}</span>
+      <span className="bar-progress" aria-hidden="true"><i /></span>
+    </main>
+  );
+});
+
+function bottleneckMetric(snapshot: ProviderSnapshot, language: Language): { value: string; detail: string; progress: number } {
+  const activeLanguage = normalizeLanguage(language);
+  if (snapshot.status === "signed_out") return { value: "!", detail: activeLanguage === "en" ? "Sign-in required" : "需要登录", progress: 0 };
+  if (snapshot.status === "unavailable") return { value: "!", detail: activeLanguage === "en" ? "Unavailable" : "不可用", progress: 0 };
+  if (snapshot.status === "loading") return { value: "…", detail: activeLanguage === "en" ? "Loading" : "读取中", progress: 0 };
+  const windows = trackedQuotaWindows(snapshot);
+  const tightest = windows.reduce<NamedQuotaWindow | null>((current, candidate) => (
+    current === null || candidate.window.remainingPercent < current.window.remainingPercent ? candidate : current
+  ), null);
+  if (tightest) {
+    const remaining = clampPercent(tightest.window.remainingPercent);
+    const period = tightest.period === "5h" ? (activeLanguage === "en" ? "5 hours" : "5 小时") : tightest.period === "weekly" ? (activeLanguage === "en" ? "Week" : "本周") : (activeLanguage === "en" ? "Month" : "本月");
+    return { value: `${remaining}%`, detail: period, progress: remaining };
+  }
+  if (snapshot.balanceUnit === "unlimited") return { value: "∞", detail: activeLanguage === "en" ? "Unlimited" : "不限量", progress: 100 };
+  if (snapshot.balanceRemaining !== null && snapshot.balanceRemaining !== undefined) {
+    const value = new Intl.NumberFormat(activeLanguage === "en" ? "en-US" : "zh-CN", { notation: "compact", maximumFractionDigits: 1 }).format(snapshot.balanceRemaining);
+    return { value, detail: snapshot.balanceUnit ?? (activeLanguage === "en" ? "Balance" : "余额"), progress: 100 };
+  }
+  return { value: "—", detail: activeLanguage === "en" ? "No window" : "暂无周期", progress: 0 };
+}
+
+export const QuotaBottleneckBar = memo(function QuotaBottleneckBar({
+  snapshot,
+  snapshots,
+  edge,
+  language = "zh-CN",
+  colorTheme = "aurora",
+  accentColor = "#397ae0",
+  resolvedAppearance = "dark",
+  onSelectProvider,
+  onDrag,
+  onHover,
+}: QuotaBarProps) {
+  const hoverTimer = useRef<number | null>(null);
+  const activeLanguage = normalizeLanguage(language);
+  const sortedIds = sortProviderIdsByRisk(snapshots.map((item) => item.provider), snapshots);
+  const snapshotsByProvider = new Map(snapshots.map((item) => [item.provider, item]));
+  const orderedSnapshots = sortedIds.map((provider) => snapshotsByProvider.get(provider)!).filter(Boolean);
+  const lead = orderedSnapshots[0] ?? snapshot;
+  const leadMetric = bottleneckMetric(lead, activeLanguage);
+  const leadRemaining = snapshotRemainingPercent(lead);
+  const expandLabel = activeLanguage === "en" ? "Expand bottleneck details" : "展开瓶颈详情";
+
+  const cancelHover = () => {
+    if (hoverTimer.current !== null) {
+      window.clearTimeout(hoverTimer.current);
+      hoverTimer.current = null;
+    }
+  };
+  const scheduleHover = () => {
+    if (hoverTimer.current !== null) return;
+    hoverTimer.current = window.setTimeout(() => onHover(true), 650);
+  };
+  useEffect(() => () => cancelHover(), []);
+
+  return (
+    <main
+      className={`quota-bar quota-bottleneck-bar quota-bar--${edge} quota-card--${lead.status} quota-card--${quotaTier(leadRemaining)} quota-card--compact-bottleneck quota-card--style-${colorTheme} quota-card--theme-${resolvedAppearance}`}
+      style={{ "--accent-color": accentColor, "--bar-progress": `${leadMetric.progress}%`, "--bottleneck-count": orderedSnapshots.length } as CSSProperties}
+      onMouseOver={(event) => {
+        const target = event.target instanceof Element ? event.target : null;
+        if (target?.closest(".bottleneck-provider-list")) {
+          cancelHover();
+          return;
+        }
+        scheduleHover();
+      }}
+      onMouseLeave={() => {
+        cancelHover();
+        onHover(false);
+      }}
+      onMouseDown={(event) => { if (event.button === 0) void onDrag(); }}
+      aria-label={`${activeLanguage === "en" ? "Most constrained" : "最紧张额度"}: ${lead.displayName} ${leadMetric.value} ${leadMetric.detail}`}
+    >
+      <section className="bottleneck-provider-list" role="radiogroup" aria-label={activeLanguage === "en" ? "Providers by quota risk" : "按额度风险排列的平台"}>
+        {orderedSnapshots.map((item, index) => {
+          const metric = bottleneckMetric(item, activeLanguage);
+          const selected = item.provider === snapshot.provider;
+          return (
+            <button
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              className={`${selected ? "is-active" : ""}${index === 0 ? " is-bottleneck" : ""}`}
+              key={item.provider}
+              title={`${item.displayName} · ${metric.detail} · ${metric.value}`}
+              aria-label={`${item.displayName} · ${metric.detail} · ${metric.value}`}
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={() => {
+                cancelHover();
+                onSelectProvider(item.provider);
+              }}
+            >
+              <ProviderMark provider={item.provider} label={item.displayName} />
+              <span>{metric.value}</span>
+            </button>
+          );
+        })}
+      </section>
+      <button
+        type="button"
+        className="bottleneck-summary"
+        aria-label={expandLabel}
+        title={expandLabel}
+        onMouseDown={(event) => event.stopPropagation()}
+        onClick={() => onHover(true)}
+      >
+        <span><small>{activeLanguage === "en" ? "Most constrained" : "最紧张"}</small><strong>{lead.displayName}</strong></span>
+        <b>{leadMetric.value}</b>
+        <ArrowSquareOut />
+      </button>
       <span className="bar-progress" aria-hidden="true"><i /></span>
     </main>
   );

@@ -132,6 +132,9 @@ describe("ControlCenter provider health", () => {
     fireEvent.click(screen.getByRole("radio", { name: /^Provider bar/i }));
     expect(onPreferences).toHaveBeenCalledWith(expect.objectContaining({ expandedLayout: "provider-bar", colorTheme: "aurora" }));
 
+    fireEvent.click(screen.getByRole("radio", { name: /^Cockpit/i }));
+    expect(onPreferences).toHaveBeenCalledWith(expect.objectContaining({ expandedLayout: "cockpit", colorTheme: "aurora" }));
+
     fireEvent.click(screen.getByRole("radio", { name: /^Ring/i }));
     expect(onPreferences).toHaveBeenCalledWith(expect.objectContaining({ compactLayout: "ring", colorTheme: "aurora" }));
 

@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "focus-panel",
+  "description": "Minimal capabilities for read-only detached cockpit panels",
+  "windows": ["focus-panel-*"],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:window:allow-start-dragging",
+    "core:window:allow-close"
+  ]
+}

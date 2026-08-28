@@ -30,7 +30,7 @@ Quota Float is an always-on-top **Codex quota monitor and coding-assistant usage
 
 - **All quotas in one place:** monitor Codex, Claude, Qoder, TRAE, WorkBuddy, Volcengine Ark Coding Plan, and Google Antigravity from one compact widget.
 - **Useful before a limit hits:** see healthy, caution, and critical states, quota pace guidance, reset timing, a freshness-gated multi-source global reset outlook, and configurable desktop alerts.
-- **Stays out of the way:** use a floating orb, Ring, or magnetic Bar attached to the top, left, or right work-area edge; expand inward on hover and keep the placement across restarts and display changes.
+- **Stays out of the way:** use a floating orb, Ring, magnetic Bar, or risk-sorted Bottleneck rail attached to the top, left, or right work-area edge; expand inward on hover and keep the placement across restarts and display changes.
 - **Resilient by design:** transient failures are retried, while last-known-good values remain visible and clearly marked as stale.
 - **Private by default:** no telemetry, analytics, account modification, prompt collection, or third-party tracking.
 - **Desktop-native:** built with Tauri, Rust, React, and TypeScript, with signed in-app update artifacts and Stable/Beta channels.
@@ -68,7 +68,9 @@ Updater artifacts are signed with the project's Tauri update key. Windows Authen
 - A Vibe Usage dashboard with incremental local Codex indexing, model/project/terminal filters, session and activity metrics, trend charts, an hourly heatmap, and per-model API-equivalent cost estimates.
 - A configurable monthly API-equivalent budget outlook with local alerts, plus anonymized CSV/JSON exports, an SVG share card, and an exportable versioned price catalog.
 - Custom accent colors, hidden or condensed providers, reusable layout profiles, and system-login autostart.
-- Independent Float/Ring/Bar compact layouts and Dashboard/Provider-bar/Stacked expanded layouts, with Aurora, Graphite, or Paper colors shared across every layout plus System/Light/Dark appearance.
+- Independent Float/Ring/Bar/Bottleneck compact layouts and Dashboard/Cockpit/Provider-bar/Stacked expanded layouts. Bottleneck shows every provider's tightest window in risk order. Cockpit combines the active quota ring, local trend, pace plan, and 90-day heatmap; each region can expand in place or detach into its own always-on-top window.
+- The compact Bar keeps provider-logo interaction in switch-only mode; dwelling on the metric area expands inward. Expanded layouts expose only one provider-navigation surface.
+- Detached Cockpit windows read the existing native snapshot cache and bounded local history; they do not receive credentials, prompts, or serialized quota payloads through their URL.
 - A magnetic Bar with a `400×38` top strip or `64×320` left/right rail, upright quota details, edge-aware inward expansion, and saved normalized placement.
 - Rotating recovery points before updates plus one-file export/import for settings, layouts, and history.
 - Redacted diagnostic reports that exclude tokens, account IDs, local auth paths, and raw provider responses.

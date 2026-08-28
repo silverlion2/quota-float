@@ -2,13 +2,14 @@ export type ProviderId = "codex" | "claude" | "qoder" | "trae" | "workbuddy" | "
 export type SnapshotStatus = "ok" | "stale" | "loading" | "unavailable" | "signed_out";
 export type Language = "zh-CN" | "en";
 export type LayoutMode = "compact" | "standard" | "detailed";
-export type CompactLayout = "float" | "ring" | "bar";
+export type CompactLayout = "float" | "ring" | "bar" | "bottleneck";
 export type BarEdge = "top" | "left" | "right";
 export interface BarPlacement {
   edge: BarEdge;
   offset: number;
 }
-export type ExpandedLayout = "dashboard" | "provider-bar" | "stacked";
+export type ExpandedLayout = "dashboard" | "cockpit" | "provider-bar" | "stacked";
+export type CockpitRegion = "overview" | "pace" | "activity";
 export type ColorTheme = "aurora" | "graphite" | "paper";
 export type AppearanceMode = "system" | "light" | "dark";
 export type ResolvedAppearance = Exclude<AppearanceMode, "system">;

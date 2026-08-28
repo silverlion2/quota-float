@@ -151,7 +151,7 @@ struct WidgetGeometryState {
 }
 
 fn compact_mode(compact_layout: Option<&str>) -> CompactMode {
-    if matches!(compact_layout, Some("bar" | "island")) {
+    if matches!(compact_layout, Some("bar" | "bottleneck" | "island")) {
         CompactMode::Bar
     } else {
         CompactMode::Float
@@ -577,6 +577,74 @@ fn get_app_diagnostics(state: State<'_, AppState>) -> AppDiagnostics {
         config_directory,
         preferences_backup_available: state.preferences_path.with_extension("json.bak").exists(),
         runtime_backup_available: state.runtime_state_path.with_extension("json.bak").exists(),
+    }
+}
+
+fn valid_focus_panel_region(value: &str) -> bool {
+    matches!(value, "overview" | "pace" | "activity")
+}
+
+fn valid_provider_id(value: &str) -> bool {
+    matches!(
+        value,
+        "codex" | "claude" | "qoder" | "trae" | "workbuddy" | "volcengine" | "antigravity"
+    )
+}
+
+#[tauri::command]
+fn open_focus_panel(
+    region: String,
+    provider: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    if !valid_focus_panel_region(&region) || !valid_provider_id(&provider) {
+        return Err("invalid focus panel target".into());
+    }
+    let label = format!("focus-panel-{region}-{provider}");
+    if let Some(window) = app.get_webview_window(&label) {
+        window
+            .show()
+            .map_err(|_| "focus panel unavailable".to_string())?;
+        window
+            .set_focus()
+            .map_err(|_| "focus panel could not be focused".to_string())?;
+        return Ok(());
+    }
+    let (width, height) = match region.as_str() {
+        "overview" => (520.0, 330.0),
+        "pace" => (520.0, 330.0),
+        _ => (620.0, 340.0),
+    };
+    let always_on_top = state
+        .preferences
+        .lock()
+        .map(|preferences| preferences.always_on_top)
+        .unwrap_or(true);
+    let url = format!("index.html?focusPanel={region}&provider={provider}");
+    let window = tauri::WebviewWindowBuilder::new(&app, label, tauri::WebviewUrl::App(url.into()))
+        .title("Quota Float Focus")
+        .inner_size(width, height)
+        .min_inner_size(360.0, 240.0)
+        .resizable(true)
+        .decorations(false)
+        .transparent(true)
+        .shadow(true)
+        .always_on_top(always_on_top)
+        .skip_taskbar(false)
+        .build()
+        .map_err(|_| "focus panel could not be created".to_string())?;
+    let _ = window.center();
+    let _ = window.set_focus();
+    Ok(())
+}
+
+#[tauri::command]
+fn notify_focus_panels(app: AppHandle) {
+    for (label, _) in app.webview_windows() {
+        if label.starts_with("focus-panel-") {
+            let _ = app.emit_to(label, "focus-panel-updated", ());
+        }
     }
 }
 
@@ -1415,7 +1483,18 @@ mod geometry_tests {
     }
 
     #[test]
+    fn detached_panel_targets_are_allowlisted() {
+        assert!(valid_focus_panel_region("activity"));
+        assert!(valid_provider_id("codex"));
+        assert!(!valid_focus_panel_region("../settings"));
+        assert!(!valid_provider_id("unknown"));
+    }
+
+    #[test]
     fn compact_modes_use_distinct_window_sizes() {
+        assert_eq!(compact_mode(Some("bottleneck")), CompactMode::Bar);
+        assert_eq!(compact_mode(Some("bar")), CompactMode::Bar);
+        assert_eq!(compact_mode(Some("ring")), CompactMode::Float);
         assert_eq!(
             collapsed_physical_size(CompactMode::Float, BarEdge::Top, 1.0, 4),
             PhysicalSize::new(100, 100)
@@ -2373,7 +2452,9 @@ pub fn run() {
             import_app_data,
             create_automatic_backup,
             restore_latest_backup,
-            get_app_diagnostics
+            get_app_diagnostics,
+            open_focus_panel,
+            notify_focus_panels
         ])
         .on_tray_icon_event(|app, event| {
             if let TrayIconEvent::Click {
@@ -2389,9 +2470,11 @@ pub fn run() {
             }
         })
         .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let _ = window.hide();
+            if window.label() == "widget" {
+                if let WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
             }
         })
         .build(tauri::generate_context!())

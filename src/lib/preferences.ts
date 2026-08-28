@@ -78,7 +78,7 @@ export function normalizeWidgetPreferences(value: LegacyWidgetPreferences | null
   const requestedPinnedProvider = providerSet.has(candidate.pinnedProvider as ProviderId) ? candidate.pinnedProvider as ProviderId : null;
   const pinnedProvider = requestedPinnedProvider && !hiddenProviders.includes(requestedPinnedProvider) ? requestedPinnedProvider : null;
   const layoutMode = candidate.layoutMode === "compact" || candidate.layoutMode === "detailed" ? candidate.layoutMode : "standard";
-  const compactLayout = candidate.compactLayout === "bar" || candidate.compactLayout === "ring" || candidate.compactLayout === "float"
+  const compactLayout = candidate.compactLayout === "bottleneck" || candidate.compactLayout === "bar" || candidate.compactLayout === "ring" || candidate.compactLayout === "float"
     ? candidate.compactLayout
     : candidate.visualStyle === "island" ? "bar" : "float";
   const barEdge = candidate.barEdge === "left" || candidate.barEdge === "right" || candidate.barEdge === "top"
@@ -87,7 +87,7 @@ export function normalizeWidgetPreferences(value: LegacyWidgetPreferences | null
   const barOffset = typeof candidate.barOffset === "number" && Number.isFinite(candidate.barOffset)
     ? Math.max(0, Math.min(1, candidate.barOffset))
     : 0.5;
-  const expandedLayout = candidate.expandedLayout === "provider-bar" || candidate.expandedLayout === "stacked" || candidate.expandedLayout === "dashboard"
+  const expandedLayout = candidate.expandedLayout === "cockpit" || candidate.expandedLayout === "provider-bar" || candidate.expandedLayout === "stacked" || candidate.expandedLayout === "dashboard"
     ? candidate.expandedLayout
     : candidate.visualStyle === "island" ? "provider-bar" : "dashboard";
   const colorTheme = candidate.colorTheme === "graphite" || candidate.colorTheme === "paper" || candidate.colorTheme === "aurora"

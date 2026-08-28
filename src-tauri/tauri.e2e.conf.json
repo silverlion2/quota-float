@@ -7,7 +7,7 @@
   "app": {
     "withGlobalTauri": true,
     "security": {
-      "capabilities": ["default", "e2e"]
+      "capabilities": ["default", "focus-panel", "e2e"]
     }
   },
   "bundle": {

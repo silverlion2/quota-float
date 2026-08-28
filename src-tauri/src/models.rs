@@ -330,7 +330,10 @@ impl WidgetPreferences {
                 default_color_theme()
             };
         }
-        if !matches!(self.compact_layout.as_str(), "float" | "ring" | "bar") {
+        if !matches!(
+            self.compact_layout.as_str(),
+            "float" | "ring" | "bar" | "bottleneck"
+        ) {
             self.compact_layout = default_compact_layout();
         }
         if !matches!(self.bar_edge.as_str(), "top" | "left" | "right") {
@@ -343,7 +346,7 @@ impl WidgetPreferences {
         };
         if !matches!(
             self.expanded_layout.as_str(),
-            "dashboard" | "provider-bar" | "stacked"
+            "dashboard" | "cockpit" | "provider-bar" | "stacked"
         ) {
             self.expanded_layout = default_expanded_layout();
         }
@@ -557,6 +560,21 @@ mod tests {
         let normalized = preferences.normalized();
         assert_eq!(normalized.compact_layout, "ring");
         assert_eq!(normalized.expanded_layout, "stacked");
+
+        let preferences = WidgetPreferences {
+            compact_layout: "bottleneck".into(),
+            bar_edge: "right".into(),
+            ..Default::default()
+        };
+        let normalized = preferences.normalized();
+        assert_eq!(normalized.compact_layout, "bottleneck");
+        assert_eq!(normalized.bar_edge, "right");
+
+        let preferences = WidgetPreferences {
+            expanded_layout: "cockpit".into(),
+            ..Default::default()
+        };
+        assert_eq!(preferences.normalized().expanded_layout, "cockpit");
 
         let preferences = WidgetPreferences {
             appearance_mode: "sepia".into(),

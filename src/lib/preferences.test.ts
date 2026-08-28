@@ -33,6 +33,8 @@ describe("widget preference migration", () => {
     expect(graphiteBar.expandedLayout).toBe("provider-bar");
     expect(graphiteBar.colorTheme).toBe("graphite");
     expect(normalizeWidgetPreferences({ compactLayout: "ring", expandedLayout: "stacked" })).toEqual(expect.objectContaining({ compactLayout: "ring", expandedLayout: "stacked" }));
+    expect(normalizeWidgetPreferences({ compactLayout: "bottleneck", barEdge: "right" })).toEqual(expect.objectContaining({ compactLayout: "bottleneck", barEdge: "right" }));
+    expect(normalizeWidgetPreferences({ expandedLayout: "cockpit" })).toEqual(expect.objectContaining({ expandedLayout: "cockpit" }));
     expect(normalizeWidgetPreferences({ appearanceMode: "dark" }).appearanceMode).toBe("dark");
     expect(normalizeWidgetPreferences({ appearanceMode: "sepia" as never }).appearanceMode).toBe("system");
     expect(normalizeWidgetPreferences({ compactLayout: "stack" as never }).compactLayout).toBe("float");
