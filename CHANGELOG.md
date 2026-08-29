@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.5 - 2026-08-29
+
+- feat: harden imports and provider snapshots
+- docs: record v0.3.4 release evidence
+
 ## 0.3.4 - 2026-08-28
 
 - fix: keep vertical provider list in provider bar
