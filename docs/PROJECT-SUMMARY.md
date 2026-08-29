@@ -25,7 +25,7 @@ Quota Float 是一款 Windows/macOS Tauri 桌面悬浮窗：它只读复用本�
 - Rust 单元测试、`fmt`、`check` 与 `clippy`：平台解析、registry、偏好迁移和物理像素窗口几何验证。
 - WebdriverIO + Tauri WebDriver：编译后的真实桌面进程、原生桥接、展开、控制中心与更新对话框冒烟验证。
 
-详细分层和目录职责见 [ARCHITECTURE.md](ARCHITECTURE.md)，维护提案见 [ROADMAP.md](ROADMAP.md)，长期协作与发布历史见 [PROJECT-MEMO.md](PROJECT-MEMO.md)，最新发布证据见 [RELEASE-0.3.4.md](RELEASE-0.3.4.md)。
+详细分层和目录职责见 [ARCHITECTURE.md](ARCHITECTURE.md)，维护提案见 [ROADMAP.md](ROADMAP.md)，长期协作与发布历史见 [PROJECT-MEMO.md](PROJECT-MEMO.md)，最新发布证据见 [RELEASE-0.3.5.md](RELEASE-0.3.5.md)。
 
 ## 关键文件
 
@@ -72,7 +72,7 @@ npm run tauri dev
 
 提交交付前必须执行 [桌面开发 SOP](DESKTOP-DEVELOPMENT-SOP.md) 的完整 fast handoff gate。浏览器模式不能验证真实额度或系统窗口行为；Windows 多屏/缩放和 macOS 透明窗口仍需真实桌面环境按 [TEST-MATRIX.md](TEST-MATRIX.md) 验收。
 
-最近一次已验证公开版本为 `v0.3.4`。产物清单、提交、工作流和验证结果记录在 [RELEASE-0.3.4.md](RELEASE-0.3.4.md)；下一版本发布后应新增对应 release record，不覆盖历史证据。
+最近一次已验证公开版本为 `v0.3.5`。产物清单、提交、工作流和验证结果记录在 [RELEASE-0.3.5.md](RELEASE-0.3.5.md)；下一版本发布后应新增对应 release record，不覆盖历史证据。
 
 ## 当前维护重点
 

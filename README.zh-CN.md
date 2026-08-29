@@ -131,7 +131,7 @@ npm run tauri dev
 
 浏览器模式使用模拟数据；真实额度只能在 Tauri 桌面应用中读取。构建安装包请运行 `npm run tauri build`。
 
-维护者可从最新的 [v0.3.4 发布记录](docs/RELEASE-0.3.4.md)、[项目简介](docs/PROJECT-SUMMARY.md)、[架构与目录职责](docs/ARCHITECTURE.md)、[路线图](docs/ROADMAP.md)和[桌面开发 SOP](docs/DESKTOP-DEVELOPMENT-SOP.md)开始。
+维护者可从最新的 [v0.3.5 发布记录](docs/RELEASE-0.3.5.md)、[项目简介](docs/PROJECT-SUMMARY.md)、[架构与目录职责](docs/ARCHITECTURE.md)、[路线图](docs/ROADMAP.md)和[桌面开发 SOP](docs/DESKTOP-DEVELOPMENT-SOP.md)开始。
 
 ## 参与贡献
 

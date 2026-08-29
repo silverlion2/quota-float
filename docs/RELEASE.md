@@ -44,7 +44,7 @@ npm run release -- patch
 
 脚本会校验版本、测试并构建，随后创建 release commit 与 `v*` tag，并在获得授权后推送 `main` 和 tag。外部推送的 tag 仍兼容 `.github/workflows/release.yml`；它会验证 tag/版本、构建 Windows/macOS 草稿产物、执行 Defender 扫描、检查附件完整性、公开 Release，并运行 Stable 升级烟测。
 
-工作流完成后必须检查公开 Release、完整产物和所有 job 的最终结论。当前流程及授权边界见 [GITHUB-RELEASE-CHECKLIST.md](GITHUB-RELEASE-CHECKLIST.md)；最近一次完整证据见 [RELEASE-0.3.2.md](RELEASE-0.3.2.md)。
+工作流完成后必须检查公开 Release、完整产物和所有 job 的最终结论。当前流程及授权边界见 [GITHUB-RELEASE-CHECKLIST.md](GITHUB-RELEASE-CHECKLIST.md)；最近一次完整证据见 [RELEASE-0.3.5.md](RELEASE-0.3.5.md)。
 
 ### GitHub 配置
 
