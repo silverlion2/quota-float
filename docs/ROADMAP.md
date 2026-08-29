@@ -13,12 +13,15 @@ Evidence: the test matrix and feedback tracker still contain platform-runtime it
 
 ## Next — reduce maintenance risk
 
-- Formalize a small provider-adapter conformance suite for status mapping, bounded payloads, last-known-good behavior and redacted diagnostics.
-- Add deterministic native-window integration fixtures around monitor changes, taskbar relocation and display removal where Tauri test seams permit it.
-- Make layout-profile import diagnostics explain migrated or clamped fields without exposing source paths or provider data.
 - Refresh screenshots and interaction documentation after the magnetic Bar passes platform smoke testing.
 
 Evidence: adapters are intentionally separate Rust modules, while `TEST-MATRIX.md` still relies on real desktop checks for monitor lifecycle and platform login changes.
+
+Completed on 2026-08-29:
+
+- Backup import now reports layout-profile migrations, bounded-position corrections, safe repairs, invalid/truncated profiles and ignored unknown-field counts. The report contains only fixed field labels and counts; it excludes source paths, layout names, IDs, provider values and unknown-field contents.
+- The provider registry now applies one shared outbound conformance contract across every adapter: fixed descriptor identity, status allowlisting, finite/bounded quota values, bounded text/list payloads, fail-closed empty error payloads and redacted diagnostics. Frontend last-known-good merge coverage remains the recovery half of this contract.
+- Rust geometry tests now include a continuous lifecycle fixture for a negative-coordinate secondary display, top-taskbar work-area relocation, display removal and migration to a differently scaled primary display. This validates the deterministic geometry seam but does not replace real Tauri display-event and visual smoke testing.
 
 ## Later — distribution and carefully scoped breadth
 

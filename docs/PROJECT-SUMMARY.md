@@ -34,11 +34,11 @@ Quota Float 是一款 Windows/macOS Tauri 桌面悬浮窗：它只读复用本�
 - `src/components/ProviderLogoSlider.tsx`：完整平台目录的横向/纵向快速切换、roving focus 和键盘导航。
 - `src/components/ControlCenter.tsx`：显示、布局、独立平台管理、提醒、布局方案和恢复设置。
 - `src/components/UsageInsightsPanel.tsx`：四列核心指标、筛选、趋势/热力图、费用与预算展望。
-- `src/lib/preferences.ts`、`src/lib/refreshPolicy.ts`、`src/lib/activity.ts`、`src/lib/quotaPace.ts`：偏好、按平台刷新策略、布局方案、导入、旧数据迁移、额度节奏与重置展望规划保护。
+- `src/lib/preferences.ts`、`src/lib/refreshPolicy.ts`、`src/lib/backup.ts`、`src/lib/activity.ts`、`src/lib/importDiagnostics.ts`、`src/lib/quotaPace.ts`：偏好、按平台刷新策略、备份 envelope 校验、布局方案、隐私安全的迁移/修正诊断、旧数据迁移、额度节奏与重置展望规划保护。
 - `src/lib/bridge.ts`：浏览器 mock 与 Tauri command 的类型化桥接。
 - `src-tauri/src/lib.rs`：应用命令、窗口/显示器几何、磁吸、持久化、托盘和生命周期。
 - `src-tauri/src/models.rs`：Rust 侧偏好与平台快照模型及安全归一化。
-- `src-tauri/src/provider_registry.rs`、`src-tauri/src/{codex,claude,qoder,trae,workbuddy,volcengine,antigravity}.rs`：有界并发、定向重试和相互隔离的平台读取器。
+- `src-tauri/src/provider_registry.rs`、`src-tauri/src/{codex,claude,qoder,trae,workbuddy,volcengine,antigravity}.rs`：有界并发、定向重试、统一输出契约和相互隔离的平台读取器。
 - `src-tauri/src/reset_forecast.rs`、`src-tauri/capabilities/default.json`：三个固定公开预测源的并发读取、大小/时效/schema 校验、中位数共识与置信度，以及已知来源主页的 Tauri opener allowlist。
 - `docs/DESKTOP-DEVELOPMENT-SOP.md`：实现与快速交付门槛。
 - `.github/workflows/release.yml`、`scripts/release.mjs`：线上一键/本地回退发布、版本同步、草稿产物扫描与公开发布门槛。

@@ -7,6 +7,8 @@
 | 偏好 | 旧版本缺少 Bar 字段 | 自动迁移为 `top` + `0.5` | TypeScript/Rust 归一化测试 |
 | 偏好 | 非法边缘、NaN、越界 offset | 边缘回退 Top；有限数值限制到 `0…1`，无效值回退 `0.5` | TypeScript/Rust 归一化测试 |
 | 布局方案 | 保存、恢复、导出/导入 Bar/Bottleneck 位置 | `barEdge` 与 `barOffset` 随现有 schema 保存，不包含凭据 | 组件测试、运行时归一化测试 |
+| 布局导入诊断 | 旧字段、越界位置、无效/超量布局、未知字段 | 成功提示解释迁移、范围修正、修复、丢弃和忽略数量；不包含路径、布局名称/ID、provider 值或未知字段原值 | 运行时归一化、双语格式与隐私断言测试 |
+| 备份 envelope | 当前/无 schema 旧备份、数组 section、缺字段、非法/未来 schema | 当前与旧备份可恢复；结构异常或未来版本在写入本地状态前拒绝 | 纯函数 envelope 校验测试 |
 | Bar UI | Top 水平条 | `400×38`，平台横向排列，额度/重置/状态/新鲜度可读 | 组件、样式与 Rust 尺寸测试 |
 | Bar UI | Left/Right 侧轨 | `64×320`，平台纵向排列，所有文本保持正向，贴边侧平直、内侧圆角 | 组件、主题、方向与无障碍测试 |
 | Bar UI | 平台选择与悬停 | Logo 区点击/横纵拖动只切换平台；指标区停留 650ms 后展开，移出取消 | 组件回归测试 |
@@ -14,6 +16,7 @@
 | Bar geometry | 三边与 offsets `0/0.5/1` | 使用可用工作区定位并包含透明安全边距 | Rust 几何测试 |
 | Bar geometry | 24px 磁吸与角落 | 最近 Top/Left/Right；角落等距保留当前边缘；Bottom 不参与 | Rust 几何测试 |
 | Bar geometry | 负坐标、任务栏、多 DPI | 负原点、非零工作区原点、100/125/150% 方向尺寸正确 | Rust 几何测试 |
+| 窗口生命周期 fixture | 负坐标副屏、顶部任务栏迁移、副屏移除、不同 DPI 主屏接管 | 按保存的 edge/offset 重算 Bar；尺寸随 DPI 更新；折叠与展开矩形始终回收到新工作区 | Rust 连续状态 fixture；真实 Tauri 显示器事件仍需实机烟测 |
 | 展开/收起 | 从边缘向内展开 | 保存的 edge/offset 决定展开锚点并限制在工作区 | Rust 几何测试、桥接参数测试 |
 | 内容缩放 | 展开高度随内容变化 | 保留 Bar 锚点；手动拖动展开面板不改 Bar 偏好 | Rust 状态/几何逻辑、桥接测试 |
 | Float/Ring | 原有吸附行为 | 不使用 Bar 磁吸结果，保持原窗口吸附路径 | Rust 几何回归、组件测试 |
@@ -21,6 +24,7 @@
 | 数据 | 正常/过期/登出/缺字段 | 不崩溃、不猜测额度、保留 last-known-good 并安全标记 | Provider/快照单元测试 |
 | Codex 全局重置展望 | 三源正常、部分失败、过期、异常窗口、分歧、定时官宣 | 仅纳入 6 小时内的 48h 数据；中位数抗离群；展示来源数/置信度；低置信度或单源不改变规划；定时官宣优先于概率中点 | Rust `reset_forecast`、TypeScript `quotaPace` 与组件测试 |
 | Provider registry | 并发、超时、临时失败与定向重试 | 固定顺序返回；慢平台被限制；只重试临时失败组；健康平台不重复请求 | Rust registry 单元测试、每周 Windows/macOS compatibility workflow |
+| Provider 出口契约 | 错误身份/状态、NaN/越界额度、超长文本/列表、无额度 `ok`、含 token/路径/原始 JSON 的诊断 | registry 覆盖身份；状态 allowlist；数值有限且比例限制到 `0…100`；载荷限界；失败清空额度；敏感诊断替换为固定安全提示 | 所有 provider descriptor 的 Rust 共享 conformance 测试 |
 | 自适应刷新 | 健康、临界、异常平台与 Balanced/Project Focus 模式 | 各平台使用独立时钟和分级间隔；只查询到期且未暂停的平台；Volcengine/Antigravity 不做同轮进程级重试 | TypeScript refresh policy、bridge/merge 与 Rust registry 单元测试 |
 | 项目专注 | 开关专注模式、暂停/恢复平台、手动刷新 | 自动轮播和无限环境动画停止；自动刷新降频；至少保留一个监控平台；手动刷新保持可用 | 偏好归一化、控制中心组件和样式回归测试 |
 | 展开布局与平台切换 | Dashboard、Cockpit、Provider Bar、Stacked、七平台快速切换、窄窗口 | 四种信息层级明确区分；Provider Bar 仅保留右侧纵向平台列表，Cockpit 仅保留顶部横向平台导航；方向键与 Home/End roving focus 可用；窄窗口无关键内容溢出 | QuotaCard、ProviderLogoSlider、ControlCenter 组件/无障碍测试与响应式样式审查 |

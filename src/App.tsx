@@ -11,8 +11,10 @@ import { detectRecentCodexReset, isRecentCodexReset } from "./lib/resetDetection
 import type { RecentCodexReset } from "./lib/resetDetection";
 import { trackedQuotaWindows } from "./lib/quotaPace";
 import { mergeSnapshots } from "./lib/snapshots";
-import { canSendNotification, EMPTY_RUNTIME_STATE, isQuietHour, normalizeRuntimeState, recordSnapshotActivity, runtimeStatesEqual } from "./lib/activity";
+import { canSendNotification, EMPTY_RUNTIME_STATE, isQuietHour, normalizeRuntimeState, normalizeRuntimeStateWithDiagnostics, recordSnapshotActivity, runtimeStatesEqual } from "./lib/activity";
 import { DEFAULT_WIDGET_PREFERENCES, normalizeWidgetPreferences } from "./lib/preferences";
+import { formatBackupRestoreNotice } from "./lib/importDiagnostics";
+import { parseBackupBundle } from "./lib/backup";
 import { resolveAppearanceMode, systemPrefersDark } from "./lib/appearance";
 import { loadStartupState } from "./lib/startup";
 import { runSingleFlight, type SingleFlightState } from "./lib/singleFlight";
@@ -441,11 +443,9 @@ export default function App() {
   }), [appDiagnostics?.appVersion, preferences, runtimeState]);
 
   const applyBackupBundle = useCallback(async (value: unknown) => {
-    if (!value || typeof value !== "object") throw new Error("Backup file is invalid.");
-    const bundle = value as { preferences?: Partial<WidgetPreferences>; runtimeState?: unknown };
-    if (!bundle.preferences || !bundle.runtimeState) throw new Error("Backup file is missing settings or history.");
+    const bundle = parseBackupBundle(value);
     const nextPreferences = normalizeWidgetPreferences(bundle.preferences);
-    const nextRuntime = normalizeRuntimeState(bundle.runtimeState);
+    const { state: nextRuntime, savedLayouts: layoutDiagnostics } = normalizeRuntimeStateWithDiagnostics(bundle.runtimeState);
     ++preferenceSaveSequence.current;
     await applyAppData(nextPreferences, nextRuntime);
     preferencesRef.current = nextPreferences;
@@ -453,7 +453,7 @@ export default function App() {
     runtimeStateRef.current = nextRuntime;
     setPreferences(nextPreferences);
     setRuntimeState(nextRuntime);
-    setOperationError(language === "en" ? "Backup restored." : "备份已恢复。");
+    setOperationError(formatBackupRestoreNotice(layoutDiagnostics, language));
   }, [language]);
 
   const handleExport = useCallback(() => {

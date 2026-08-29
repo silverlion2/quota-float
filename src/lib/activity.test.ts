@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canSendNotification, EMPTY_RUNTIME_STATE, isQuietHour, normalizeRuntimeState, recordSnapshotActivity, runtimeStatesEqual } from "./activity";
+import { canSendNotification, EMPTY_RUNTIME_STATE, isQuietHour, normalizeRuntimeState, normalizeRuntimeStateWithDiagnostics, recordSnapshotActivity, runtimeStatesEqual } from "./activity";
 import { MAX_DAILY_OBSERVED_PERCENT } from "../types";
 import type { ProviderSnapshot } from "../types";
 
@@ -436,6 +436,78 @@ describe("activity timeline and notification policy", () => {
       colorTheme: "paper",
       barEdge: "right",
       barOffset: 0.75,
+    }));
+  });
+
+  it("reports saved-layout migrations and repairs without retaining source values", () => {
+    const { state, savedLayouts } = normalizeRuntimeStateWithDiagnostics({
+      savedLayouts: [{
+        id: "legacy-private-id",
+        name: "  Private layout name  ",
+        createdAt: "2026-07-19T01:00:00Z",
+        providerOrder: ["codex", "unknown", "codex"],
+        layoutMode: "standard",
+        visualStyle: "island",
+        barOffset: 5,
+        accentColor: "#397ae0",
+        privateSourceValue: "must-not-appear",
+      }, {
+        id: null,
+        name: "invalid",
+      }],
+    });
+
+    expect(state.savedLayouts).toHaveLength(1);
+    expect(state.savedLayouts[0]).toEqual(expect.objectContaining({
+      name: "Private layout name",
+      compactLayout: "bar",
+      barOffset: 1,
+      expandedLayout: "provider-bar",
+    }));
+    expect(savedLayouts).toEqual(expect.objectContaining({
+      importedLayouts: 1,
+      droppedLayouts: 1,
+      truncatedLayouts: 0,
+      ignoredFieldCount: 1,
+    }));
+    expect(savedLayouts.migratedFields).toEqual(expect.arrayContaining(["compactLayout", "expandedLayout", "colorTheme"]));
+    expect(savedLayouts.clampedFields).toEqual(["barOffset"]);
+    expect(savedLayouts.repairedFields).toEqual(expect.arrayContaining(["name", "providerOrder"]));
+    expect(JSON.stringify(savedLayouts)).not.toContain("legacy-private-id");
+    expect(JSON.stringify(savedLayouts)).not.toContain("must-not-appear");
+    expect(JSON.stringify(savedLayouts)).not.toContain("codex");
+  });
+
+  it("reports layout profiles omitted above the persisted limit", () => {
+    const { state, savedLayouts } = normalizeRuntimeStateWithDiagnostics({
+      savedLayouts: Array.from({ length: 13 }, (_, index) => ({
+        id: `layout-${index}`,
+        name: `Layout ${index}`,
+        createdAt: "2026-07-19T01:00:00Z",
+        providerOrder: ["codex", "claude", "qoder", "trae", "workbuddy", "volcengine", "antigravity"],
+        hiddenProviders: [],
+        collapsedProviders: [],
+        layoutMode: "standard",
+        compactLayout: "float",
+        barEdge: "top",
+        barOffset: 0.5,
+        expandedLayout: "dashboard",
+        colorTheme: "aurora",
+        appearanceMode: "system",
+        riskFirst: false,
+        showHistorySparklines: true,
+        accentColor: "#397ae0",
+      })),
+    });
+
+    expect(state.savedLayouts).toHaveLength(12);
+    expect(savedLayouts).toEqual(expect.objectContaining({
+      importedLayouts: 12,
+      droppedLayouts: 0,
+      truncatedLayouts: 1,
+      migratedFields: [],
+      clampedFields: [],
+      repairedFields: [],
     }));
   });
 

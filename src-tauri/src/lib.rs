@@ -1476,6 +1476,17 @@ mod geometry_tests {
         }
     }
 
+    fn assert_within_bounds(rect: WidgetRect, bounds: PhysicalBounds, safe_inset: i32) {
+        let min_x = bounds.position.x - safe_inset;
+        let min_y = bounds.position.y - safe_inset;
+        let max_x =
+            bounds.position.x + bounds.size.width as i32 - rect.size.width as i32 + safe_inset;
+        let max_y =
+            bounds.position.y + bounds.size.height as i32 - rect.size.height as i32 + safe_inset;
+        assert!(rect.position.x >= min_x && rect.position.x <= max_x.max(min_x));
+        assert!(rect.position.y >= min_y && rect.position.y <= max_y.max(min_y));
+    }
+
     #[test]
     fn window_size_includes_the_transparent_safe_inset() {
         assert_eq!(window_size_for_visual_size(80, 4), 88);
@@ -1758,6 +1769,91 @@ mod geometry_tests {
             4,
         );
         assert_eq!(position, PhysicalPosition::new(1510, 660));
+    }
+
+    #[test]
+    fn window_lifecycle_fixture_reconciles_taskbar_and_display_changes() {
+        let placement = BarPlacement {
+            edge: BarEdge::Top,
+            offset: 0.75,
+        };
+        let secondary_bounds = PhysicalBounds {
+            position: PhysicalPosition::new(-1920, 0),
+            size: PhysicalSize::new(1920, 1040),
+        };
+        let (secondary_bar, _) = bar_collapsed_geometry(
+            placement,
+            1.0,
+            4,
+            secondary_bounds.position,
+            secondary_bounds.size,
+        );
+        assert_within_bounds(secondary_bar, secondary_bounds, 4);
+
+        let top_taskbar_bounds = PhysicalBounds {
+            position: PhysicalPosition::new(-1920, 48),
+            size: PhysicalSize::new(1920, 992),
+        };
+        let (taskbar_rebased_bar, _) = bar_collapsed_geometry(
+            placement,
+            1.0,
+            4,
+            top_taskbar_bounds.position,
+            top_taskbar_bounds.size,
+        );
+        assert_eq!(taskbar_rebased_bar.position.x, secondary_bar.position.x);
+        assert_eq!(taskbar_rebased_bar.position.y, 44);
+        assert_within_bounds(taskbar_rebased_bar, top_taskbar_bounds, 4);
+
+        let replacement_primary = PhysicalBounds {
+            position: PhysicalPosition::new(0, 0),
+            size: PhysicalSize::new(1536, 824),
+        };
+        let (replacement_bar, _) = bar_collapsed_geometry(
+            placement,
+            1.25,
+            5,
+            replacement_primary.position,
+            replacement_primary.size,
+        );
+        assert_ne!(replacement_bar.size, secondary_bar.size);
+        assert_within_bounds(replacement_bar, replacement_primary, 5);
+
+        let replacement_expanded_size = PhysicalSize::new(
+            widget_window_size(EXPANDED_LOGICAL_WIDTH, 1.25, 5),
+            widget_window_size(600.0, 1.25, 5),
+        );
+        let replacement_expanded = WidgetRect {
+            position: bar_expanded_position_in_bounds(
+                replacement_bar,
+                replacement_expanded_size,
+                placement,
+                replacement_primary,
+                5,
+            ),
+            size: replacement_expanded_size,
+        };
+        assert_within_bounds(replacement_expanded, replacement_primary, 5);
+
+        let removed_display_rect = WidgetRect {
+            position: secondary_bar.position,
+            size: replacement_expanded_size,
+        };
+        let recovered_position = clamp_position_to_bounds(
+            removed_display_rect.position,
+            removed_display_rect.size,
+            replacement_primary.position,
+            replacement_primary.size,
+            5,
+        );
+        assert_within_bounds(
+            WidgetRect {
+                position: recovered_position,
+                size: removed_display_rect.size,
+            },
+            replacement_primary,
+            5,
+        );
     }
 }
 

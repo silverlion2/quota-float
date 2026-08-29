@@ -138,6 +138,111 @@ function savedLayout(value: unknown): RuntimeState["savedLayouts"][number] | nul
   };
 }
 
+export type SavedLayoutDiagnosticField =
+  | "name"
+  | "providerOrder"
+  | "hiddenProviders"
+  | "collapsedProviders"
+  | "layoutMode"
+  | "compactLayout"
+  | "barEdge"
+  | "barOffset"
+  | "expandedLayout"
+  | "colorTheme"
+  | "appearanceMode"
+  | "riskFirst"
+  | "showHistorySparklines"
+  | "accentColor";
+
+export interface SavedLayoutImportDiagnostics {
+  importedLayouts: number;
+  droppedLayouts: number;
+  truncatedLayouts: number;
+  migratedFields: SavedLayoutDiagnosticField[];
+  clampedFields: SavedLayoutDiagnosticField[];
+  repairedFields: SavedLayoutDiagnosticField[];
+  ignoredFieldCount: number;
+}
+
+const SAVED_LAYOUT_DIAGNOSTIC_FIELDS: readonly SavedLayoutDiagnosticField[] = [
+  "name",
+  "providerOrder",
+  "hiddenProviders",
+  "collapsedProviders",
+  "layoutMode",
+  "compactLayout",
+  "barEdge",
+  "barOffset",
+  "expandedLayout",
+  "colorTheme",
+  "appearanceMode",
+  "riskFirst",
+  "showHistorySparklines",
+  "accentColor",
+];
+
+const SAVED_LAYOUT_KNOWN_FIELDS = new Set<string>([
+  "id",
+  "createdAt",
+  "visualStyle",
+  ...SAVED_LAYOUT_DIAGNOSTIC_FIELDS,
+]);
+
+function layoutFieldValuesEqual(left: unknown, right: unknown): boolean {
+  if (!Array.isArray(left) || !Array.isArray(right)) return Object.is(left, right);
+  return left.length === right.length && left.every((value, index) => Object.is(value, right[index]));
+}
+
+function savedLayoutImportDiagnostics(value: unknown): SavedLayoutImportDiagnostics {
+  const empty: SavedLayoutImportDiagnostics = {
+    importedLayouts: 0,
+    droppedLayouts: 0,
+    truncatedLayouts: 0,
+    migratedFields: [],
+    clampedFields: [],
+    repairedFields: [],
+    ignoredFieldCount: 0,
+  };
+  const candidate = record(value);
+  if (!candidate || !Array.isArray(candidate.savedLayouts)) return empty;
+
+  const validLayouts = candidate.savedLayouts
+    .map((source) => ({ source: record(source), normalized: savedLayout(source) }))
+    .filter((entry): entry is { source: Record<string, unknown>; normalized: RuntimeState["savedLayouts"][number] } =>
+      entry.source !== null && entry.normalized !== null
+    );
+  const importedLayouts = validLayouts.slice(0, 12);
+  const migratedFields = new Set<SavedLayoutDiagnosticField>();
+  const clampedFields = new Set<SavedLayoutDiagnosticField>();
+  const repairedFields = new Set<SavedLayoutDiagnosticField>();
+  let ignoredFieldCount = 0;
+
+  for (const { source, normalized } of importedLayouts) {
+    for (const field of SAVED_LAYOUT_DIAGNOSTIC_FIELDS) {
+      if (!Object.hasOwn(source, field)) {
+        migratedFields.add(field);
+      } else if (!layoutFieldValuesEqual(source[field], normalized[field])) {
+        if (field === "barOffset" && typeof source[field] === "number" && Number.isFinite(source[field])) {
+          clampedFields.add(field);
+        } else {
+          repairedFields.add(field);
+        }
+      }
+    }
+    ignoredFieldCount += Object.keys(source).filter((field) => !SAVED_LAYOUT_KNOWN_FIELDS.has(field)).length;
+  }
+
+  return {
+    importedLayouts: importedLayouts.length,
+    droppedLayouts: candidate.savedLayouts.length - validLayouts.length,
+    truncatedLayouts: Math.max(0, validLayouts.length - importedLayouts.length),
+    migratedFields: SAVED_LAYOUT_DIAGNOSTIC_FIELDS.filter((field) => migratedFields.has(field)),
+    clampedFields: SAVED_LAYOUT_DIAGNOSTIC_FIELDS.filter((field) => clampedFields.has(field)),
+    repairedFields: SAVED_LAYOUT_DIAGNOSTIC_FIELDS.filter((field) => repairedFields.has(field)),
+    ignoredFieldCount,
+  };
+}
+
 function dailyPaceBaseline(value: unknown): DailyPaceBaseline | null {
   const candidate = record(value);
   const period = candidate?.period;
@@ -206,6 +311,16 @@ export function normalizeRuntimeState(value: unknown): RuntimeState {
     savedLayouts: Array.isArray(candidate.savedLayouts) ? candidate.savedLayouts.map(savedLayout).filter((item): item is RuntimeState["savedLayouts"][number] => item !== null).slice(0, 12) : [],
     lastNotifications,
     dailyPaceBaselines,
+  };
+}
+
+export function normalizeRuntimeStateWithDiagnostics(value: unknown): {
+  state: RuntimeState;
+  savedLayouts: SavedLayoutImportDiagnostics;
+} {
+  return {
+    state: normalizeRuntimeState(value),
+    savedLayouts: savedLayoutImportDiagnostics(value),
   };
 }
 

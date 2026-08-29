@@ -12,7 +12,7 @@ Quota Float is a local-first Tauri desktop application. React renders the widget
 | Frontend domain | `src/lib/*` | Preference/runtime normalization, quota pace, forecast planning safeguards, reset detection, history, update state, last-known-good merging |
 | Desktop bridge | `src/lib/bridge.ts` | Typed Tauri commands/events, serialized writes, drag stability detection, browser mocks |
 | Native orchestration | `src-tauri/src/lib.rs`, `src-tauri/src/models.rs`, `src-tauri/src/codex_usage.rs` | Commands, window state, physical-pixel geometry, persistence, bounded local Token aggregation, backups, tray, lifecycle |
-| Provider registry | `src-tauri/src/provider_registry.rs` | Stable ordering, selected-provider collection, adapter timeouts, and bounded transient retries for non-process-spawning adapters |
+| Provider registry | `src-tauri/src/provider_registry.rs` | Stable ordering, selected-provider collection, adapter timeouts, bounded transient retries, and the shared outbound snapshot conformance boundary |
 | Provider adapters | `src-tauri/src/{codex,claude,qoder,trae,workbuddy,volcengine,antigravity}.rs` | Read-only discovery, request/parsing, provider-specific error isolation |
 | Public reset outlook | `src-tauri/src/reset_forecast.rs`, `src/lib/quotaPace.ts`, `src-tauri/capabilities/default.json` | Fixed-origin public forecast collection, freshness/schema validation, robust consensus, timed-announcement handling, conservative planning integration, and source-link allowlisting |
 
@@ -33,7 +33,7 @@ Quota Float is a local-first Tauri desktop application. React renders the widget
 
 1. React computes which unpaused providers are due from independent attempt clocks, health state, and the selected resource mode, then requests only that subset through `bridge.ts`.
 2. A Tauri command asks the provider registry to refresh the selected isolated Rust adapters concurrently under a shared refresh lock and bounded cache. Transiently failed network/file adapters receive bounded same-cycle retries; Volcengine and Antigravity do not, because their probes spawn external processes.
-3. Rust returns normalized `ProviderSnapshot` values without exposing credentials or raw provider payloads.
+3. The provider registry normalizes every outbound `ProviderSnapshot`: descriptor-owned identity, allowlisted status, finite/clamped quota values, bounded text/list payloads, parseable timestamps, empty failure payloads and redacted diagnostics. Rust returns only those conformed values without exposing credentials or raw provider payloads.
 4. React merges partial results with last-known-good values, derives pace/reset events, and persists bounded runtime history only when the persistable state changes. Detailed quota samples use a rolling 90-day local memory; daily usage summaries retain 365 days, with lifetime sample metadata surviving pruning.
 5. Rendering selects Float, Ring, or Bar for compact mode and one of three expanded layouts.
 
@@ -43,7 +43,7 @@ The Insights tab lazily requests a separate 90-day Codex Token report. Rust stre
 
 React applies range and dimension filters, derives session/activity/cache metrics, and evaluates each model against the versioned standard-API price catalog in `src/lib/openaiPricing.ts`. It then builds comparisons, charts, per-model cost rows, and a local monthly budget outlook. CSV/JSON exports aggregate away session keys and alias projects; the SVG share card exports summary metrics only. Native export writes only an explicitly selected `.csv`, `.json`, or `.svg` target.
 
-Provider failures are partial: one unavailable adapter must not erase healthy providers. A transient failure retains the last valid value with a stale status; signed-out and malformed responses receive explicit non-secret errors.
+Provider failures are partial: one unavailable adapter must not erase healthy providers. A transient failure retains the last valid value with a stale status; signed-out and malformed responses receive explicit non-secret errors. Unknown statuses and `ok` snapshots without measurable quota fail closed to `unavailable` before crossing the desktop bridge.
 
 ## Public Codex reset outlook flow
 
@@ -68,7 +68,7 @@ type BarEdge = "top" | "left" | "right";
 type BarPlacement = { edge: BarEdge; offset: number };
 ```
 
-Legacy preferences and saved layouts migrate to `{ edge: "top", offset: 0.5 }`. The same fields flow through layout profiles, export/import, and automatic recovery backups. Runtime history schema 1 migrates to schema 2 by deriving local-memory coverage metadata from existing samples. Credential material is never part of those files.
+Legacy preferences and saved layouts migrate to `{ edge: "top", offset: 0.5 }`. The same fields flow through layout profiles, export/import, and automatic recovery backups. Before state is applied, the backup envelope must be a plain object with plain settings/history sections; malformed arrays and unsupported future schema versions are rejected, while schema-less legacy backups map to schema 1. Runtime history schema 1 migrates to schema 2 by deriving local-memory coverage metadata from existing samples. Credential material is never part of those files.
 
 ## Window geometry
 
@@ -89,6 +89,7 @@ The bridge waits for native drag position stability, asks Rust to resolve the ed
 - Provider credential access remains inside `src-tauri`.
 - Credentials go only to the corresponding official provider endpoint or a documented loopback-only local service.
 - Provider credentials, account identifiers, auth paths, prompts, chats, raw session records, and raw provider responses are neither persisted nor included in diagnostics. Only the documented sanitized Token cursor/index is persisted locally.
+- Provider snapshot diagnostics are bounded and reject raw JSON, credential markers and user-directory paths at the shared registry boundary.
 - Provider reads are non-mutating: no reset redemption, account updates, or provider configuration writes.
 - Public reset-outlook requests are unauthenticated reads to three fixed HTTPS origins and never receive provider credentials, account data, quota values, or local Token counts.
 - Import/export file selection is native-owned; the webview never supplies arbitrary filesystem paths.
@@ -101,7 +102,7 @@ See `PRIVACY.md`, `SECURITY.md`, and `docs/DESKTOP-DEVELOPMENT-SOP.md` for the c
 - TypeScript pure-function tests cover migration, clamping, pace, reset/history behavior, price calculation, filtering, budget forecasting, and anonymized exports.
 - Component tests cover compact/expanded layout differentiation, themes, the seven-provider pointer/keyboard switcher, Control Center tabs, Insights behavior, accessibility, hover timing and saved layouts.
 - Bridge tests cover command payloads, serialized writes and drag-result persistence.
-- Rust tests cover provider parsing, preference normalization, bounded/incremental Token indexing, and multi-monitor/DPI/work-area geometry.
+- Rust tests cover provider parsing, the shared adapter conformance contract, preference normalization, bounded/incremental Token indexing, multi-monitor/DPI/work-area geometry, and a deterministic taskbar/display-removal lifecycle fixture.
 - Reset-outlook tests cover live response shapes, freshness and window rejection, robust median consensus, confidence, and timed-announcement priority; TypeScript tests cover conservative planning fallbacks.
 - A scheduled Windows/macOS compatibility workflow runs every provider's synthetic fixtures without credentials.
 - Native WebDriver smoke tests launch the compiled Windows application and exercise the Tauri bridge and primary overlays.
