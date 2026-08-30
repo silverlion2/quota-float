@@ -125,7 +125,7 @@ export function buildQuotaTrendGeometry(
   now = new Date(),
   hours = 24,
 ): QuotaTrendGeometry | null {
-  if (trend.length < 2) return null;
+  if (trend.length === 0) return null;
   const duration = Math.max(1, hours * 60 * 60_000);
   const cutoff = now.getTime() - duration;
   const points = trend.map((point) => {

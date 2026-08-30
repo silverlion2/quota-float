@@ -56,6 +56,15 @@ describe("activity timeline and notification policy", () => {
     expect(second.state.usageMemory).toEqual(expect.objectContaining({ retentionDays: 90, totalSamples: 1 }));
   });
 
+  it("captures provider plans and samples a plan transition immediately", () => {
+    const plus = { ...snapshot(100), plan: "PLUS" };
+    const pro = { ...snapshot(100), plan: "PRO" };
+    const first = recordSnapshotActivity(EMPTY_RUNTIME_STATE, [], [plus], null, 15, new Date("2026-07-19T01:00:00Z"));
+    const upgraded = recordSnapshotActivity(first.state, [plus], [pro], null, 15, new Date("2026-07-19T01:05:00Z"));
+
+    expect(upgraded.state.history.map((point) => point.plan)).toEqual(["PLUS", "PRO"]);
+  });
+
   it("samples changing numeric usage at a bounded thirty-minute cadence", () => {
     const first = recordSnapshotActivity(EMPTY_RUNTIME_STATE, [], [snapshot(90)], null, 15, new Date("2026-07-19T01:00:00Z"));
     const recentChange = recordSnapshotActivity(first.state, [snapshot(90)], [snapshot(85)], null, 15, new Date("2026-07-19T01:10:00Z"));

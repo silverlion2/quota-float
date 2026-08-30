@@ -35,6 +35,8 @@ export const DEFAULT_WIDGET_PREFERENCES: WidgetPreferences = {
   automaticUpdates: true,
   monthlyApiBudgetUsd: 500,
   apiBudgetAlertsEnabled: true,
+  codexPlanUpgradeDate: null,
+  codexPlanValueTargetRatio: 2,
 };
 
 const providerSet = new Set<ProviderId>(DEFAULT_PROVIDER_ORDER);
@@ -64,6 +66,13 @@ function safeSkippedVersion(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim();
   return normalized.length > 0 && normalized.length <= 64 ? normalized : null;
+}
+
+function safeLocalDate(value: unknown): string | null {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [year, month, day] = value.split("-").map(Number);
+  const parsed = new Date(year, month - 1, day);
+  return parsed.getFullYear() === year && parsed.getMonth() === month - 1 && parsed.getDate() === day ? value : null;
 }
 
 type LegacyWidgetPreferences = Partial<WidgetPreferences> & { visualStyle?: unknown };
@@ -135,5 +144,7 @@ export function normalizeWidgetPreferences(value: LegacyWidgetPreferences | null
     automaticUpdates: booleanValue(candidate.automaticUpdates, DEFAULT_WIDGET_PREFERENCES.automaticUpdates),
     monthlyApiBudgetUsd: boundedNumber(candidate.monthlyApiBudgetUsd, DEFAULT_WIDGET_PREFERENCES.monthlyApiBudgetUsd, 0, 1_000_000),
     apiBudgetAlertsEnabled: booleanValue(candidate.apiBudgetAlertsEnabled, DEFAULT_WIDGET_PREFERENCES.apiBudgetAlertsEnabled),
+    codexPlanUpgradeDate: safeLocalDate(candidate.codexPlanUpgradeDate),
+    codexPlanValueTargetRatio: boundedNumber(candidate.codexPlanValueTargetRatio, DEFAULT_WIDGET_PREFERENCES.codexPlanValueTargetRatio, 1, 10),
   };
 }

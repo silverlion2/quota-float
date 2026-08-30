@@ -57,7 +57,20 @@ function historyPoint(value: unknown): QuotaHistoryPoint | null {
   if (metric === undefined) return null;
   const resetsAt = candidate.resetsAt === null || candidate.resetsAt === undefined ? null : validDate(candidate.resetsAt) ? candidate.resetsAt : undefined;
   if (resetsAt === undefined) return null;
-  return { provider: candidate.provider, capturedAt: candidate.capturedAt, metric, metricKind: candidate.metricKind as QuotaHistoryPoint["metricKind"], status: candidate.status as QuotaHistoryPoint["status"], resetsAt };
+  const plan = candidate.plan === null || candidate.plan === undefined
+    ? candidate.plan
+    : typeof candidate.plan === "string" && candidate.plan.trim().length > 0
+      ? candidate.plan.trim().slice(0, 96)
+      : undefined;
+  return {
+    provider: candidate.provider,
+    capturedAt: candidate.capturedAt,
+    metric,
+    metricKind: candidate.metricKind as QuotaHistoryPoint["metricKind"],
+    status: candidate.status as QuotaHistoryPoint["status"],
+    resetsAt,
+    ...(plan !== undefined ? { plan } : {}),
+  };
 }
 
 function dailyUsageSummary(value: unknown): DailyUsageSummary | null {
@@ -488,12 +501,19 @@ export function recordSnapshotActivity(
   const repeatedNotifications: Array<{ key: string; event: ActivityEvent }> = [];
   for (const snapshot of nextSnapshots) {
     const value = metric(snapshot);
-    const point: QuotaHistoryPoint = { provider: snapshot.provider, capturedAt: occurredAt, status: snapshot.status, ...value };
+    const point: QuotaHistoryPoint = {
+      provider: snapshot.provider,
+      capturedAt: occurredAt,
+      status: snapshot.status,
+      plan: snapshot.plan,
+      ...value,
+    };
     const latest = latestHistory.get(snapshot.provider);
     const contextChanged = !latest
       || latest.metricKind !== point.metricKind
       || latest.status !== point.status
-      || latest.resetsAt !== point.resetsAt;
+      || latest.resetsAt !== point.resetsAt
+      || latest.plan !== point.plan;
     const sampleDue = !latest || now.getTime() - new Date(latest.capturedAt).getTime() >= HISTORY_SAMPLE_INTERVAL_MS;
     if (contextChanged || sampleDue) {
       additions.push(point);

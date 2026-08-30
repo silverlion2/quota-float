@@ -241,27 +241,38 @@ describe("QuotaCard platform ledger", () => {
   });
 
   it("shows risk-first values and local history trails", () => {
-    const { container } = render(
-      <QuotaCard
-        snapshot={codex}
-        snapshots={[codex, volcengine, antigravity]}
-        preferences={{ ...preferences, riskFirst: true, showHistorySparklines: true }}
-        history={[
-          { provider: "codex", capturedAt: "2026-07-15T00:00:00Z", metric: 91, metricKind: "percent", status: "ok", resetsAt: null },
-          { provider: "codex", capturedAt: "2026-07-16T00:00:00Z", metric: 74, metricKind: "percent", status: "ok", resetsAt: null },
-        ]}
-        onSelectProvider={noop}
-        onLock={noop}
-        onLanguage={noop}
-        onDrag={noop}
-        onHover={noop}
-        consumingProviders={new Set()}
-      />,
-    );
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-16T00:00:00Z"));
+    try {
+      render(
+        <QuotaCard
+          snapshot={codex}
+          snapshots={[codex, volcengine, antigravity]}
+          preferences={{ ...preferences, riskFirst: true, showHistorySparklines: true }}
+          history={[
+            { provider: "codex", capturedAt: "2026-07-15T00:00:00Z", metric: 91, metricKind: "percent", status: "ok", resetsAt: null },
+            { provider: "codex", capturedAt: "2026-07-16T00:00:00Z", metric: 74, metricKind: "percent", status: "ok", resetsAt: null },
+          ]}
+          onSelectProvider={noop}
+          onLock={noop}
+          onLanguage={noop}
+          onDrag={noop}
+          onHover={noop}
+          consumingProviders={new Set()}
+        />,
+      );
 
-    expect(screen.getByText("RISK FIRST")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /VOLCENGINE.*45%.*Monthly/i })).toBeInTheDocument();
-    expect(container.querySelector(".provider-history polyline")).toBeInTheDocument();
+      expect(screen.getByText("RISK FIRST")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /VOLCENGINE.*45%.*Monthly/i })).toBeInTheDocument();
+      const codexRow = screen.getByRole("button", { name: /CODEX.*74%.*Weekly/i });
+      const curve = codexRow.querySelector(".provider-history .quota-history-curve");
+      expect(curve?.querySelector(".quota-history-line")).toBeInTheDocument();
+      Object.defineProperty(curve!, "getBoundingClientRect", { configurable: true, value: () => ({ left: 0, width: 44 }) });
+      fireEvent.pointerMove(curve!, { clientX: 0 });
+      expect(within(curve as HTMLElement).getByText("91%")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("switches between exactly two tabs while preserving the local usage dashboard", async () => {
@@ -300,7 +311,8 @@ describe("QuotaCard platform ledger", () => {
     expect(insightsTab).toHaveAttribute("aria-selected", "true");
     expect(quotaTab).toHaveAttribute("aria-selected", "false");
     expect(await screen.findByRole("region", { name: "Usage insights" }, { timeout: 10_000 })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "30D" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "24H" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("img", { name: "24-hour quota remaining curve" })).toBeInTheDocument();
     expect(screen.getByText("API equivalent")).toBeInTheDocument();
     expect(screen.getByText("Total Token")).toBeInTheDocument();
     expect(screen.getByText("Used this cycle")).toBeInTheDocument();

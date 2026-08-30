@@ -81,6 +81,16 @@ describe("usage insights", () => {
     expect(geometry!.points[2].x).toBe(216);
   });
 
+  it("keeps a single current sample inspectable", () => {
+    const now = new Date("2026-08-08T08:00:00Z");
+    const geometry = buildQuotaTrendGeometry([
+      { capturedAt: now.toISOString(), remainingPercent: 74 },
+    ], now);
+
+    expect(geometry?.points).toEqual([{ x: 216, y: 24.6 }]);
+    expect(geometry?.line).toBe("M 216.0,24.6");
+  });
+
   it("counts observed use across a quota reset without letting the refill cancel it", () => {
     expect(observedTrendUse([
       { capturedAt: "2026-08-08T01:00:00Z", remainingPercent: 30 },

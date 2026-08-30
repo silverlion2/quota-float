@@ -3,6 +3,7 @@
 /outputs
 /release
 /output
+/analysis/
 /src-tauri/target
 /.codex-target*/
 /.tauri-dev-target/

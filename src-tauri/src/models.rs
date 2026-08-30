@@ -123,6 +123,10 @@ pub struct WidgetPreferences {
     pub monthly_api_budget_usd: f64,
     #[serde(default = "default_true")]
     pub api_budget_alerts_enabled: bool,
+    #[serde(default)]
+    pub codex_plan_upgrade_date: Option<String>,
+    #[serde(default = "default_codex_plan_value_target_ratio")]
+    pub codex_plan_value_target_ratio: f64,
 }
 
 fn default_always_on_top() -> bool {
@@ -193,6 +197,9 @@ fn default_update_channel() -> String {
 fn default_monthly_api_budget() -> f64 {
     500.0
 }
+fn default_codex_plan_value_target_ratio() -> f64 {
+    2.0
+}
 
 impl Default for WidgetPreferences {
     fn default() -> Self {
@@ -231,6 +238,8 @@ impl Default for WidgetPreferences {
             automatic_updates: true,
             monthly_api_budget_usd: default_monthly_api_budget(),
             api_budget_alerts_enabled: true,
+            codex_plan_upgrade_date: None,
+            codex_plan_value_target_ratio: default_codex_plan_value_target_ratio(),
         }
     }
 }
@@ -371,6 +380,17 @@ impl WidgetPreferences {
         } else {
             default_monthly_api_budget()
         };
+        self.codex_plan_upgrade_date = self.codex_plan_upgrade_date.and_then(|value| {
+            let value = value.trim();
+            chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d")
+                .ok()
+                .map(|_| value.to_string())
+        });
+        self.codex_plan_value_target_ratio = if self.codex_plan_value_target_ratio.is_finite() {
+            (self.codex_plan_value_target_ratio.clamp(1.0, 10.0) * 100.0).round() / 100.0
+        } else {
+            default_codex_plan_value_target_ratio()
+        };
         self
     }
 }
@@ -398,6 +418,35 @@ mod tests {
         assert_eq!(preferences.skipped_update_version, None);
         assert_eq!(preferences.resource_mode, "balanced");
         assert!(preferences.paused_providers.is_empty());
+        assert_eq!(preferences.codex_plan_upgrade_date, None);
+        assert_eq!(preferences.codex_plan_value_target_ratio, 2.0);
+    }
+
+    #[test]
+    fn codex_upgrade_date_is_validated() {
+        let valid = WidgetPreferences {
+            codex_plan_upgrade_date: Some("2026-07-15".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            valid.normalized().codex_plan_upgrade_date.as_deref(),
+            Some("2026-07-15")
+        );
+
+        let invalid = WidgetPreferences {
+            codex_plan_upgrade_date: Some("2026-02-30".into()),
+            ..Default::default()
+        };
+        assert_eq!(invalid.normalized().codex_plan_upgrade_date, None);
+    }
+
+    #[test]
+    fn codex_plan_value_target_is_bounded() {
+        let preferences = WidgetPreferences {
+            codex_plan_value_target_ratio: 20.0,
+            ..Default::default()
+        };
+        assert_eq!(preferences.normalized().codex_plan_value_target_ratio, 10.0);
     }
 
     #[test]

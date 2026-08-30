@@ -18,6 +18,8 @@ describe("widget preference migration", () => {
     expect(value.resourceMode).toBe("balanced");
     expect(value.pausedProviders).toEqual([]);
     expect(value.monthlyApiBudgetUsd).toBe(500);
+    expect(value.codexPlanUpgradeDate).toBeNull();
+    expect(value.codexPlanValueTargetRatio).toBe(2);
     expect(value.apiBudgetAlertsEnabled).toBe(true);
   });
 
@@ -94,5 +96,17 @@ describe("widget preference migration", () => {
   it("bounds API-equivalent budget preferences", () => {
     expect(normalizeWidgetPreferences({ monthlyApiBudgetUsd: 123.456, apiBudgetAlertsEnabled: false })).toEqual(expect.objectContaining({ monthlyApiBudgetUsd: 123.46, apiBudgetAlertsEnabled: false }));
     expect(normalizeWidgetPreferences({ monthlyApiBudgetUsd: -20 })).toEqual(expect.objectContaining({ monthlyApiBudgetUsd: 0 }));
+  });
+
+  it("accepts only valid local Codex upgrade dates", () => {
+    expect(normalizeWidgetPreferences({ codexPlanUpgradeDate: "2026-07-15" }).codexPlanUpgradeDate).toBe("2026-07-15");
+    expect(normalizeWidgetPreferences({ codexPlanUpgradeDate: "2026-02-30" }).codexPlanUpgradeDate).toBeNull();
+    expect(normalizeWidgetPreferences({ codexPlanUpgradeDate: "July 15" as never }).codexPlanUpgradeDate).toBeNull();
+  });
+
+  it("bounds the Codex plan value target", () => {
+    expect(normalizeWidgetPreferences({ codexPlanValueTargetRatio: 2.5 }).codexPlanValueTargetRatio).toBe(2.5);
+    expect(normalizeWidgetPreferences({ codexPlanValueTargetRatio: 0 }).codexPlanValueTargetRatio).toBe(1);
+    expect(normalizeWidgetPreferences({ codexPlanValueTargetRatio: 20 }).codexPlanValueTargetRatio).toBe(10);
   });
 });

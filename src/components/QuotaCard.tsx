@@ -4,12 +4,14 @@ import { clampPercent, formatDateTime, formatResetDate, formatResetTime, quotaTi
 import { copy, normalizeLanguage, resetForecastLabel, resetForecastTitle } from "../lib/i18n";
 import { useModalDialog } from "../lib/modalDialog";
 import { normalizeProviderOrder, PROVIDER_CATALOG, type ProviderDefinition } from "../lib/providers";
-import { recentPercentageHistory, snapshotRemainingPercent, sortProviderIdsByRisk } from "../lib/providerPresentation";
+import { snapshotRemainingPercent, sortProviderIdsByRisk } from "../lib/providerPresentation";
 import { calculateQuotaPace, localDateKey, paceBaselineKey, trackedQuotaWindows, type NamedQuotaWindow, type QuotaPace, type QuotaPeriod } from "../lib/quotaPace";
 import type { RecentCodexReset } from "../lib/resetDetection";
+import { recentQuotaTrend, type QuotaTrendPoint } from "../lib/usageInsights";
 import type { BarEdge, CockpitRegion, ColorTheme, CompactLayout, DailyPaceBaseline, DailyUsageSummary, Language, ProviderId, ProviderSnapshot, QuotaHistoryPoint, ResetForecast, ResolvedAppearance, VolcengineDiagnostics, WidgetPreferences } from "../types";
 import { ProviderMark } from "./ProviderMark";
 import { ProviderLogoSlider } from "./ProviderLogoSlider";
+import { QuotaHistoryCurve } from "./QuotaHistoryCurve";
 import { EMPTY_UPDATE_STATE, UpdatePanel, type UpdateViewState } from "./UpdatePanel";
 
 const UsageInsightsPanel = lazy(() => import("./UsageInsightsPanel").then((module) => ({ default: module.UsageInsightsPanel })));
@@ -96,22 +98,6 @@ function QuotaPaceHint({ pace, language, provider }: { pace: QuotaPace; language
         <small>{t.averageSuggested(number.format(pace.averageRate), unit)}</small>
       </div>
     </div>
-  );
-}
-
-function ProviderHistorySparkline({ values }: { values: number[] }) {
-  if (values.length < 2) return <span className="provider-history provider-history--empty" aria-hidden="true" />;
-  const points = values.map((value, index) => {
-    const x = (index / (values.length - 1)) * 44;
-    const y = 15 - (value / 100) * 14;
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(" ");
-  const area = `M 0 16 L ${points.replaceAll(" ", " L ")} L 44 16 Z`;
-  return (
-    <svg className="provider-history" viewBox="0 0 44 16" preserveAspectRatio="none" aria-hidden="true">
-      <path d={area} />
-      <polyline points={points} />
-    </svg>
   );
 }
 
@@ -205,7 +191,7 @@ function ProviderLedgerRow({
   onReorderPointerCancel: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onMove: (provider: ProviderId, offset: -1 | 1) => void;
   condensed: boolean;
-  history: number[];
+  history: QuotaTrendPoint[];
   showHistory: boolean;
   preferRisk: boolean;
 }) {
@@ -277,7 +263,7 @@ function ProviderLedgerRow({
           <strong>{definition.label}</strong>
           <small>{snapshot?.plan ?? ""}</small>
         </span>
-        {showHistory ? <ProviderHistorySparkline values={history} /> : null}
+        {showHistory ? <span className="provider-history"><QuotaHistoryCurve points={history} language={language} variant="micro" interactive={false} /></span> : null}
         <span className="provider-value">
           <strong>{value}</strong>
           <small>{detail}</small>
@@ -394,15 +380,6 @@ export interface CockpitDashboardProps {
   detached?: boolean;
 }
 
-function cockpitTrendPoints(values: number[]): string {
-  if (values.length < 2) return "";
-  return values.map((value, index) => {
-    const x = (index / (values.length - 1)) * 160;
-    const y = 46 - (clampPercent(value) / 100) * 42;
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(" ");
-}
-
 export function CockpitDashboard({
   snapshot,
   history,
@@ -426,9 +403,8 @@ export function CockpitDashboard({
       : balance !== null
         ? new Intl.NumberFormat(language === "en" ? "en-US" : "zh-CN", { notation: "compact", maximumFractionDigits: 1 }).format(balance)
         : "—";
-  const historyValues = recentPercentageHistory(history, snapshot.provider, 24);
-  if (remaining !== null && historyValues.at(-1) !== remaining) historyValues.push(remaining);
-  const trendPoints = cockpitTrendPoints(historyValues);
+  const trendNow = new Date();
+  const historyPoints = recentQuotaTrend(history, snapshot.provider, remaining, trendNow, 24);
   const today = new Date();
   today.setHours(12, 0, 0, 0);
   const usageByDate = new Map(
@@ -479,14 +455,8 @@ export function CockpitDashboard({
             <div><strong>{headlineValue}</strong><small>{remaining !== null ? (language === "en" ? "remaining" : "剩余") : snapshot.balanceUnit ?? ""}</small></div>
           </div>
           <div className="cockpit-trend">
-            <div><span>{language === "en" ? "Recent quota" : "近期额度"}</span><small>{historyValues.length >= 2 ? (language === "en" ? `${historyValues.length} local samples` : `${historyValues.length} 个本地样本`) : (language === "en" ? "Collecting local samples" : "正在积累本地样本")}</small></div>
-            {trendPoints ? (
-              <svg viewBox="0 0 160 50" preserveAspectRatio="none" aria-hidden="true">
-                <defs><linearGradient id="cockpit-trend-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="currentColor" stopOpacity=".24" /><stop offset="1" stopColor="currentColor" stopOpacity="0" /></linearGradient></defs>
-                <path d={`M 0 50 L ${trendPoints.replaceAll(" ", " L ")} L 160 50 Z`} />
-                <polyline points={trendPoints} />
-              </svg>
-            ) : <div className="cockpit-empty-line" aria-hidden="true" />}
+            <div><span>{language === "en" ? "Quota remaining · 24h" : "剩余额度 · 24 小时"}</span><small>{historyPoints.length >= 2 ? (language === "en" ? `${historyPoints.length} local samples · hover to inspect` : `${historyPoints.length} 个本地样本 · 悬停查看`) : (language === "en" ? "Collecting local samples" : "正在积累本地样本")}</small></div>
+            <QuotaHistoryCurve points={historyPoints} language={language} variant="cockpit" now={trendNow} ariaLabel={language === "en" ? "24-hour quota remaining curve" : "24 小时剩余额度曲线"} />
           </div>
         </div>
       </article>
@@ -653,9 +623,13 @@ export const QuotaCard = memo(function QuotaCard({
     return t.creditItem(index, formatDateTime(value, language));
   }), [language, snapshot.resetCreditExpiresAt, t]);
   const snapshotsByProvider = useMemo(() => new Map(snapshots.map((item) => [item.provider, item])), [snapshots]);
-  const percentageHistoryByProvider = useMemo(() => new Map(
-    PROVIDER_CATALOG.map((definition) => [definition.id, recentPercentageHistory(history, definition.id)]),
-  ), [history]);
+  const percentageHistoryByProvider = useMemo(() => {
+    const historyNow = new Date();
+    return new Map(PROVIDER_CATALOG.map((definition) => [
+      definition.id,
+      recentQuotaTrend(history, definition.id, null, historyNow, 24),
+    ]));
+  }, [history]);
   const providerDefinitions = useMemo(() => {
     const byProvider = new Map(PROVIDER_CATALOG.map((definition) => [definition.id, definition]));
     const visibleOrder = normalizeProviderOrder(preferences.providerOrder).filter((provider) => !preferences.hiddenProviders.includes(provider));

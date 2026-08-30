@@ -94,6 +94,10 @@ export interface WidgetPreferences {
   automaticUpdates: boolean;
   monthlyApiBudgetUsd: number;
   apiBudgetAlertsEnabled: boolean;
+  /** Local billing-cycle start for comparing Codex 5x and 20x usage. */
+  codexPlanUpgradeDate: string | null;
+  /** Minimum usage multiple required to justify the current plan's price premium. */
+  codexPlanValueTargetRatio: number;
 }
 
 export type ActivityKind = "quota" | "reset" | "warning" | "recovered" | "update";
@@ -114,6 +118,8 @@ export interface QuotaHistoryPoint {
   metricKind: "percent" | "balance" | "unlimited" | "none";
   status: SnapshotStatus;
   resetsAt: string | null;
+  /** Provider-reported plan label captured with the sample. Legacy samples omit it. */
+  plan?: string | null;
 }
 
 export interface DailyUsageSummary {

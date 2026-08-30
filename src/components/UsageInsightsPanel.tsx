@@ -33,6 +33,7 @@ import {
   type TokenUsageFilters,
   type UsageRange,
 } from "../lib/tokenUsage";
+import { buildCodexBillingPlanComparison } from "../lib/billingPlan";
 import { buildPricingCatalogJson, buildUsageCsv, buildUsageJson, buildUsageShareSvg } from "../lib/usageExport";
 import { buildUsageCalendar, observedTrendUse, recentQuotaTrend, usageSummary } from "../lib/usageInsights";
 import type {
@@ -46,6 +47,7 @@ import type {
   ResetForecast,
   WidgetPreferences,
 } from "../types";
+import { QuotaHistoryCurve } from "./QuotaHistoryCurve";
 
 interface Props {
   snapshot: ProviderSnapshot;
@@ -125,7 +127,7 @@ export function UsageInsightsPanel({
   onClose,
 }: Props) {
   const english = language === "en";
-  const [range, setRange] = useState<UsageRange>("30d");
+  const [range, setRange] = useState<UsageRange>("24h");
   const [chartMode, setChartMode] = useState<ChartMode>("token");
   const [modelFilter, setModelFilter] = useState("");
   const [projectFilter, setProjectFilter] = useState("");
@@ -135,6 +137,8 @@ export function UsageInsightsPanel({
   const [tokenError, setTokenError] = useState<string | null>(null);
   const [operationMessage, setOperationMessage] = useState<string | null>(null);
   const [budgetDraft, setBudgetDraft] = useState(String(preferences.monthlyApiBudgetUsd));
+  const [upgradeDateDraft, setUpgradeDateDraft] = useState(preferences.codexPlanUpgradeDate ?? "");
+  const [planTargetDraft, setPlanTargetDraft] = useState(String(preferences.codexPlanValueTargetRatio));
   const now = new Date();
   const filters = useMemo<TokenUsageFilters>(() => ({
     model: modelFilter || undefined,
@@ -173,6 +177,8 @@ export function UsageInsightsPanel({
 
   useEffect(() => { loadTokenUsage(false, false); }, [loadTokenUsage]);
   useEffect(() => { setBudgetDraft(String(preferences.monthlyApiBudgetUsd)); }, [preferences.monthlyApiBudgetUsd]);
+  useEffect(() => { setUpgradeDateDraft(preferences.codexPlanUpgradeDate ?? ""); }, [preferences.codexPlanUpgradeDate]);
+  useEffect(() => { setPlanTargetDraft(String(preferences.codexPlanValueTargetRatio)); }, [preferences.codexPlanValueTargetRatio]);
 
   const filterOptions = useMemo(
     () => tokenReport && snapshot.provider === "codex" ? buildTokenFilterOptions(tokenReport, range, now) : { models: [], projects: [], terminals: [] },
@@ -202,6 +208,12 @@ export function UsageInsightsPanel({
   const budget = useMemo(
     () => tokenSummary ? buildApiBudgetForecast(tokenSummary, range, preferences.monthlyApiBudgetUsd, now) : null,
     [preferences.monthlyApiBudgetUsd, range, tokenSummary],
+  );
+  const planComparison = useMemo(
+    () => snapshot.provider === "codex" && tokenReport && preferences.codexPlanUpgradeDate
+      ? buildCodexBillingPlanComparison(tokenReport, preferences.codexPlanUpgradeDate, now, preferences.codexPlanValueTargetRatio)
+      : null,
+    [preferences.codexPlanUpgradeDate, preferences.codexPlanValueTargetRatio, snapshot.provider, tokenReport],
   );
 
   useEffect(() => {
@@ -249,6 +261,19 @@ export function UsageInsightsPanel({
     const value = Number.isFinite(parsed) ? Math.max(0, Math.min(1_000_000, Math.round(parsed * 100) / 100)) : preferences.monthlyApiBudgetUsd;
     setBudgetDraft(String(value));
     onPreferences?.({ ...preferences, monthlyApiBudgetUsd: value });
+  };
+
+  const commitUpgradeDate = () => {
+    const value = /^\d{4}-\d{2}-\d{2}$/.test(upgradeDateDraft) ? upgradeDateDraft : null;
+    setUpgradeDateDraft(value ?? "");
+    onPreferences?.({ ...preferences, codexPlanUpgradeDate: value });
+  };
+
+  const commitPlanTarget = () => {
+    const parsed = Number(planTargetDraft);
+    const value = Number.isFinite(parsed) ? Math.max(1, Math.min(10, Math.round(parsed * 100) / 100)) : preferences.codexPlanValueTargetRatio;
+    setPlanTargetDraft(String(value));
+    onPreferences?.({ ...preferences, codexPlanValueTargetRatio: value });
   };
 
   const handleExport = async (kind: UsageExport) => {
@@ -318,12 +343,63 @@ export function UsageInsightsPanel({
         <article className={`usage-stat-card usage-stat-card--budget usage-stat-card--${budget?.status ?? "disabled"}`}><span>{english ? "Budget status" : "预算状态"}</span><strong>{budget ? percent(budget.utilization * 100, 0) : "—"}</strong><small>{budget ? `${money(budget.budgetUsd)} ${english ? "monthly plan" : "月度预算"}` : "—"}</small></article>
       </div>
 
+      {snapshot.provider === "codex" ? <section className={`usage-plan-comparison usage-plan-comparison--${planComparison?.recommendation ?? "pending"}`} aria-label={english ? "Plan upgrade comparison" : "套餐升级对比"}>
+        <header>
+          <div><Gauge weight="duotone" /><span>{english ? "5x → 20x BILLING TEST" : "5x → 20x 账期检验"}</span><strong>{planComparison ? `${planComparison.achievedRatio.toFixed(2)}× / ${planComparison.targetRatio}×` : "—"}</strong></div>
+          <div className="usage-plan-controls">
+            <label className="usage-plan-date"><span>{english ? "Upgrade / billing start" : "升级 / 账期开始"}</span><input type="date" value={upgradeDateDraft} disabled={!onPreferences} onChange={(event) => setUpgradeDateDraft(event.target.value)} onBlur={commitUpgradeDate} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} /></label>
+            <label className="usage-plan-target"><span>{english ? "Value threshold" : "价值门槛"}</span><input type="number" min="1" max="10" step="0.1" value={planTargetDraft} disabled={!onPreferences} onChange={(event) => setPlanTargetDraft(event.target.value)} onBlur={commitPlanTarget} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} /><i>×</i></label>
+          </div>
+        </header>
+        <div className="usage-plan-track" aria-label={planComparison ? (english ? `${Math.round(planComparison.targetProgress * 100)} percent of target` : `已达到目标的 ${Math.round(planComparison.targetProgress * 100)}%`) : (english ? "Set the upgrade date" : "请设置升级日期")}>
+          <span style={{ width: `${Math.min(100, Math.max(0, (planComparison?.targetProgress ?? 0) * 100))}%` }} />
+          <i />
+        </div>
+        {planComparison ? <>
+          <div className="usage-plan-metrics">
+            <div><span>{english ? "5x baseline / day" : "5x 基线 / 日"}</span><strong>{compactNumber(planComparison.baseline.tokensPerDay, language)}</strong><small>{compactNumber(planComparison.baseline.totalTokens, language)} Token / {planComparison.baseline.elapsedDays.toFixed(0)}d</small></div>
+            <div><span>{english ? "Latest full 20x cycle" : "最近完整 20x 账期"}</span><strong>{planComparison.completedCycleRatio === null ? "—" : `${planComparison.completedCycleRatio.toFixed(2)}×`}</strong><small>{planComparison.latestCompleted20x ? `${compactNumber(planComparison.latestCompleted20x.tokensPerDay, language)} / ${english ? "day" : "日"}` : (english ? "Waiting for a full cycle" : "等待完整账期")}</small></div>
+            <div><span>{english ? "Minimum guidance" : "最低用量指导"}</span><strong>{compactNumber(planComparison.targetTokensPerDay, language)} / {english ? "day" : "日"}</strong><small>{compactNumber(planComparison.targetTokensPerWeek, language)} / {english ? "week" : "周"} · {compactNumber(planComparison.targetTokensCurrentCycle, language)} / {english ? "cycle" : "账期"}</small></div>
+          </div>
+          <p>{planComparison.recommendation === "keep"
+            ? (english
+              ? `KEEP 20x: the latest complete cycle reached ${planComparison.completedCycleRatio?.toFixed(2)}x. The current cycle is running at ${planComparison.currentCycleRatio.toFixed(2)}x and has ${compactNumber(planComparison.current20x.totalTokens, language)} versus ${compactNumber(planComparison.targetTokensCurrentToDate, language)} required to date.`
+              : `保留 20x：最近完整账期达到 ${planComparison.completedCycleRatio?.toFixed(2)} 倍；当前账期速度为 ${planComparison.currentCycleRatio.toFixed(2)} 倍，累计 ${compactNumber(planComparison.current20x.totalTokens, language)} Token，同期最低线为 ${compactNumber(planComparison.targetTokensCurrentToDate, language)}。`)
+            : planComparison.recommendation === "downgrade"
+              ? (english
+                ? `DOWNGRADE TO 5x: the latest complete cycle reached only ${planComparison.completedCycleRatio?.toFixed(2)}x, below the ${planComparison.targetRatio}x threshold.`
+                : `降级回 5x：最近完整账期只有 ${planComparison.completedCycleRatio?.toFixed(2)} 倍，低于 ${planComparison.targetRatio} 倍门槛。`)
+              : (english
+                ? "No decision yet: wait for a complete 20x billing cycle and a complete local metadata window. Weekly pacing is an early warning only."
+                : "暂不决策：需等待完整 20x 账期且本地元数据覆盖完整；周均只作为提前预警。")}</p>
+        </> : <p>{english ? "Set the first 20x billing date to compare the preceding full 5x cycle with every 20x cycle after it." : "设置第一次 20x 扣费日期；Quota Float 会用此前完整 5x 账期作为基线，逐账期判断保留或降级。"}</p>}
+      </section> : null}
+
       {knownTokenData && budget ? <section className={`usage-budget-panel usage-budget-panel--${budget.status}`} aria-label={english ? "API-equivalent budget" : "API 等价预算"}>
         <div><CurrencyDollar weight="bold" /><span>{english ? "Monthly API-equivalent plan" : "月度 API 等价预算"}</span><strong>{money(budget.projectedMonthlyUsd)} / {money(budget.budgetUsd)}</strong></div>
         <div className="usage-budget-track"><span style={{ width: `${Math.min(100, budget.utilization * 100)}%` }} /></div>
         <label><span>{english ? "Budget USD" : "预算 USD"}</span><input type="number" min="0" max="1000000" step="10" value={budgetDraft} onChange={(event) => setBudgetDraft(event.target.value)} onBlur={commitBudget} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} /></label>
         <button type="button" className={preferences.apiBudgetAlertsEnabled ? "is-active" : ""} aria-pressed={preferences.apiBudgetAlertsEnabled} onClick={() => onPreferences?.({ ...preferences, apiBudgetAlertsEnabled: !preferences.apiBudgetAlertsEnabled })}>{preferences.apiBudgetAlertsEnabled ? <Bell /> : <BellSlash />}{english ? "Alert" : "提醒"}</button>
       </section> : null}
+
+      <article className="usage-quota-trend-card">
+        <header>
+          <span>{english ? "QUOTA REMAINING · 24H" : "剩余额度 · 24 小时"}</span>
+          <strong>{percent(trend24h.at(-1)?.remainingPercent ?? remaining, 1)}</strong>
+        </header>
+        <QuotaHistoryCurve
+          points={trend24h}
+          language={language}
+          variant="insights"
+          now={now}
+          ariaLabel={english ? "24-hour quota remaining curve" : "24 小时剩余额度曲线"}
+        />
+        <footer>
+          <span>{english ? "24h ago" : "24 小时前"}</span>
+          <small>{english ? "Hover or use arrow keys to inspect each sample" : "悬停或使用方向键查看每个时间点"}</small>
+          <span>{english ? "Now" : "现在"}</span>
+        </footer>
+      </article>
 
       <div className="usage-chart-controls"><div><ChartBar weight="duotone" /><span>{english ? "Usage distribution" : "用量分布"}</span></div><div role="group" aria-label={english ? "Chart metric" : "图表指标"}><button type="button" className={chartMode === "token" ? "is-active" : ""} aria-pressed={chartMode === "token"} onClick={() => setChartMode("token")}>Token</button><button type="button" className={chartMode === "cost" ? "is-active" : ""} aria-pressed={chartMode === "cost"} onClick={() => setChartMode("cost")}>{english ? "Cost" : "费用"}</button></div></div>
 
