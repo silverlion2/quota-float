@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.6 - 2026-09-04
+
+- fix: repair dependency security workflow
+- docs: record v0.3.5 release evidence
+
 ## 0.3.5 - 2026-08-29
 
 - feat: harden imports and provider snapshots
