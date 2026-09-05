@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.8 - 2026-09-05
+
+- fix: compact lifetime history during startup
+- docs: record v0.3.7 release evidence
+
 ## 0.3.7 - 2026-09-05
 
 - feat: add complete usage history
