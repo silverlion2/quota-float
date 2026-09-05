@@ -19,6 +19,7 @@ interface Props {
 }
 
 const VIEWBOX_WIDTH = 220;
+const MAX_RENDERED_SAMPLES = 720;
 
 function formatPoint(point: QuotaTrendPoint, language: Language): { time: string; value: string } {
   const locale = language === "en" ? "en-US" : "zh-CN";
@@ -45,6 +46,22 @@ export function QuotaHistoryCurve({
   const gradientId = `quota-history-${useId().replaceAll(":", "")}`;
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const geometry = buildQuotaTrendGeometry(points, now, hours);
+  const renderedIndexes = geometry && geometry.points.length > MAX_RENDERED_SAMPLES
+    ? Array.from({ length: Math.ceil(geometry.points.length / Math.ceil(geometry.points.length / MAX_RENDERED_SAMPLES)) }, (_, index) =>
+      Math.min(geometry.points.length - 1, index * Math.ceil(geometry.points.length / MAX_RENDERED_SAMPLES)))
+    : geometry?.points.map((_, index) => index) ?? [];
+  if (geometry && renderedIndexes.at(-1) !== geometry.points.length - 1) renderedIndexes.push(geometry.points.length - 1);
+  const renderedGeometry = geometry && renderedIndexes.length > 0
+    ? (() => {
+      const visible = renderedIndexes.map((index) => geometry.points[index]);
+      const pathPoints = visible.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`);
+      return {
+        line: `M ${pathPoints.join(" L ")}`,
+        area: `M ${visible[0].x.toFixed(1)} 70 L ${pathPoints.join(" L ")} L ${visible.at(-1)!.x.toFixed(1)} 70 Z`,
+        points: visible,
+      };
+    })()
+    : geometry;
   const activePoint = activeIndex === null ? null : points[activeIndex] ?? null;
   const activeGeometry = activeIndex === null ? null : geometry?.points[activeIndex] ?? null;
   const tooltip = activePoint ? formatPoint(activePoint, language) : null;
@@ -105,10 +122,10 @@ export function QuotaHistoryCurve({
           </linearGradient>
         </defs>
         {[10, 38, 66].map((y) => <line className="quota-history-grid" key={y} x1="4" x2="216" y1={y} y2={y} />)}
-        {geometry ? <>
-          <path className="quota-history-area" d={geometry.area} style={{ fill: `url(#${gradientId})` }} />
-          <path className="quota-history-line" d={geometry.line} />
-          {geometry.points.map((point, index) => <circle className="quota-history-sample" key={`${points[index]?.capturedAt}-${index}`} cx={point.x} cy={point.y} r="1.5" />)}
+        {geometry && renderedGeometry ? <>
+          <path className="quota-history-area" d={renderedGeometry.area} style={{ fill: `url(#${gradientId})` }} />
+          <path className="quota-history-line" d={renderedGeometry.line} />
+          {renderedGeometry.points.map((point, index) => <circle className="quota-history-sample" key={`${points[renderedIndexes[index]]?.capturedAt}-${renderedIndexes[index]}`} cx={point.x} cy={point.y} r="1.5" />)}
           {activeGeometry ? <>
             <line className="quota-history-crosshair" x1={activeGeometry.x} x2={activeGeometry.x} y1="7" y2="69" />
             <circle className="quota-history-active-point" cx={activeGeometry.x} cy={activeGeometry.y} r="3.4" />

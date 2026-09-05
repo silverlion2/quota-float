@@ -30,6 +30,7 @@ import {
   OPENAI_PRICING_VERSION,
   relativeChange,
   summarizeTokenReport,
+  usageCoverageStart,
   type TokenUsageFilters,
   type UsageRange,
 } from "../lib/tokenUsage";
@@ -66,7 +67,7 @@ interface Props {
 
 type ChartMode = "token" | "cost";
 type UsageExport = "csv" | "json" | "svg" | "pricing";
-const RANGE_OPTIONS: UsageRange[] = ["today", "24h", "7d", "30d", "90d"];
+const RANGE_OPTIONS: UsageRange[] = ["today", "24h", "7d", "30d", "90d", "all"];
 
 function percent(value: number | null, digits = 1): string {
   return value === null ? "—" : `${value.toFixed(digits).replace(/\.0$/, "")}%`;
@@ -94,12 +95,13 @@ function changeLabel(value: number | null): string | null {
   return `${value >= 0 ? "+" : ""}${value.toFixed(Math.abs(value) >= 100 ? 0 : 1)}%`;
 }
 
-function rangeDayCount(range: UsageRange): number {
-  return range === "today" ? 1 : range === "24h" ? 2 : range === "7d" ? 7 : range === "30d" ? 30 : 90;
+function rangeDayCount(range: UsageRange, allDays = 90): number {
+  return range === "today" ? 1 : range === "24h" ? 2 : range === "7d" ? 7 : range === "30d" ? 30 : range === "90d" ? 90 : allDays;
 }
 
 function rangeLabel(range: UsageRange, english: boolean): string {
   if (range === "today") return english ? "Today" : "今天";
+  if (range === "all") return english ? "All" : "全部";
   return range.toUpperCase();
 }
 
@@ -152,13 +154,32 @@ export function UsageInsightsPanel({
   const pace = primaryWindow
     ? calculateQuotaPace(primaryWindow.window, now, paceBaselines[paceBaselineKey(snapshot.provider, primaryWindow.period)] ?? null)
     : null;
+  const providerHistoryStart = history
+    .filter((point) => point.provider === snapshot.provider)
+    .reduce<number | null>((earliest, point) => {
+      const timestamp = Date.parse(point.capturedAt);
+      if (!Number.isFinite(timestamp)) return earliest;
+      return earliest === null ? timestamp : Math.min(earliest, timestamp);
+    }, null);
+  const allQuotaDays = providerHistoryStart === null ? 1 : Math.max(1, Math.ceil((now.getTime() - providerHistoryStart) / 86_400_000) + 1);
   const calendar = useMemo(
-    () => buildUsageCalendar(dailyUsage, history, snapshot.provider, now, rangeDayCount(range)),
-    [dailyUsage, history, range, snapshot.provider],
+    () => buildUsageCalendar(dailyUsage, history, snapshot.provider, now, rangeDayCount(range, allQuotaDays)),
+    [allQuotaDays, dailyUsage, history, range, snapshot.provider],
   );
   const quotaSummary = useMemo(() => usageSummary(calendar), [calendar]);
-  const trend24h = useMemo(() => recentQuotaTrend(history, snapshot.provider, remaining, now), [history, remaining, snapshot.provider]);
-  const rangeObserved = range === "24h" ? observedTrendUse(trend24h) : quotaSummary.observedUsedPercent;
+  const quotaRangeHours = range === "all" ? null
+    : range === "7d" ? 7 * 24
+      : range === "30d" ? 30 * 24
+        : range === "90d" ? 90 * 24
+          : 24;
+  const quotaTrend = useMemo(
+    () => recentQuotaTrend(history, snapshot.provider, remaining, now, quotaRangeHours),
+    [history, quotaRangeHours, remaining, snapshot.provider],
+  );
+  const quotaCurveHours = quotaRangeHours ?? Math.max(24, quotaTrend.length > 0
+    ? (now.getTime() - Date.parse(quotaTrend[0].capturedAt)) / 3_600_000
+    : 24);
+  const rangeObserved = range === "24h" || range === "today" ? observedTrendUse(quotaTrend) : quotaSummary.observedUsedPercent;
   const cycleUsed = remaining === null ? null : 100 - remaining;
 
   const loadTokenUsage = useCallback((force = false, rebuild = false) => {
@@ -206,8 +227,14 @@ export function UsageInsightsPanel({
     [filters, range, snapshot.provider, tokenReport],
   );
   const budget = useMemo(
-    () => tokenSummary ? buildApiBudgetForecast(tokenSummary, range, preferences.monthlyApiBudgetUsd, now) : null,
-    [preferences.monthlyApiBudgetUsd, range, tokenSummary],
+    () => tokenSummary ? buildApiBudgetForecast(
+      tokenSummary,
+      range,
+      preferences.monthlyApiBudgetUsd,
+      now,
+      tokenReport ? usageCoverageStart(tokenReport, now) : now,
+    ) : null,
+    [preferences.monthlyApiBudgetUsd, range, tokenReport, tokenSummary],
   );
   const planComparison = useMemo(
     () => snapshot.provider === "codex" && tokenReport && preferences.codexPlanUpgradeDate
@@ -241,6 +268,13 @@ export function UsageInsightsPanel({
   const knownTokenData = snapshot.provider === "codex" && tokenSummary !== null && tokenSummary.totalTokens > 0;
   const weekdayLabels = english ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] : ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
   const rangeText = rangeLabel(range, english);
+  const tokenCoverageStart = tokenReport ? usageCoverageStart(tokenReport, now) : null;
+  const coverageDate = tokenCoverageStart && tokenReport?.buckets.length
+    ? new Intl.DateTimeFormat(english ? "en-US" : "zh-CN", { year: "numeric", month: "short", day: "numeric" }).format(tokenCoverageStart)
+    : null;
+  const quotaStartDate = quotaTrend[0]
+    ? new Intl.DateTimeFormat(english ? "en-US" : "zh-CN", { year: "numeric", month: "short", day: "numeric" }).format(new Date(quotaTrend[0].capturedAt))
+    : null;
   const forecastWindow = resetForecast?.windowHours ?? 48;
   const forecastSourceMeta = resetForecast?.sourceCount && resetForecast.confidence
     ? (english
@@ -384,18 +418,21 @@ export function UsageInsightsPanel({
 
       <article className="usage-quota-trend-card">
         <header>
-          <span>{english ? "QUOTA REMAINING · 24H" : "剩余额度 · 24 小时"}</span>
-          <strong>{percent(trend24h.at(-1)?.remainingPercent ?? remaining, 1)}</strong>
+          <span>{english ? `QUOTA REMAINING · ${rangeText.toUpperCase()}` : `剩余额度 · ${rangeText}`}</span>
+          <strong>{percent(quotaTrend.at(-1)?.remainingPercent ?? remaining, 1)}</strong>
         </header>
         <QuotaHistoryCurve
-          points={trend24h}
+          points={quotaTrend}
           language={language}
           variant="insights"
           now={now}
-          ariaLabel={english ? "24-hour quota remaining curve" : "24 小时剩余额度曲线"}
+          hours={quotaCurveHours}
+          ariaLabel={range === "24h"
+            ? (english ? "24-hour quota remaining curve" : "24 小时剩余额度曲线")
+            : (english ? `${rangeText} recorded quota remaining curve` : `${rangeText}已记录剩余额度曲线`)}
         />
         <footer>
-          <span>{english ? "24h ago" : "24 小时前"}</span>
+          <span>{range === "all" ? (quotaStartDate ?? (english ? "First record" : "首次记录")) : range === "today" ? (english ? "Today" : "今天") : `${rangeText} ${english ? "ago" : "前"}`}</span>
           <small>{english ? "Hover or use arrow keys to inspect each sample" : "悬停或使用方向键查看每个时间点"}</small>
           <span>{english ? "Now" : "现在"}</span>
         </footer>
@@ -405,7 +442,7 @@ export function UsageInsightsPanel({
 
       <div className="usage-insights-detail-grid">
         <article className="usage-daily-card">
-          <header><span>{range === "today" || range === "24h" ? (english ? "HOURLY TREND" : "小时趋势") : (english ? "DAILY TREND" : "每日趋势")}</span><strong>{knownTokenData ? (chartMode === "cost" ? money(tokenSummary.cost.totalUsd) : compactNumber(tokenSummary.totalTokens, language)) : "—"}</strong></header>
+          <header><span>{range === "today" || range === "24h" ? (english ? "HOURLY TREND" : "小时趋势") : range === "all" ? (english ? "MONTHLY HISTORY" : "月度历史") : (english ? "DAILY TREND" : "每日趋势")}</span><strong>{knownTokenData ? (chartMode === "cost" ? money(tokenSummary.cost.totalUsd) : compactNumber(tokenSummary.totalTokens, language)) : "—"}</strong></header>
           {knownTokenData ? <div className={`usage-bars usage-bars--${tokenSeries.length > 40 ? "dense" : "regular"}`} role="img" aria-label={english ? `${rangeText} token usage trend` : `${rangeText} Token 用量趋势`}>
             {tokenSeries.map((point, index) => {
               const value = chartMode === "cost" ? point.costUsd : point.totalTokens;
@@ -434,13 +471,13 @@ export function UsageInsightsPanel({
       </section> : null}
 
       {snapshot.provider === "codex" ? <section className="usage-maintenance-panel" aria-label={english ? "Local index and pricing maintenance" : "本地索引与价格维护"}>
-        <div><Wrench weight="duotone" /><span>{english ? "LOCAL INDEX" : "本地索引"}</span><strong>{tokenReport ? `${tokenReport.cacheStatus.toUpperCase()} · ${tokenReport.scanDurationMs}ms` : "—"}</strong><small>{tokenReport ? `${tokenReport.indexedFiles} ${english ? "files indexed" : "个索引文件"} · ${tokenReport.reusedFiles} ${english ? "reused" : "复用"} · ${bytes(tokenReport.scannedBytes)} ${english ? "read" : "读取"}` : (english ? "Waiting for metadata" : "等待元数据")}</small></div>
+        <div><Wrench weight="duotone" /><span>{english ? "LOCAL INDEX" : "本地索引"}</span><strong>{tokenReport ? `${tokenReport.cacheStatus.toUpperCase()} · ${tokenReport.scanDurationMs}ms` : "—"}</strong><small>{tokenReport ? `${tokenReport.indexedFiles} ${english ? "files indexed" : "个索引文件"} · ${tokenReport.reusedFiles} ${english ? "reused" : "复用"} · ${bytes(tokenReport.scannedBytes)} ${english ? "read" : "读取"}${coverageDate ? ` · ${english ? "since" : "自"} ${coverageDate}` : ""}` : (english ? "Waiting for metadata" : "等待元数据")}</small></div>
         <div><CurrencyDollar weight="duotone" /><span>{english ? "PRICE CATALOG" : "价格目录"}</span><strong>v{OPENAI_PRICING_VERSION}</strong><small>{OPENAI_PRICING_CATALOG.models.length} {english ? "models · standard API rates" : "个模型 · 标准 API 单价"}</small></div>
         <div className="usage-maintenance-actions"><button type="button" disabled={tokenLoading} onClick={() => loadTokenUsage(true, true)}><ArrowClockwise />{english ? "Rebuild index" : "重建索引"}</button><button type="button" disabled={!knownTokenData} onClick={() => void handleExport("json")}><DownloadSimple />JSON</button><button type="button" disabled={!knownTokenData} onClick={() => void handleExport("pricing")}><DownloadSimple />{english ? "Prices" : "价格表"}</button></div>
       </section> : null}
 
       {operationMessage ? <div className="usage-operation-message" role="status">{operationMessage}</div> : null}
-      <footer className="usage-insights-footnote"><CurrencyDollar weight="bold" /><span>{english ? "Token counts come from indexed local Codex metadata. Prompt and response content is not parsed or stored. Cost is an OpenAI API standard-price equivalent—not a subscription bill. Exports anonymize projects and omit session IDs and tool names." : "Token 来自增量索引的本地 Codex 元数据；提示词和回复正文不会被解析或保存；费用按 OpenAI API 标准价等价估算，并非订阅账单；导出会匿名化项目，并排除会话标识和工具名称。"}</span><button type="button" onClick={() => onOpenResetForecast?.(OPENAI_PRICING_SOURCE)}>{english ? `Pricing · ${OPENAI_PRICING_UPDATED_AT}` : `定价来源 · ${OPENAI_PRICING_UPDATED_AT}`}</button>{tokenReport?.truncated ? <em>{english ? `Partial index · ${tokenReport.skippedFiles} files skipped` : `部分索引 · 跳过 ${tokenReport.skippedFiles} 个文件`}</em> : null}</footer>
+      <footer className="usage-insights-footnote"><CurrencyDollar weight="bold" /><span>{english ? "Token history covers every retained local Codex session metadata file. Recorded quota history starts when Quota Float began sampling. Prompt and response content is not parsed or stored." : "Token 历史覆盖本机仍保留的全部 Codex 会话元数据；剩余额度历史从 Quota Float 开始采样时起计算；提示词和回复正文不会被解析或保存。"}</span><button type="button" onClick={() => onOpenResetForecast?.(OPENAI_PRICING_SOURCE)}>{english ? `Pricing · ${OPENAI_PRICING_UPDATED_AT}` : `定价来源 · ${OPENAI_PRICING_UPDATED_AT}`}</button>{tokenReport?.truncated ? <em>{english ? `Partial index · ${tokenReport.skippedFiles} files skipped` : `部分索引 · 跳过 ${tokenReport.skippedFiles} 个文件`}</em> : null}</footer>
     </section>
   );
 }

@@ -15,7 +15,7 @@ const runtimeState: RuntimeState = {
     { provider: "codex", capturedAt: "2026-07-26T00:00:00Z", metric: 72, metricKind: "percent", status: "ok", resetsAt: null },
   ],
   dailyUsage: [],
-  usageMemory: { retentionDays: 90, firstCapturedAt: "2026-07-26T00:00:00Z", lastCapturedAt: "2026-07-26T00:00:00Z", totalSamples: 1 },
+  usageMemory: { retentionDays: 0, firstCapturedAt: "2026-07-26T00:00:00Z", lastCapturedAt: "2026-07-26T00:00:00Z", totalSamples: 1 },
   events: [],
   savedLayouts: [],
   lastNotifications: {},
@@ -112,7 +112,7 @@ describe("ControlCenter provider health", () => {
     fireEvent.click(screen.getByRole("button", { name: "Activity" }));
 
     expect(screen.getByText("Local usage memory")).toBeInTheDocument();
-    expect(screen.getByText("90-day detail · 365-day daily summaries")).toBeInTheDocument();
+    expect(screen.getByText("Lifetime · 90-day full detail · older samples compacted daily")).toBeInTheDocument();
     expect(screen.getByText("Lifetime samples")).toBeInTheDocument();
   });
 

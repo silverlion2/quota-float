@@ -313,7 +313,12 @@ describe("QuotaCard platform ledger", () => {
     expect(await screen.findByRole("region", { name: "Usage insights" }, { timeout: 10_000 })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "24H" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("img", { name: "24-hour quota remaining curve" })).toBeInTheDocument();
-    expect(screen.getByText("API equivalent")).toBeInTheDocument();
+    const allHistory = screen.getByRole("button", { name: "All" });
+    fireEvent.click(allHistory);
+    expect(allHistory).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("img", { name: "All recorded quota remaining curve" })).toBeInTheDocument();
+    expect(screen.getByText("QUOTA REMAINING · ALL")).toBeInTheDocument();
+    expect(screen.getAllByText("API equivalent").length).toBeGreaterThan(0);
     expect(screen.getByText("Total Token")).toBeInTheDocument();
     expect(screen.getByText("Used this cycle")).toBeInTheDocument();
     expect(screen.getByText("Range observed")).toBeInTheDocument();

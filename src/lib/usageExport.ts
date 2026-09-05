@@ -3,6 +3,7 @@ import { OPENAI_PRICING_CATALOG } from "./openaiPricing";
 import {
   bucketsInWindow,
   estimateBucketCost,
+  usageCoverageStart,
   usageRangeBounds,
   type ApiBudgetForecast,
   type ModelUsageSummary,
@@ -33,7 +34,7 @@ function projectAliases(projects: string[]): Map<string, string> {
 }
 
 function exportRows(report: CodexTokenUsageReport, range: UsageRange, filters: TokenUsageFilters, now: Date): ExportRow[] {
-  const bounds = usageRangeBounds(range, now);
+  const bounds = usageRangeBounds(range, now, usageCoverageStart(report, now));
   const buckets = bucketsInWindow(report.buckets, bounds.start, bounds.end, filters);
   const aliases = projectAliases(buckets.map((bucket) => bucket.project));
   const rows = new Map<string, ExportRow>();

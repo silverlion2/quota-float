@@ -52,7 +52,7 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
     providers: "平台显示与监控", hidden: "已隐藏", collapsed: "精简行", paused: "已暂停", monitoring: "监控中", resetOrder: "恢复默认排序", savedLayouts: "布局方案", saveLayout: "保存当前布局", noLayouts: "尚未保存布局方案",
     focusMode: "项目专注模式", focusModeHint: "降低后台刷新频率并暂停轮换与动态效果；手动刷新仍可用",
     notifications: "桌面提醒", threshold: "低额度阈值", resetAlert: "额度重置提醒", recoveryAlert: "恢复可用提醒", quiet: "勿扰时段", cooldown: "重复提醒冷却", minutes: "分钟",
-    events: "最近事件", noEvents: "还没有额度变化事件", history: "历史采样", samples: "条采样", memoryTitle: "本地用量记忆", memoryEmpty: "首次刷新后开始记录", memoryRetention: "90 天详细记录 · 365 天每日汇总", lifetimeSamples: "累计采样",
+    events: "最近事件", noEvents: "还没有额度变化事件", history: "历史采样", samples: "条采样", memoryTitle: "本地用量记忆", memoryEmpty: "首次刷新后开始记录", memoryRetention: "永久保留 · 90 天完整采样 · 更早记录按日压缩", lifetimeSamples: "累计采样",
     update: "更新策略", channel: "更新通道", autoUpdate: "后台自动检查和下载", autostart: "登录系统后自动启动", stable: "稳定版", beta: "测试版（手动安装）",
     diagnostics: "应用诊断", copy: "复制诊断报告", backup: "备份与迁移", export: "导出设置与历史", import: "导入备份", restore: "恢复最近自动备份",
   } : {
@@ -61,7 +61,7 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
     providers: "Provider display and monitoring", hidden: "Hidden", collapsed: "Condensed row", paused: "Paused", monitoring: "Monitoring", resetOrder: "Reset default order", savedLayouts: "Layout profiles", saveLayout: "Save current layout", noLayouts: "No layout profiles saved",
     focusMode: "Project focus mode", focusModeHint: "Reduces background refreshes and pauses rotation and ambient motion; manual refresh stays available",
     notifications: "Desktop alerts", threshold: "Low-quota threshold", resetAlert: "Quota reset alerts", recoveryAlert: "Provider recovery alerts", quiet: "Quiet hours", cooldown: "Repeat-alert cooldown", minutes: "minutes",
-    events: "Recent events", noEvents: "No quota change events yet", history: "History samples", samples: "samples", memoryTitle: "Local usage memory", memoryEmpty: "Starts after the first refresh", memoryRetention: "90-day detail · 365-day daily summaries", lifetimeSamples: "Lifetime samples",
+    events: "Recent events", noEvents: "No quota change events yet", history: "History samples", samples: "samples", memoryTitle: "Local usage memory", memoryEmpty: "Starts after the first refresh", memoryRetention: "Lifetime · 90-day full detail · older samples compacted daily", lifetimeSamples: "Lifetime samples",
     update: "Update policy", channel: "Update channel", autoUpdate: "Check and download in background", autostart: "Launch after system sign-in", stable: "Stable", beta: "Beta (manual install)",
     diagnostics: "App diagnostics", copy: "Copy diagnostic report", backup: "Backup and migration", export: "Export settings and history", import: "Import backup", restore: "Restore latest automatic backup",
   };

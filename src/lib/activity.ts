@@ -9,7 +9,7 @@ export const EMPTY_RUNTIME_STATE: RuntimeState = {
   history: [],
   dailyUsage: [],
   usageMemory: {
-    retentionDays: 90,
+    retentionDays: 0,
     firstCapturedAt: null,
     lastCapturedAt: null,
     totalSamples: 0,
@@ -20,10 +20,10 @@ export const EMPTY_RUNTIME_STATE: RuntimeState = {
   dailyPaceBaselines: {},
 };
 
-export const HISTORY_RETENTION_DAYS = 90;
-export const DAILY_USAGE_RETENTION_DAYS = 365;
-const MAX_HISTORY_POINTS = 30_000;
-const MAX_DAILY_USAGE_SUMMARIES = 2_200;
+export const HISTORY_RETENTION_DAYS = 0;
+const HISTORY_FULL_DETAIL_DAYS = 90;
+const MAX_HISTORY_POINTS = 120_000;
+const MAX_DAILY_USAGE_SUMMARIES = 100_000;
 const HISTORY_SAMPLE_INTERVAL_MS = 30 * 60_000;
 
 const providerSet = new Set<ProviderId>(DEFAULT_PROVIDER_ORDER);
@@ -380,9 +380,34 @@ function recordDailyUsage(
     .slice(-MAX_DAILY_USAGE_SUMMARIES);
 }
 
-function retainedSince<T>(values: T[], timestamp: (value: T) => string, days: number, now: Date): T[] {
-  const cutoff = now.getTime() - days * 86_400_000;
-  return values.filter((value) => Date.parse(timestamp(value)) >= cutoff);
+function compactQuotaHistory(values: QuotaHistoryPoint[], now: Date): QuotaHistoryPoint[] {
+  const sorted = [...values].sort((left, right) => left.capturedAt.localeCompare(right.capturedAt));
+  const cutoff = now.getTime() - HISTORY_FULL_DETAIL_DAYS * 86_400_000;
+  const retained = new Set<QuotaHistoryPoint>();
+  const historicalDays = new Map<string, QuotaHistoryPoint[]>();
+
+  for (const point of sorted) {
+    if (Date.parse(point.capturedAt) >= cutoff) {
+      retained.add(point);
+      continue;
+    }
+    const key = `${point.provider}:${localDateKey(point.capturedAt)}`;
+    const day = historicalDays.get(key) ?? [];
+    day.push(point);
+    historicalDays.set(key, day);
+  }
+
+  for (const day of historicalDays.values()) {
+    retained.add(day[0]);
+    retained.add(day.at(-1)!);
+    const numeric = day.filter((point) => point.metric !== null);
+    if (numeric.length > 0) {
+      retained.add(numeric.reduce((lowest, point) => point.metric! < lowest.metric! ? point : lowest));
+      retained.add(numeric.reduce((highest, point) => point.metric! > highest.metric! ? point : highest));
+    }
+  }
+
+  return sorted.filter((point) => retained.has(point)).slice(-MAX_HISTORY_POINTS);
 }
 
 function metric(snapshot: ProviderSnapshot): Pick<QuotaHistoryPoint, "metric" | "metricKind" | "resetsAt"> {
@@ -479,8 +504,8 @@ export function recordSnapshotActivity(
   resetForecast: ResetForecast | null = null,
 ): RuntimeUpdate {
   const occurredAt = now.toISOString();
-  const retainedHistory = retainedSince(current.history, (point) => point.capturedAt, HISTORY_RETENTION_DAYS, now);
-  let dailyUsage = retainedSince(current.dailyUsage, (summary) => summary.updatedAt, DAILY_USAGE_RETENTION_DAYS, now);
+  const retainedHistory = compactQuotaHistory(current.history, now);
+  let dailyUsage = current.dailyUsage;
   const isNewReset = recentReset !== null
     && !current.events.some((item) => item.kind === "reset" && item.occurredAt === recentReset.resetAt);
   const resetProviders = isNewReset ? new Set<string>(["codex"]) : new Set<string>();
@@ -574,7 +599,7 @@ export function recordSnapshotActivity(
     event: item,
   }));
 
-  const history = [...retainedHistory, ...additions].slice(-MAX_HISTORY_POINTS);
+  const history = compactQuotaHistory([...retainedHistory, ...additions], now);
   return {
     state: {
       ...current,

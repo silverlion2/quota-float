@@ -158,6 +158,8 @@ export interface CodexTokenUsageBucket {
 export interface CodexTokenUsageReport {
   generatedAt: string;
   rangeDays: number;
+  coverageStart?: string | null;
+  coverageEnd?: string | null;
   scannedFiles: number;
   indexedFiles: number;
   reusedFiles: number;

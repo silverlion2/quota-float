@@ -64,8 +64,8 @@ Updater artifacts are signed with the project's Tauri update key. Windows Authen
 - Daily quota pace guidance and alerts, configurable thresholds, quiet hours, and notification cooldowns.
 - Per-provider adaptive refresh scheduling, a low-impact Project Focus mode, and monitoring pause controls for sources you do not need during active work.
 - Floating orb, persistent expansion, always-on-top control, provider rotation, drag-to-reorder, and localized tray actions.
-- Local quota timeline for resets, low-quota crossings, provider failures, recoveries, and updates, backed by a rolling 90-day detailed usage memory and 365-day daily summaries.
-- A Vibe Usage dashboard with incremental local Codex indexing, model/project/terminal filters, session and activity metrics, trend charts, an hourly heatmap, and per-model API-equivalent cost estimates.
+- Local quota timeline for resets, low-quota crossings, provider failures, recoveries, and updates, backed by lifetime local memory: full samples for the latest 90 days and daily-compacted older quota history.
+- A Vibe Usage dashboard with incremental indexing across every retained local Codex session metadata file, model/project/terminal filters, session and activity metrics, 24-hour-by-default or complete-history trends, an hourly heatmap, and per-model API-equivalent cost estimates.
 - A configurable monthly API-equivalent budget outlook with local alerts, plus anonymized CSV/JSON exports, an SVG share card, and an exportable versioned price catalog.
 - Custom accent colors, hidden or condensed providers, reusable layout profiles, and system-login autostart.
 - Independent Float/Ring/Bar/Bottleneck compact layouts and Dashboard/Cockpit/Provider-bar/Stacked expanded layouts. Bottleneck shows every provider's tightest window in risk order. Cockpit combines the active quota ring, local trend, pace plan, and 90-day heatmap; each region can expand in place or detach into its own always-on-top window.

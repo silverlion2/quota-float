@@ -364,7 +364,7 @@ fn read_json_with_backup(path: &Path) -> serde_json::Value {
                 "history": [],
                 "dailyUsage": [],
                 "usageMemory": {
-                    "retentionDays": 90,
+                    "retentionDays": 0,
                     "firstCapturedAt": null,
                     "lastCapturedAt": null,
                     "totalSamples": 0
@@ -728,11 +728,10 @@ async fn get_codex_token_usage(
         }
     }
     let index_path = state.codex_usage_index_path.clone();
-    let report = tauri::async_runtime::spawn_blocking(move || {
-        codex_usage::collect(90, &index_path, rebuild)
-    })
-    .await
-    .map_err(|_| "Codex token metadata scan failed.".to_string())??;
+    let report =
+        tauri::async_runtime::spawn_blocking(move || codex_usage::collect(&index_path, rebuild))
+            .await
+            .map_err(|_| "Codex token metadata scan failed.".to_string())??;
     if let Ok(mut cache) = state.codex_usage_cache.lock() {
         *cache = Some((Instant::now(), report.clone()));
     }

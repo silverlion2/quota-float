@@ -98,9 +98,9 @@ export function recentQuotaTrend(
   provider: ProviderId,
   currentRemaining: number | null,
   now = new Date(),
-  hours = 24,
+  hours: number | null = 24,
 ): QuotaTrendPoint[] {
-  const cutoff = now.getTime() - hours * 60 * 60_000;
+  const cutoff = hours === null ? Number.NEGATIVE_INFINITY : now.getTime() - hours * 60 * 60_000;
   const nowTime = now.getTime();
   const all = history
     .filter((point) => point.provider === provider && point.metricKind === "percent" && point.metric !== null)

@@ -53,7 +53,7 @@ describe("activity timeline and notification policy", () => {
     const first = recordSnapshotActivity(EMPTY_RUNTIME_STATE, [], [snapshot(50)], null, 15, new Date("2026-07-19T01:00:00Z"));
     const second = recordSnapshotActivity(first.state, [snapshot(50)], [snapshot(50)], null, 15, new Date("2026-07-19T01:10:00Z"));
     expect(second.state.history).toHaveLength(1);
-    expect(second.state.usageMemory).toEqual(expect.objectContaining({ retentionDays: 90, totalSamples: 1 }));
+    expect(second.state.usageMemory).toEqual(expect.objectContaining({ retentionDays: 0, totalSamples: 1 }));
   });
 
   it("captures provider plans and samples a plan transition immediately", () => {
@@ -87,25 +87,43 @@ describe("activity timeline and notification policy", () => {
 
     expect(normalized.schemaVersion).toBe(2);
     expect(normalized.usageMemory).toEqual({
-      retentionDays: 90,
+      retentionDays: 0,
       firstCapturedAt: "2026-07-18T01:00:00Z",
       lastCapturedAt: "2026-07-19T01:00:00Z",
       totalSamples: 2,
     });
   });
 
-  it("keeps rolling detailed and daily usage memory within their retention windows", () => {
+  it("keeps lifetime detailed and daily usage memory", () => {
     const current = normalizeRuntimeState({
       history: [{ provider: "codex", capturedAt: "2025-01-01T00:00:00Z", metric: 90, metricKind: "percent", status: "ok", resetsAt: null }],
       dailyUsage: [{ provider: "codex", localDate: "2025-01-01", observedUsedPercent: 10, sampleCount: 2, updatedAt: "2025-01-01T02:00:00Z" }],
     });
     const updated = recordSnapshotActivity(current, [], [snapshot(50)], null, 15, new Date("2026-07-19T01:00:00Z"));
 
-    expect(updated.state.history).toHaveLength(1);
-    expect(updated.state.history[0].capturedAt).toBe("2026-07-19T01:00:00.000Z");
-    expect(updated.state.dailyUsage).toHaveLength(1);
-    expect(updated.state.dailyUsage[0].localDate).toBe("2026-07-19");
+    expect(updated.state.history).toHaveLength(2);
+    expect(updated.state.history[0].capturedAt).toBe("2025-01-01T00:00:00Z");
+    expect(updated.state.dailyUsage).toHaveLength(2);
+    expect(updated.state.dailyUsage[0].localDate).toBe("2025-01-01");
     expect(updated.state.usageMemory.totalSamples).toBe(2);
+  });
+
+  it("compacts older quota samples by day without discarding the day's endpoints or extremes", () => {
+    const current = normalizeRuntimeState({
+      history: [90, 70, 80, 60, 75].map((metric, index) => ({
+        provider: "codex",
+        capturedAt: `2025-01-01T0${index}:00:00Z`,
+        metric,
+        metricKind: "percent",
+        status: "ok",
+        resetsAt: null,
+      })),
+    });
+
+    const updated = recordSnapshotActivity(current, [], [], null, 15, new Date("2026-07-19T01:00:00Z"));
+
+    expect(updated.state.history.map((point) => point.metric)).toEqual([90, 60, 75]);
+    expect(updated.state.usageMemory.firstCapturedAt).toBe("2025-01-01T00:00:00Z");
   });
 
   it("aggregates observed daily quota use without counting resets as consumption", () => {

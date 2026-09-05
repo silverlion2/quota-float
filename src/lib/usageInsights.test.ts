@@ -48,6 +48,13 @@ describe("usage insights", () => {
     expect(points).toEqual([]);
   });
 
+  it("returns the full recorded quota trajectory when no hour limit is requested", () => {
+    const points = recentQuotaTrend(history, "codex", 79, new Date("2026-08-08T08:00:00Z"), null);
+
+    expect(points[0].capturedAt).toBe("2026-08-07T01:00:00Z");
+    expect(points.at(-1)?.remainingPercent).toBe(79);
+  });
+
   it("aligns calendar rows to the Monday-first weekday labels", () => {
     expect(mondayWeekdayIndex(new Date(2026, 7, 3, 12))).toBe(0);
     expect(mondayWeekdayIndex(new Date(2026, 7, 9, 12))).toBe(6);

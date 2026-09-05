@@ -4,20 +4,20 @@ use std::{
     fs::{self, File},
     io::{self, BufRead, BufReader, Seek, SeekFrom},
     path::{Path, PathBuf},
-    time::{Duration, Instant, SystemTime},
+    time::{Instant, SystemTime},
 };
 
 use chrono::{DateTime, Timelike, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-const MAX_SESSION_FILES: usize = 512;
-const MAX_DISCOVERED_FILES: usize = MAX_SESSION_FILES * 4;
+const MAX_SESSION_FILES: usize = 20_000;
+const MAX_DISCOVERED_FILES: usize = 100_000;
 const MAX_SCAN_BYTES: u64 = 2 * 1024 * 1024 * 1024;
-const MAX_INDEX_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_INDEX_BYTES: u64 = 128 * 1024 * 1024;
 const MAX_METADATA_LINE_BYTES: usize = 64 * 1024;
 const LONG_CONTEXT_THRESHOLD: u64 = 272_000;
-const INDEX_SCHEMA_VERSION: u8 = 2;
+const INDEX_SCHEMA_VERSION: u8 = 3;
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -42,6 +42,8 @@ pub struct CodexTokenUsageBucket {
 pub struct CodexTokenUsageReport {
     pub generated_at: String,
     pub range_days: u32,
+    pub coverage_start: Option<String>,
+    pub coverage_end: Option<String>,
     pub scanned_files: usize,
     pub indexed_files: usize,
     pub reused_files: usize,
@@ -539,16 +541,12 @@ fn load_index(path: &Path, rebuild: bool) -> (PersistedUsageIndex, String) {
 fn collect_from(
     session_root: &Path,
     cache_path: &Path,
-    range_days: u32,
     rebuild_index: bool,
 ) -> Result<CodexTokenUsageReport, String> {
     let started = Instant::now();
-    let range_days = range_days.clamp(1, 90);
     let now = Utc::now();
-    let cutoff = now - chrono::Duration::days(i64::from(range_days));
-    let system_cutoff = SystemTime::now()
-        .checked_sub(Duration::from_secs(u64::from(range_days) * 86_400))
-        .unwrap_or(SystemTime::UNIX_EPOCH);
+    let cutoff = DateTime::<Utc>::from(SystemTime::UNIX_EPOCH);
+    let system_cutoff = SystemTime::UNIX_EPOCH;
     if !session_root.is_dir() {
         return Err("Codex session metadata is unavailable.".to_string());
     }
@@ -694,10 +692,26 @@ fn collect_from(
     }
     let buckets = buckets_from_accumulators(aggregate);
     let matched_events = buckets.iter().map(|bucket| bucket.requests).sum();
+    let coverage_start = buckets.first().map(|bucket| bucket.bucket_start.clone());
+    let coverage_end = buckets.last().map(|bucket| bucket.bucket_start.clone());
+    let range_days = coverage_start
+        .as_deref()
+        .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
+        .map(|value| {
+            let elapsed_days = now
+                .signed_duration_since(value.with_timezone(&Utc))
+                .num_days()
+                .max(0)
+                .saturating_add(1);
+            u32::try_from(elapsed_days).unwrap_or(u32::MAX)
+        })
+        .unwrap_or(0);
 
     Ok(CodexTokenUsageReport {
         generated_at: now.to_rfc3339(),
         range_days,
+        coverage_start,
+        coverage_end,
         scanned_files,
         indexed_files,
         reused_files,
@@ -712,16 +726,12 @@ fn collect_from(
     })
 }
 
-pub fn collect(
-    range_days: u32,
-    cache_path: &Path,
-    rebuild_index: bool,
-) -> Result<CodexTokenUsageReport, String> {
+pub fn collect(cache_path: &Path, rebuild_index: bool) -> Result<CodexTokenUsageReport, String> {
     let session_root = codex_home()
         .map(|value| value.join("sessions"))
         .filter(|value| value.is_dir())
         .ok_or_else(|| "Codex session metadata is unavailable.".to_string())?;
-    collect_from(&session_root, cache_path, range_days, rebuild_index)
+    collect_from(&session_root, cache_path, rebuild_index)
 }
 
 #[cfg(test)]
@@ -801,13 +811,13 @@ mod tests {
         let context = r#"{"timestamp":"2026-08-16T02:00:00Z","type":"turn_context","payload":{"model":"gpt-5.6-sol","cwd":"C:/work/project"}}"#;
         let first_event = r#"{"timestamp":"2026-08-16T02:12:00Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10,"output_tokens":2,"total_tokens":12}}}}"#;
         fs::write(&session, format!("{context}\n{first_event}\n")).unwrap();
-        let first = collect_from(&sessions, &cache, 90, false).unwrap();
+        let first = collect_from(&sessions, &cache, false).unwrap();
         assert_eq!(first.scanned_files, 1);
         assert_eq!(first.matched_events, 1);
         let persisted = fs::read_to_string(&cache).unwrap();
         assert!(!persisted.contains("session.jsonl"));
 
-        let reused = collect_from(&sessions, &cache, 90, false).unwrap();
+        let reused = collect_from(&sessions, &cache, false).unwrap();
         assert_eq!(reused.scanned_files, 0);
         assert_eq!(reused.reused_files, 1);
         assert_eq!(reused.cache_status, "reused");
@@ -817,11 +827,37 @@ mod tests {
         let mut append = fs::OpenOptions::new().append(true).open(&session).unwrap();
         writeln!(append, "{second_event}").unwrap();
         append.sync_all().unwrap();
-        let incremental = collect_from(&sessions, &cache, 90, false).unwrap();
+        let incremental = collect_from(&sessions, &cache, false).unwrap();
         assert_eq!(incremental.scanned_files, 1);
         assert_eq!(incremental.incremental_files, 1);
         assert_eq!(incremental.matched_events, 2);
         assert!(incremental.scanned_bytes < fs::metadata(&session).unwrap().len());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn indexes_token_metadata_older_than_ninety_days() {
+        let stamp = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = env::temp_dir().join(format!("quota-float-lifetime-usage-{stamp}"));
+        let sessions = root.join("sessions");
+        fs::create_dir_all(&sessions).unwrap();
+        let session = sessions.join("old-session.jsonl");
+        let cache = root.join("usage-index.json");
+        let context = r#"{"timestamp":"2024-01-02T02:00:00Z","type":"turn_context","payload":{"model":"gpt-5.6-sol","cwd":"C:/work/old-project"}}"#;
+        let event = r#"{"timestamp":"2024-01-02T02:12:00Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10,"output_tokens":2,"total_tokens":12}}}}"#;
+        fs::write(&session, format!("{context}\n{event}\n")).unwrap();
+
+        let report = collect_from(&sessions, &cache, false).unwrap();
+
+        assert_eq!(report.matched_events, 1);
+        assert_eq!(
+            report.coverage_start.as_deref(),
+            Some("2024-01-02T02:00:00+00:00")
+        );
+        assert!(report.range_days > 90);
         fs::remove_dir_all(root).unwrap();
     }
 }

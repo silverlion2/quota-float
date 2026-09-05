@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CodexTokenUsageBucket, CodexTokenUsageReport } from "../types";
-import { buildApiBudgetForecast, buildModelBreakdown, buildTokenFilterOptions, buildTokenHeatmap, estimateBucketCost, relativeChange, summarizeTokenReport } from "./tokenUsage";
+import { buildApiBudgetForecast, buildModelBreakdown, buildTokenFilterOptions, buildTokenHeatmap, buildTokenSeries, estimateBucketCost, relativeChange, summarizeTokenReport, usageCoverageStart } from "./tokenUsage";
 
 const bucket = (overrides: Partial<CodexTokenUsageBucket> = {}): CodexTokenUsageBucket => ({
   bucketStart: "2026-08-16T02:00:00Z",
@@ -72,5 +72,38 @@ describe("token usage", () => {
     expect(filtered.models).toBe(1);
     expect(filtered.sessions).toBe(1);
     expect(buildApiBudgetForecast(filtered, "7d", .1, now).status).toBe("over");
+  });
+
+  it("covers all retained Codex metadata and groups the full history by month", () => {
+    const report: CodexTokenUsageReport = {
+      generatedAt: "2026-08-16T12:00:00Z",
+      rangeDays: 959,
+      coverageStart: "2024-01-02T02:00:00Z",
+      coverageEnd: "2026-08-16T02:00:00Z",
+      scannedFiles: 2,
+      indexedFiles: 2,
+      reusedFiles: 0,
+      incrementalFiles: 0,
+      skippedFiles: 0,
+      scannedBytes: 100,
+      matchedEvents: 2,
+      scanDurationMs: 10,
+      cacheStatus: "rebuilt",
+      truncated: false,
+      buckets: [
+        bucket({ bucketStart: "2024-01-02T02:00:00Z", sessionKey: "s-old" }),
+        bucket({ bucketStart: "2026-08-16T02:00:00Z", sessionKey: "s-new" }),
+      ],
+    };
+    const now = new Date("2026-08-16T12:00:00Z");
+
+    expect(usageCoverageStart(report, now).toISOString()).toBe("2024-01-02T02:00:00.000Z");
+    const summary = summarizeTokenReport(report, "all", now);
+    expect(summary.current.totalTokens).toBe(2_200_000);
+    expect(summary.previous.totalTokens).toBe(0);
+    const series = buildTokenSeries(report, "all", now);
+    expect(series[0].key).toBe("2024-01");
+    expect(series.at(-1)?.key).toBe("2026-08");
+    expect(series.reduce((total, point) => total + point.totalTokens, 0)).toBe(2_200_000);
   });
 });
