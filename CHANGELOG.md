@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.9 - 2026-09-05
+
+- feat: automate guarded release publishing
+- docs: record v0.3.8 release evidence
+
 ## 0.3.8 - 2026-09-05
 
 - fix: compact lifetime history during startup
