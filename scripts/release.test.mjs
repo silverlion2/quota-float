@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { assertVersionSync, buildChangelog, nextVersion, updateCargoManifest } from "./release.mjs";
+import { assertVersionSync, buildChangelog, nextVersion, updateCargoLock, updateCargoManifest } from "./release.mjs";
 
 describe("release automation", () => {
   it("bumps stable semantic versions", () => {
@@ -19,6 +19,17 @@ describe("release automation", () => {
     const raw = `[package]\nname = "quota-float"\nversion = "0.1.6"\n\n[dependencies]\nother = "9"\n`;
     expect(updateCargoManifest(raw, "0.2.0")).toContain('version = "0.2.0"');
     expect(updateCargoManifest(raw, "0.2.0")).toContain('other = "9"');
+  });
+
+  it("updates the workspace package version in Cargo.lock without invoking Cargo", () => {
+    const raw = `[[package]]\nname = "quota-float"\nversion = "0.3.8"\ndependencies = [\n "serde",\n]\n\n[[package]]\nname = "serde"\nversion = "1.0.0"\n`;
+    const result = updateCargoLock(raw, "0.3.9");
+
+    expect(result).toContain('name = "quota-float"\nversion = "0.3.9"');
+    expect(result).toContain('name = "serde"\nversion = "1.0.0"');
+    expect(() => updateCargoLock('[[package]]\nname = "other"\nversion = "1.0.0"\n', "0.3.9")).toThrow(
+      /missing the quota-float package entry/,
+    );
   });
 
   it("rejects mismatched version sources and tags", () => {
@@ -69,11 +80,11 @@ describe("release automation", () => {
     expect(workflow).toContain("--dry-run --yes");
     expect(workflow).toContain("--verified-by-ci --no-push --yes");
     expect(workflow).toContain("git push --atomic origin");
-    expect(createReleaseRefJob).toContain("Install Linux desktop dependencies");
-    expect(createReleaseRefJob).toContain("libwebkit2gtk-4.1-dev");
-    expect(createReleaseRefJob).toContain("libappindicator3-dev");
-    expect(createReleaseRefJob).toContain("librsvg2-dev");
+    expect(createReleaseRefJob).not.toContain("Install Linux desktop dependencies");
+    expect(createReleaseRefJob).not.toContain("dtolnay/rust-toolchain");
+    expect(createReleaseRefJob).not.toContain("Swatinem/rust-cache");
     expect(releaseScript).toContain('process.env.GITHUB_ACTIONS !== "true"');
+    expect(releaseScript).toContain("duplicate cargo check is skipped");
   });
 
   it("blocks public release publishing until Defender accepts the exact Windows artifacts", () => {

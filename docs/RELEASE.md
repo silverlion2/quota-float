@@ -14,19 +14,35 @@ macOS 包使用 Universal 构建，同时支持 Apple Silicon 和 Intel Mac。Ta
 
 ## 发布一个 GitHub 下载版本
 
-### 在线一键发布（推荐）
+### 自动化在线发布（推荐）
 
-在 GitHub 仓库打开 **Actions → Release → Run workflow**：
+准备发布的代码通过桌面 fast handoff gate、提交并推送到 `main` 后，在干净且与 `origin/main` 完全一致的工作区运行：
+
+```bash
+npm run publish:release -- patch --yes
+```
+
+该命令只触发一次受保护的 GitHub Actions 工作流，并自动等待和验收结果：验证 release commit/tag、Windows/macOS 构建、Microsoft Defender、公开 Release、六类更新附件、Stable 升级烟测，以及远端 `main` 与 tag 指向。它不会自动暂存或提交业务代码。创建 release commit/tag 前仍会经过 `release` Environment 的 required reviewer（如已配置）。
+
+只想在线验证而不创建 commit、tag 或 Release 时，使用：
+
+```bash
+npm run publish:release -- patch --dry-run
+```
+
+只检查本地分支、工作区和目标版本且完全不访问网络时，使用 `--plan`。不必在每次正式发布前先跑一次远端 dry run；`--yes` 的正式工作流本身会先经过相同验证 gate，再进行第一次远端写入，从而避免重复测试和构建。
+
+也可以在 GitHub 仓库打开 **Actions → Release → Run workflow** 手动触发：
 
 1. Branch 选择 `main`。
 2. `version` 填写 `patch`、`minor`、`major`、`beta`、`stable` 或明确的 `x.y.z[-beta.n]`。
-3. 保持 `publish=false` 时只在线执行只读 dry run、测试和构建，不创建 commit、tag 或 Release。
-4. 确认验证结果后重新运行并设置 `publish=true`；如果 `release` Environment 配置了 required reviewer，工作流会在第一次远端写入前等待批准。
+3. 正式发布设置 `publish=true`；只读预演保持 `publish=false`。
 
 正式在线发布会在同一工作流中完成：
 
 - 验证 `main`、版本、变更列表、前端测试/构建和 Rust 测试。
 - 确认验证后 `main` 未变化，再创建 release commit 与 tag，并通过一次 atomic push 同时写入远端。
+- 创建 release ref 时直接同步已测试过的机械版本文件，不再重复安装 Rust/Linux 桌面依赖或执行第二次 Rust 编译检查。
 - Windows/macOS 并行构建草稿产物；Windows Defender 扫描实际待发布的 Windows executable 与 installer，不重复编译预检包。
 - 检查 `latest.json`、Windows installer/签名、macOS DMG/updater archive/签名齐全后，才将草稿 Release 转为公开。
 - Stable 版本公开后执行 Windows previous-to-current upgrade smoke。

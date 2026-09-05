@@ -1,17 +1,22 @@
 # GitHub 发布清单
 
-## 推荐：GitHub Actions 在线发布
+## 推荐：一条命令在线发布
 
-打开 **Actions → Release → Run workflow**，Branch 选择 `main`：
+准备发布的代码通过桌面 fast handoff gate、提交并推送到 `main` 后运行：
 
-1. 先填写 `version` 并保持 `publish=false`，运行云端 dry run。
-2. 检查变更列表、版本目标、前端/Rust 测试与生产构建。
-3. 再次运行相同版本输入并设置 `publish=true`。
-4. 如已保护 `release` Environment，在第一次远端写入前批准 deployment。
+```bash
+npm run publish:release -- patch --yes
+```
+
+命令会检查干净且同步的 `main`、GitHub CLI 登录态、重复 tag 和并发 Release workflow；随后触发一次 `publish=true` 工作流，自动等待，并验证全部 job、Defender、公开状态、六类附件以及远端 refs。它不会暂存或提交业务代码。如已保护 `release` Environment，仍需在第一次远端写入前批准 deployment。
+
+可选的只读远端预演为 `npm run publish:release -- patch --dry-run`。正式工作流本身先执行同一验证 gate，因此日常发布不需要先预演再重复正式运行。
+
+没有本地 GitHub CLI 时，也可打开 **Actions → Release → Run workflow**，Branch 选择 `main`、填写版本并将 `publish` 设为 `true`。
 
 `version` 支持 `patch`、`minor`、`major`、`beta`、`stable` 或明确的 `x.y.z[-beta.n]`。工作流会拒绝非 `main` 手动运行、旧版本、重复 tag、没有新增 commit、验证后发生变化的 `main`，以及缺少任一平台产物的发布。
 
-在线流程使用 atomic push 同时提交 release commit/tag；Windows/macOS 各构建一次，先上传为 draft，Windows Defender 扫描实际待发布文件，所有附件齐全后才公开 Release。Stable 版本随后运行升级烟测。
+在线流程使用 atomic push 同时提交 release commit/tag；Windows/macOS 各构建一次，先上传为 draft，Windows Defender 扫描实际待发布文件，所有附件齐全后才公开 Release。Stable 版本随后运行升级烟测。创建 release ref 时不再重复安装 Rust/Linux 桌面依赖或执行第二次 Rust 编译检查。
 
 ## 本地发布回退
 

@@ -87,6 +87,14 @@ export function updateCargoManifest(raw, version) {
   return `${raw.slice(0, packageStart)}${packageSection.replace(/^version\s*=\s*"[^"]+"/m, `version = "${version}"`)}${raw.slice(end)}`;
 }
 
+export function updateCargoLock(raw, version) {
+  const packagePattern = /(\[\[package\]\]\s+name = "quota-float"\s+version = ")[^"]+("\s*)/m;
+  if (!packagePattern.test(raw)) {
+    throw new Error("Cargo.lock is missing the quota-float package entry.");
+  }
+  return raw.replace(packagePattern, `$1${version}$2`);
+}
+
 export function buildChangelog(existing, version, commits, date) {
   const bullets = commits.length > 0 ? commits.map((subject) => `- ${subject}`).join("\n") : "- Maintenance release.";
   const section = `## ${version} - ${date}\n\n${bullets}\n`;
@@ -162,6 +170,7 @@ function synchronizeVersion(version) {
   writeJson(PACKAGE_LOCK, packageLock);
 
   writeFileSync(CARGO_TOML, updateCargoManifest(readFileSync(CARGO_TOML, "utf8"), version), "utf8");
+  writeFileSync(CARGO_LOCK, updateCargoLock(readFileSync(CARGO_LOCK, "utf8"), version), "utf8");
 
   const tauriConfig = JSON.parse(readFileSync(TAURI_CONFIG, "utf8"));
   tauriConfig.version = version;
@@ -261,7 +270,11 @@ async function main() {
   })();
   const date = new Date().toISOString().slice(0, 10);
   writeFileSync(CHANGELOG, buildChangelog(existingChangelog, target, commits, date), "utf8");
-  run("cargo", ["check", "--manifest-path", "src-tauri/Cargo.toml"]);
+  if (verifiedByCi) {
+    console.log("Release-only version files were synchronized deterministically; duplicate cargo check is skipped.");
+  } else {
+    run("cargo", ["check", "--manifest-path", "src-tauri/Cargo.toml"]);
+  }
   assertVersionSync(readVersionState());
   run("git", ["diff", "--check"]);
   run("git", ["add", "package.json", "package-lock.json", "src-tauri/Cargo.toml", "src-tauri/Cargo.lock", "src-tauri/tauri.conf.json", "CHANGELOG.md"]);
