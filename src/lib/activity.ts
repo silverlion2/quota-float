@@ -298,10 +298,11 @@ export function normalizeRuntimeState(value: unknown): RuntimeState {
     const baseline = dailyPaceBaseline(value);
     if (baseline && key === paceBaselineKey(baseline.provider, baseline.period)) dailyPaceBaselines[key] = baseline;
   }
-  const history = Array.isArray(candidate.history)
+  const parsedHistory = Array.isArray(candidate.history)
     ? candidate.history.map(historyPoint).filter((item): item is QuotaHistoryPoint => item !== null)
-      .sort((left, right) => left.capturedAt.localeCompare(right.capturedAt)).slice(-MAX_HISTORY_POINTS)
+      .sort((left, right) => left.capturedAt.localeCompare(right.capturedAt))
     : [];
+  const history = compactQuotaHistory(parsedHistory, new Date());
   const dailyUsage = Array.isArray(candidate.dailyUsage)
     ? candidate.dailyUsage.map(dailyUsageSummary).filter((item): item is DailyUsageSummary => item !== null)
       .sort((left, right) => left.localDate.localeCompare(right.localDate) || left.provider.localeCompare(right.provider)).slice(-MAX_DAILY_USAGE_SUMMARIES)

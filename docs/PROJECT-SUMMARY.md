@@ -73,7 +73,7 @@ npm run tauri dev
 
 提交交付前必须执行 [桌面开发 SOP](DESKTOP-DEVELOPMENT-SOP.md) 的完整 fast handoff gate。浏览器模式不能验证真实额度或系统窗口行为；Windows 多屏/缩放和 macOS 透明窗口仍需真实桌面环境按 [TEST-MATRIX.md](TEST-MATRIX.md) 验收。
 
-最近一次已验证公开版本为 `v0.3.5`。产物清单、提交、工作流和验证结果记录在 [RELEASE-0.3.5.md](RELEASE-0.3.5.md)；下一版本发布后应新增对应 release record，不覆盖历史证据。
+最近一次已验证公开版本为 `v0.3.7`。产物清单、提交、工作流和验证结果记录在 [RELEASE-0.3.7.md](RELEASE-0.3.7.md)；下一版本发布后应新增对应 release record，不覆盖历史证据。
 
 ## 当前维护重点
 

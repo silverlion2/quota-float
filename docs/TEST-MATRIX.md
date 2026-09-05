@@ -46,12 +46,12 @@
 
 交付时执行 `docs/DESKTOP-DEVELOPMENT-SOP.md` 的完整 fast handoff gate；本轮实际测试数量和命令结果记录在任务交付说明中，避免文档数字随测试增删而失真。
 
-## v0.3.5 自动发布证据
+## v0.3.7 自动发布证据
 
-- 自动发布门槛：云端 `verify` 通过 26 个文件中的 193 个前端测试、生产构建、57 个 Linux 可用 Rust 测试和非变更 dry run；本地 Windows 通过 69 个 Rust 测试、生产构建、bundle budget、`fmt`、`check`、严格 `clippy`、diff 与版本一致性检查。
-- GitHub Actions：独立云端 dry run，以及正式 `verify`、release-ref 原子创建、Windows Defender 实际产物扫描、Windows NSIS 发布、macOS Universal 发布、`finalize` 和 Windows `upgrade-smoke` 全部成功。
+- 自动发布门槛：发布助手通过 29 个文件中的 212 个前端测试、生产构建、72 个 Rust 测试、bundle budget、`fmt`、`check`、严格 `clippy`、diff 与版本一致性检查；正式发布前的独立 dry run 再次通过前端、构建和 Rust 测试。
+- GitHub Actions：tag 触发的正式 `verify`、Windows Defender 实际产物扫描、Windows NSIS 发布、macOS Universal 发布、`finalize` 和 Windows `upgrade-smoke` 全部成功；已有 tag 的流程按预期跳过 `create-release-ref`。
 - 公开 Release：`latest.json`、Windows 安装包及签名、macOS Universal DMG、macOS updater archive 及签名均已上传。
-- 最新完整证据、链接、产物 SHA-256 与签名限制见 [RELEASE-0.3.5.md](RELEASE-0.3.5.md)。
+- 最新完整证据、链接、产物 SHA-256 与签名限制见 [RELEASE-0.3.7.md](RELEASE-0.3.7.md)。
 
 这些结果证明构建、扫描、打包、更新签名和自动升级路径成功；它们不替代下列原生窗口视觉/交互矩阵。
 

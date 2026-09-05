@@ -120,6 +120,7 @@ describe("activity timeline and notification policy", () => {
       })),
     });
 
+    expect(current.history.map((point) => point.metric)).toEqual([90, 60, 75]);
     const updated = recordSnapshotActivity(current, [], [], null, 15, new Date("2026-07-19T01:00:00Z"));
 
     expect(updated.state.history.map((point) => point.metric)).toEqual([90, 60, 75]);

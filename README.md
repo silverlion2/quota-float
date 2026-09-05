@@ -136,7 +136,7 @@ npm run tauri build
 
 After a Codex Desktop update, run `npm run check:codex`. See the [provider compatibility contract](docs/PROVIDER-COMPATIBILITY.md), [Codex update compatibility guide](docs/CODEX-UPDATE-CHECK.md), and [release checklist](docs/GITHUB-RELEASE-CHECKLIST.md) for maintainer workflows.
 
-Maintainers can start with the latest [v0.3.5 release record](docs/RELEASE-0.3.5.md), [project summary](docs/PROJECT-SUMMARY.md), [architecture and repository structure](docs/ARCHITECTURE.md), [distribution/signing guide](docs/DISTRIBUTION.md), and [desktop development SOP](docs/DESKTOP-DEVELOPMENT-SOP.md).
+Maintainers can start with the latest [v0.3.7 release record](docs/RELEASE-0.3.7.md), [project summary](docs/PROJECT-SUMMARY.md), [architecture and repository structure](docs/ARCHITECTURE.md), [distribution/signing guide](docs/DISTRIBUTION.md), and [desktop development SOP](docs/DESKTOP-DEVELOPMENT-SOP.md).
 
 ## Contributing
 
