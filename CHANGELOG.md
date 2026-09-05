@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.7 - 2026-09-05
+
+- feat: add complete usage history
+- feat: add billing-cycle value guidance and quota history
+- docs: record v0.3.6 release evidence
+
 ## 0.3.6 - 2026-09-04
 
 - fix: repair dependency security workflow
