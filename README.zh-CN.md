@@ -120,7 +120,7 @@ Quota Float 只会把各平台已有令牌发送到该平台自己的额度服�
 
 ## 本地开发
 
-需要 Node.js 20+、Rust stable，以及当前平台的 [Tauri 2 系统依赖](https://v2.tauri.app/start/prerequisites/)。
+需要 Node.js 24.14.0（仓库 `.node-version` 默认版本；也支持 22.x 中的 22.18 及以上版本、24.x）、npm 10 或 11、Rust stable，以及当前平台的 [Tauri 2 系统依赖](https://v2.tauri.app/start/prerequisites/)。原生 TypeScript 配置加载器依赖 Node 内置的类型剥离能力，详见[依赖与工具链策略](docs/DEPENDENCY-POLICY.md)。
 
 ```bash
 npm install

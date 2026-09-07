@@ -1,4 +1,4 @@
-import type { AppDiagnostics, BarPlacement, CockpitRegion, CodexTokenUsageReport, CompactLayout, ProviderId, ProviderSnapshot, ResetForecast, RuntimeState, SnapshotCacheRead, VolcengineDiagnostics, WidgetPreferences } from "../types";
+import type { AppDiagnostics, BarPlacement, CockpitRegion, CodexTokenUsageReport, CompactLayout, FocusPanelHistory, ProviderId, ProviderSnapshot, ResetForecast, RuntimeState, SnapshotCacheRead, VolcengineDiagnostics, WidgetPreferences } from "../types";
 import { EMPTY_RUNTIME_STATE, normalizeRuntimeState } from "./activity";
 import { DEFAULT_WIDGET_PREFERENCES } from "./preferences";
 
@@ -148,16 +148,17 @@ function enqueueDataWrite(operation: () => Promise<void>): Promise<void> {
 }
 
 export const isTauri = () => "__TAURI_INTERNALS__" in window;
+export const usesSyntheticData = () => !isTauri() || import.meta.env.VITE_WDIO === "1";
 
 export async function fetchSnapshots(force = false, providerIds?: ProviderSnapshot["provider"][]): Promise<ProviderSnapshot[]> {
-  if (!isTauri()) return providerIds ? mockSnapshots.filter((snapshot) => providerIds.includes(snapshot.provider)) : mockSnapshots;
+  if (usesSyntheticData()) return providerIds ? mockSnapshots.filter((snapshot) => providerIds.includes(snapshot.provider)) : mockSnapshots;
   const { invoke } = await import("@tauri-apps/api/core");
   if (providerIds) return invoke<ProviderSnapshot[]>("refresh_snapshots", { providerIds });
   return invoke<ProviderSnapshot[]>(force ? "refresh_snapshots" : "get_snapshots");
 }
 
 export async function readCachedSnapshots(providerIds?: ProviderSnapshot["provider"][]): Promise<SnapshotCacheRead> {
-  if (!isTauri()) {
+  if (usesSyntheticData()) {
     const snapshots = providerIds ? mockSnapshots.filter((snapshot) => providerIds.includes(snapshot.provider)) : mockSnapshots;
     return { snapshots, freshness: snapshots.length > 0 ? "fresh" : "empty", oldestAgeSeconds: snapshots.length > 0 ? 0 : null };
   }
@@ -166,7 +167,7 @@ export async function readCachedSnapshots(providerIds?: ProviderSnapshot["provid
 }
 
 export async function fetchCodexResetForecast(): Promise<ResetForecast | null> {
-  if (!isTauri()) return {
+  if (usesSyntheticData()) return {
     score: 62,
     windowHours: 48,
     fetchedAt: new Date().toISOString(),
@@ -187,7 +188,7 @@ export async function fetchCodexResetForecast(): Promise<ResetForecast | null> {
 }
 
 export async function fetchCodexTokenUsage(force = false, rebuild = false): Promise<CodexTokenUsageReport> {
-  if (!isTauri()) return mockCodexTokenUsage();
+  if (usesSyntheticData()) return mockCodexTokenUsage();
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<CodexTokenUsageReport>("get_codex_token_usage", { force, rebuild });
 }
@@ -220,13 +221,13 @@ export async function openExternalUrl(url: string): Promise<void> {
 }
 
 export async function getVolcengineDiagnostics(): Promise<VolcengineDiagnostics> {
-  if (!isTauri()) return mockVolcengineDiagnostics;
+  if (usesSyntheticData()) return mockVolcengineDiagnostics;
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<VolcengineDiagnostics>("get_volcengine_diagnostics");
 }
 
 export async function reconnectVolcengine(): Promise<VolcengineDiagnostics> {
-  if (!isTauri()) return mockVolcengineDiagnostics;
+  if (usesSyntheticData()) return mockVolcengineDiagnostics;
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<VolcengineDiagnostics>("reconnect_volcengine");
 }
@@ -261,6 +262,17 @@ export async function getRuntimeState(): Promise<RuntimeState> {
   if (!isTauri()) return structuredClone(EMPTY_RUNTIME_STATE);
   const { invoke } = await import("@tauri-apps/api/core");
   return normalizeRuntimeState(await invoke("get_runtime_state"));
+}
+
+export async function readFocusPanelHistory(provider: ProviderId, rangeDays = 90): Promise<FocusPanelHistory> {
+  if (!isTauri()) return { history: [], dailyUsage: [], dailyPaceBaselines: {} };
+  const { invoke } = await import("@tauri-apps/api/core");
+  const normalized = normalizeRuntimeState(await invoke("get_focus_panel_history", { provider, rangeDays }));
+  return {
+    history: normalized.history,
+    dailyUsage: normalized.dailyUsage,
+    dailyPaceBaselines: normalized.dailyPaceBaselines,
+  };
 }
 
 export async function updateRuntimeState(runtimeState: RuntimeState): Promise<void> {

@@ -73,4 +73,22 @@ describe("UpdatePanel states", () => {
     expect(screen.getByRole("button", { name: "Close update center" })).toBeDisabled();
     expect(screen.getByRole("dialog", { name: "Quota Float update" })).toHaveFocus();
   });
+
+  it("states that beta releases use the manual download policy", () => {
+    render(
+      <UpdatePanel
+        state={{ phase: "available", info: { ...info, channel: "beta", automaticInstall: false }, progress: null, error: null }}
+        language="en"
+        onClose={vi.fn()}
+        onDownload={vi.fn()}
+        onInstall={vi.fn()}
+        onRetry={vi.fn()}
+        onLater={vi.fn()}
+        onSkip={vi.fn()}
+        onOpenRelease={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("dialog")).toHaveTextContent("Beta channel · manual download from GitHub Releases");
+    expect(screen.getByRole("button", { name: "Open download page" })).toBeInTheDocument();
+  });
 });

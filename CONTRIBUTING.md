@@ -8,6 +8,8 @@ Do not paste tokens, account IDs, raw backend responses, local auth paths, or sc
 
 ## Development
 
+Use Node.js 24.14.0 LTS from `.node-version` with npm 11.9.0 when possible. Supported runtimes are Node 22.18+ on the 22.x line or Node 24.x, with npm 10-11; Node 23 is intentionally excluded. The Node 22 lower bound keeps Vite's `--configLoader native` path on a runtime where built-in TypeScript type stripping is enabled by default. See [the dependency and toolchain policy](docs/DEPENDENCY-POLICY.md) before changing build, test, Tauri, or overridden transitive dependencies.
+
 ```bash
 npm install
 npm run test

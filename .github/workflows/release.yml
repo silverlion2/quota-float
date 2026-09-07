@@ -34,13 +34,13 @@ jobs:
       tag: ${{ steps.release_context.outputs.tag }}
       source_sha: ${{ steps.release_context.outputs.source_sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version-file: .node-version
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
       - name: Install Linux desktop dependencies
@@ -100,7 +100,7 @@ jobs:
     outputs:
       release_sha: ${{ steps.release_ref.outputs.release_sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0
@@ -151,13 +151,13 @@ jobs:
             args: "--target universal-apple-darwin --bundles app,dmg --config src-tauri/tauri.release.conf.json"
     runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event_name == 'push' && github.sha || needs.create-release-ref.outputs.release_sha }}
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version-file: .node-version
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
       - name: Install macOS universal targets
@@ -341,7 +341,7 @@ jobs:
       candidate_asset_name: ${{ steps.upgrade.outputs.candidate_asset_name }}
       candidate_sha256: ${{ steps.upgrade.outputs.candidate_sha256 }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.verify.outputs.tag }}
       - name: Verify previous-to-candidate per-user upgrade while the release is draft

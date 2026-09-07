@@ -3,7 +3,6 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { EMPTY_RUNTIME_STATE } from "../lib/activity";
 import { DEFAULT_WIDGET_PREFERENCES } from "../lib/preferences";
 import type { ProviderSnapshot, SnapshotCacheRead } from "../types";
 
@@ -11,13 +10,15 @@ const bridge = vi.hoisted(() => ({
   closeFocusPanel: vi.fn(),
   fetchSnapshots: vi.fn(),
   getPreferences: vi.fn(),
-  getRuntimeState: vi.fn(),
   listenFocusPanelUpdates: vi.fn(async () => () => undefined),
   readCachedSnapshots: vi.fn(),
+  readFocusPanelHistory: vi.fn(),
   startFocusPanelDragging: vi.fn(),
 }));
 
 vi.mock("../lib/bridge", () => bridge);
+// This suite verifies cache/history behavior; avoid loading the full icon catalog.
+vi.mock("@phosphor-icons/react", () => ({ DotsSix: () => null, X: () => null }));
 vi.mock("./QuotaCard", () => ({
   CockpitDashboard: ({ snapshot }: { snapshot: ProviderSnapshot }) => <div>snapshot:{snapshot.status}:{snapshot.message}</div>,
 }));
@@ -48,7 +49,7 @@ beforeAll(async () => {
 beforeEach(() => {
   vi.clearAllMocks();
   bridge.getPreferences.mockResolvedValue({ ...DEFAULT_WIDGET_PREFERENCES, pausedProviders: ["codex"] });
-  bridge.getRuntimeState.mockResolvedValue(EMPTY_RUNTIME_STATE);
+  bridge.readFocusPanelHistory.mockResolvedValue({ history: [], dailyUsage: [], dailyPaceBaselines: {} });
 });
 
 afterEach(cleanup);
@@ -60,6 +61,7 @@ describe("detached focus panel cache isolation", () => {
 
     expect(await screen.findByText(/snapshot:stale:Cached quota data/)).toBeInTheDocument();
     expect(bridge.readCachedSnapshots).toHaveBeenCalledWith(["codex"]);
+    expect(bridge.readFocusPanelHistory).toHaveBeenCalledWith("codex", 90);
     expect(bridge.fetchSnapshots).not.toHaveBeenCalled();
   });
 

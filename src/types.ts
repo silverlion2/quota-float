@@ -223,6 +223,12 @@ export interface RuntimeState {
   dailyPaceBaselines: Record<string, DailyPaceBaseline>;
 }
 
+export interface FocusPanelHistory {
+  history: QuotaHistoryPoint[];
+  dailyUsage: DailyUsageSummary[];
+  dailyPaceBaselines: Record<string, DailyPaceBaseline>;
+}
+
 export interface AppDiagnostics {
   appVersion: string;
   platform: string;

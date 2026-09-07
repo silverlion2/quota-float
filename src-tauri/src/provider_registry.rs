@@ -64,7 +64,7 @@ impl ProviderDescriptor {
             match self.kind {
                 ProviderKind::Codex => vec![codex::fetch_snapshot(client).await],
                 ProviderKind::Claude => claude::fetch_snapshot(client).await.into_iter().collect(),
-                ProviderKind::Qoder => qoder::fetch_snapshot().into_iter().collect(),
+                ProviderKind::Qoder => qoder::fetch_snapshot().await.into_iter().collect(),
                 ProviderKind::Trae => trae::fetch_snapshot(client).await.into_iter().collect(),
                 ProviderKind::WorkBuddy => workbuddy::fetch_snapshot(client)
                     .await
@@ -93,9 +93,11 @@ impl ProviderDescriptor {
     }
 
     fn supports_same_cycle_retry(self) -> bool {
+        // A timed-out spawn_blocking Qoder read may still finish in the background, so avoid
+        // queueing another synchronous cache read during the same refresh cycle.
         !matches!(
             self.kind,
-            ProviderKind::Volcengine | ProviderKind::Antigravity
+            ProviderKind::Qoder | ProviderKind::Volcengine | ProviderKind::Antigravity
         )
     }
 
@@ -406,12 +408,16 @@ mod tests {
     }
 
     #[test]
-    fn process_spawning_providers_do_not_retry_in_the_same_cycle() {
+    fn blocking_and_process_providers_do_not_retry_in_the_same_cycle() {
         assert!(PROVIDERS
             .iter()
             .find(|provider| provider.kind == ProviderKind::Codex)
             .is_some_and(|provider| provider.supports_same_cycle_retry()));
-        for kind in [ProviderKind::Volcengine, ProviderKind::Antigravity] {
+        for kind in [
+            ProviderKind::Qoder,
+            ProviderKind::Volcengine,
+            ProviderKind::Antigravity,
+        ] {
             assert!(PROVIDERS
                 .iter()
                 .find(|provider| provider.kind == kind)

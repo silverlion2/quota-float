@@ -21,7 +21,7 @@ Validation: 227 frontend tests, 82 Rust tests, production build, fmt, check, str
 | Native runtime-state envelope bounds | Complete for current scope | Types, legacy versions, existing collection limits, compatible notification maps |
 | Compatibility workflow paths | Complete | Correct src/lib paths |
 
-## Batch 2 — active in existing task worktrees
+## Batch 2 — integrated
 
 All workers start from `7a3db22`; retain old work via stash before switching. Do not allocate new C-drive dependency caches. Workers run targeted checks and provide patches; coordinator integrates, runs full gates serially on D:, then commits.
 
@@ -38,7 +38,13 @@ All workers start from `7a3db22`; retain old work via stash before switching. Do
 
 Integrated `usage-docs.patch` (SHA-256 `0B73D2879D021FE96A49723A897E5F4CFCCBFC1F65DC6CE707C62F76C0B38870`) and coordinator provider recovery guidance. Retention and actual coverage are explicit; selected-range projections and current-month accumulated API-equivalent cost are separate; platform/source and published-version documentation match repository evidence. Health guidance uses trusted provider/status/platform values only.
 
-Validation: full frontend run exercised 232 tests; the sole stale retention-label assertion was updated and the affected 13 tests then passed. Production build, bundle budgets, 82 Rust tests, fmt, check, strict clippy, version and diff checks passed. The usage/docs task has no remaining assigned work and can be archived after this commit. Other batch 2 patches remain under review.
+Validation for commit `3339534`: full frontend run exercised 232 tests; the sole stale retention-label assertion was updated and the affected 13 tests then passed. Production build, bundle budgets, 82 Rust tests, fmt, check, strict clippy, version and diff checks passed. The usage/docs task was archived after that commit.
+
+### Batch 2 remaining integration
+
+Integrated updates/UI, storage/performance, and toolchain/E2E patches, including coordinator-requested fixes for channel changes during download, the oldest heatmap calendar day, detached-window E2E permissions and render readiness. Storage now writes compact JSON without dropping legal history; a 120,000-record test round-trips below 20 MiB. Bounded legacy runtime reads preserve existing pretty JSON. Qoder blocking IO is isolated and bounded. Detached windows request bounded provider-specific history. Error boundaries and lazy auxiliary entries are implemented. Dependency major migrations were assessed and explicitly deferred in `DEPENDENCY-POLICY.md`; no package-version upgrade is claimed.
+
+Integrated frontend validation: 35 files / 246 tests passed; production build and bundle budgets passed (entry 212,948 B; all JS 559,837 B; gzip JS 174,948 B). Entry plus shared preloads is larger than the entry alone, so this is not a measured startup-speed claim. Rust: 84 tests passed; fmt and check passed. E2E spec TypeScript, workflow YAML, capability JSON and version checks passed. Native E2E execution remains pending and must not be reported as passing based on configuration alone.
 
 | Review item | State | Completion criterion |
 |---|---|---|
@@ -62,7 +68,7 @@ Validation: full frontend run exercised 232 tests; the sole stale retention-labe
 | Dependency update groups/override lifecycle | Batch 2 | Bounded groups and documented removal conditions |
 | Core module responsibility separation | Batch 2 / follow-up | Incremental storage/UI/scheduling extraction with behavior tests |
 | UI error isolation | Batch 2 | Localized recovery without sensitive stack/data exposure |
-| Actionable provider errors | Follow-up | Safe error codes / localized next steps for unavailable/signed-out/unsupported states |
+| Actionable provider errors | Complete | Safe localized guidance in commit 3339534 |
 | Budget selection semantics | Batch 2 | Selected-window projection and on-open alert limitations explicit |
 | Same-name project identity | Design then implementation | Local opaque identity, migration and export privacy; no stored raw paths |
 | Local weekly/monthly aggregate reports | Design then implementation | Prompt-free bounded local summaries and coverage labeling |
@@ -74,4 +80,4 @@ Do not mark the whole program complete while open validation or implementation i
 
 ## 归档规则（用户追加）
 
-及时归档已完成、已整合且不再承担后续工作的任务，使用 set_thread_archived。当前四个任务复用于第二批，仍需保留。总控在全量工作闭环前保留。任务归档不代表删除补丁、代码或工作树；任何磁盘清理另按明确范围安全处理。
+及时归档已完成、已整合且不再承担后续工作的任务，使用 set_thread_archived。用量/文档任务 01a07c85-e433-7201-9b44-e9ab5c67d5c5 已在 3339534 提交后归档。其他任务按后续实际分工保留或归档；总控在全量工作闭环前保留。任务归档不代表删除补丁、代码或工作树；任何磁盘清理另按明确范围安全处理。

@@ -6,14 +6,15 @@ mod models;
 mod provider_registry;
 mod qoder;
 mod reset_forecast;
+mod storage;
 mod trae;
 mod volcengine;
 mod workbuddy;
 
 use std::{
     fs,
-    io::{Read, Write},
-    path::{Path, PathBuf},
+    io::Write,
+    path::PathBuf,
     sync::Mutex,
     time::{Duration, Instant},
 };
@@ -22,6 +23,7 @@ use std::{
 use models::UsageWindow;
 use models::{ProviderSnapshot, WidgetPreferences};
 use serde::{Deserialize, Serialize};
+use storage::{load_preferences, persist_preferences};
 use tauri::{
     menu::{CheckMenuItem, Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -48,11 +50,6 @@ const EDGE_SAFE_INSET_LOGICAL: f64 = 4.0;
 const MAX_EXPANDED_LOGICAL_HEIGHT: f64 = 1_200.0 - EDGE_SAFE_INSET_LOGICAL * 2.0;
 const SNAP_THRESHOLD_LOGICAL: f64 = 24.0;
 const POSITION_EPSILON: u32 = 2;
-const MAX_APP_DATA_BYTES: u64 = 20 * 1024 * 1024;
-const MAX_RUNTIME_HISTORY_ITEMS: usize = 120_000;
-const MAX_RUNTIME_DAILY_USAGE_ITEMS: usize = 100_000;
-const MAX_RUNTIME_EVENT_ITEMS: usize = 200;
-const MAX_RUNTIME_LAYOUT_ITEMS: usize = 12;
 
 #[derive(Clone, Copy)]
 enum HorizontalDock {
@@ -398,205 +395,27 @@ fn read_snapshot_cache(
     }
 }
 
-fn load_preferences(path: &Path) -> WidgetPreferences {
-    let parse = |candidate: &Path| {
-        fs::read_to_string(candidate)
-            .ok()
-            .and_then(|raw| serde_json::from_str::<WidgetPreferences>(&raw).ok())
-    };
-    if let Some(value) = parse(path) {
-        return value.normalized();
-    }
-    let backup = path.with_extension("json.bak");
-    if let Some(value) = parse(&backup) {
-        eprintln!("preferences recovered from backup");
-        return value.normalized();
-    }
-    WidgetPreferences::default()
-}
-
-fn persist_preferences(path: &Path, value: &WidgetPreferences) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|_| "failed to create settings directory".to_string())?;
-    }
-    let serialized =
-        serde_json::to_vec_pretty(value).map_err(|_| "failed to serialize settings".to_string())?;
-    let temporary = path.with_extension("json.tmp");
-    let backup = path.with_extension("json.bak");
-    let mut file = fs::File::create(&temporary)
-        .map_err(|_| "failed to create temporary settings file".to_string())?;
-    file.write_all(&serialized)
-        .and_then(|_| file.sync_all())
-        .map_err(|_| "failed to write settings".to_string())?;
-    if path.exists() {
-        let _ = fs::remove_file(&backup);
-        fs::rename(path, &backup).map_err(|_| "failed to back up settings".to_string())?;
-    }
-    if let Err(error) = fs::rename(&temporary, path) {
-        let _ = fs::rename(&backup, path);
-        return Err(format!("failed to commit settings: {error}"));
-    }
-    Ok(())
-}
-
-fn persist_serialized_json(path: &Path, serialized: &[u8]) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|_| "failed to create data directory".to_string())?;
-    }
-    let temporary = path.with_extension("json.tmp");
-    let backup = path.with_extension("json.bak");
-    let mut file = fs::File::create(&temporary)
-        .map_err(|_| "failed to create temporary data file".to_string())?;
-    file.write_all(serialized)
-        .and_then(|_| file.sync_all())
-        .map_err(|_| "failed to write application data".to_string())?;
-    if path.exists() {
-        let _ = fs::remove_file(&backup);
-        fs::rename(path, &backup).map_err(|_| "failed to back up application data".to_string())?;
-    }
-    if let Err(error) = fs::rename(&temporary, path) {
-        let _ = fs::rename(&backup, path);
-        return Err(format!("failed to commit application data: {error}"));
-    }
-    Ok(())
-}
-
-fn persist_json_value(path: &Path, value: &serde_json::Value) -> Result<(), String> {
-    let serialized = serde_json::to_vec_pretty(value)
-        .map_err(|_| "failed to serialize application data".to_string())?;
-    persist_serialized_json(path, &serialized)
-}
-
-fn serialize_backup(value: &serde_json::Value) -> Result<Vec<u8>, String> {
-    let serialized = serde_json::to_vec_pretty(value)
-        .map_err(|_| "failed to serialize backup data".to_string())?;
-    if serialized.len() as u64 > MAX_APP_DATA_BYTES {
-        return Err("backup exceeds the 20 MiB safety limit".to_string());
-    }
-    Ok(serialized)
-}
-
-fn runtime_state_default() -> serde_json::Value {
-    serde_json::json!({
-        "schemaVersion": 2,
-        "history": [],
-        "dailyUsage": [],
-        "usageMemory": {
-            "retentionDays": 0,
-            "firstCapturedAt": null,
-            "lastCapturedAt": null,
-            "totalSamples": 0
-        },
-        "events": [],
-        "savedLayouts": [],
-        "lastNotifications": {},
-        "dailyPaceBaselines": {}
-    })
-}
-
-fn validate_runtime_state(value: &serde_json::Value) -> Result<(), String> {
-    let Some(state) = value.as_object() else {
-        return Err("runtime state must be a JSON object".to_string());
-    };
-    if let Some(version) = state.get("schemaVersion") {
-        let Some(version) = version.as_u64() else {
-            return Err("runtime state schema version is invalid".to_string());
-        };
-        if !(1..=2).contains(&version) {
-            return Err("runtime state schema version is unsupported".to_string());
-        }
-    }
-    for (field, limit) in [
-        ("history", MAX_RUNTIME_HISTORY_ITEMS),
-        ("dailyUsage", MAX_RUNTIME_DAILY_USAGE_ITEMS),
-        ("events", MAX_RUNTIME_EVENT_ITEMS),
-        ("savedLayouts", MAX_RUNTIME_LAYOUT_ITEMS),
-    ] {
-        if let Some(section) = state.get(field) {
-            let Some(items) = section.as_array() else {
-                return Err(format!("runtime state {field} section is invalid"));
-            };
-            if items.len() > limit {
-                return Err(format!(
-                    "runtime state {field} section exceeds its safety limit"
-                ));
-            }
-        }
-    }
-    if state
-        .get("usageMemory")
-        .is_some_and(|section| !section.is_object())
-    {
-        return Err("runtime state usageMemory section is invalid".to_string());
-    }
-    for field in ["lastNotifications", "dailyPaceBaselines"] {
-        if let Some(section) = state.get(field) {
-            if !section.is_object() {
-                return Err(format!("runtime state {field} section is invalid"));
-            }
-        }
-    }
-    Ok(())
-}
-
-fn persist_runtime_state(path: &Path, value: &serde_json::Value) -> Result<(), String> {
-    validate_runtime_state(value)?;
-    let serialized = serde_json::to_vec_pretty(value)
-        .map_err(|_| "failed to serialize application data".to_string())?;
-    if serialized.len() as u64 > MAX_APP_DATA_BYTES {
-        return Err("runtime state exceeds the 20 MiB safety limit".to_string());
-    }
-    persist_serialized_json(path, &serialized)
-}
-
-pub(crate) fn read_json_candidate_bounded(
-    path: &Path,
-    max_bytes: u64,
-) -> Option<serde_json::Value> {
-    let file = fs::File::open(path).ok()?;
-    let metadata = file.metadata().ok()?;
-    if !metadata.is_file() || metadata.len() > max_bytes {
-        return None;
-    }
-    let mut raw = Vec::with_capacity(metadata.len().min(max_bytes) as usize);
-    file.take(max_bytes + 1).read_to_end(&mut raw).ok()?;
-    if raw.len() as u64 > max_bytes {
-        return None;
-    }
-    serde_json::from_slice(&raw).ok()
-}
-
-fn persist_app_data(
-    preferences_path: &Path,
-    runtime_state_path: &Path,
-    previous_preferences: &WidgetPreferences,
-    next_preferences: &WidgetPreferences,
-    next_runtime_state: &serde_json::Value,
-) -> Result<(), String> {
-    persist_preferences(preferences_path, next_preferences)?;
-    if let Err(error) = persist_runtime_state(runtime_state_path, next_runtime_state) {
-        return match persist_preferences(preferences_path, previous_preferences) {
-            Ok(()) => Err(error),
-            Err(rollback_error) => Err(format!(
-                "{error}; failed to restore previous settings: {rollback_error}"
-            )),
-        };
-    }
-    Ok(())
-}
-
-fn read_json_with_backup(path: &Path) -> serde_json::Value {
-    [path.to_path_buf(), path.with_extension("json.bak")]
-        .into_iter()
-        .filter_map(|candidate| read_json_candidate_bounded(&candidate, MAX_APP_DATA_BYTES))
-        .find(|value| validate_runtime_state(value).is_ok())
-        .unwrap_or_else(runtime_state_default)
+#[tauri::command]
+fn get_runtime_state(state: State<'_, AppState>) -> serde_json::Value {
+    storage::read_runtime_state(&state.runtime_state_path)
 }
 
 #[tauri::command]
-fn get_runtime_state(state: State<'_, AppState>) -> serde_json::Value {
-    read_json_with_backup(&state.runtime_state_path)
+async fn get_focus_panel_history(
+    provider: String,
+    range_days: u32,
+    state: State<'_, AppState>,
+) -> Result<storage::FocusPanelHistory, String> {
+    if !valid_provider_id(&provider) || !(1..=storage::MAX_FOCUS_HISTORY_DAYS).contains(&range_days)
+    {
+        return Err("invalid focus panel history request".to_string());
+    }
+    let path = state.runtime_state_path.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        storage::read_focus_panel_history(&path, &provider, range_days)
+    })
+    .await
+    .map_err(|_| "focus panel history is temporarily unavailable".to_string())
 }
 
 #[tauri::command]
@@ -604,7 +423,7 @@ fn set_runtime_state(
     runtime_state: serde_json::Value,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    persist_runtime_state(&state.runtime_state_path, &runtime_state)
+    storage::persist_runtime_state(&state.runtime_state_path, &runtime_state)
 }
 
 #[tauri::command]
@@ -618,7 +437,7 @@ fn apply_app_data(
         .preferences
         .lock()
         .map_err(|_| "settings unavailable".to_string())?;
-    persist_app_data(
+    storage::persist_app_data(
         &state.preferences_path,
         &state.runtime_state_path,
         &current_preferences,
@@ -634,7 +453,7 @@ async fn export_app_data(
     bundle: serde_json::Value,
     app: AppHandle,
 ) -> Result<Option<String>, String> {
-    let serialized = serialize_backup(&bundle)?;
+    let serialized = storage::serialize_backup(&bundle)?;
     let filename = format!(
         "quota-float-backup-{}.json",
         chrono::Local::now().format("%Y-%m-%d")
@@ -654,7 +473,7 @@ async fn export_app_data(
     if target.extension().and_then(|value| value.to_str()) != Some("json") {
         return Err("backup file must use the .json extension".into());
     }
-    persist_serialized_json(&target, &serialized)?;
+    storage::persist_serialized_json(&target, &serialized)?;
     Ok(Some(target.to_string_lossy().into_owned()))
 }
 
@@ -720,16 +539,7 @@ async fn import_app_data(app: AppHandle) -> Result<Option<serde_json::Value>, St
     if target.extension().and_then(|value| value.to_str()) != Some("json") {
         return Err("backup file must use the .json extension".into());
     }
-    let metadata =
-        fs::metadata(&target).map_err(|_| "failed to inspect backup file".to_string())?;
-    if !metadata.is_file() || metadata.len() > MAX_APP_DATA_BYTES {
-        return Err("backup exceeds the 20 MiB safety limit".into());
-    }
-    read_json_candidate_bounded(&target, MAX_APP_DATA_BYTES)
-        .map(Some)
-        .ok_or_else(|| {
-            "backup file is not valid JSON or exceeds the 20 MiB safety limit".to_string()
-        })
+    storage::read_backup(&target).map(Some)
 }
 
 #[tauri::command]
@@ -737,50 +547,13 @@ fn create_automatic_backup(
     bundle: serde_json::Value,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    let config_dir = state
-        .preferences_path
-        .parent()
-        .ok_or_else(|| "settings directory unavailable".to_string())?;
-    let backup_dir = config_dir.join("backups");
-    fs::create_dir_all(&backup_dir).map_err(|_| "failed to create backup directory".to_string())?;
-    let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
-    let target = backup_dir.join(format!("quota-float-{stamp}.json"));
-    persist_json_value(&target, &bundle)?;
-
-    let mut backups = fs::read_dir(&backup_dir)
-        .map_err(|_| "failed to list backups".to_string())?
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| path.extension().and_then(|value| value.to_str()) == Some("json"))
-        .collect::<Vec<_>>();
-    backups.sort();
-    let remove_count = backups.len().saturating_sub(10);
-    for old in backups.into_iter().take(remove_count) {
-        let _ = fs::remove_file(old);
-    }
+    let target = storage::create_automatic_backup(&state.preferences_path, &bundle)?;
     Ok(target.to_string_lossy().into_owned())
 }
 
 #[tauri::command]
 fn restore_latest_backup(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    let config_dir = state
-        .preferences_path
-        .parent()
-        .ok_or_else(|| "settings directory unavailable".to_string())?;
-    let backup_dir = config_dir.join("backups");
-    let mut backups = fs::read_dir(backup_dir)
-        .map_err(|_| "no automatic backup is available".to_string())?
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| path.extension().and_then(|value| value.to_str()) == Some("json"))
-        .collect::<Vec<_>>();
-    backups.sort();
-    let latest = backups
-        .pop()
-        .ok_or_else(|| "no automatic backup is available".to_string())?;
-    let raw =
-        fs::read_to_string(latest).map_err(|_| "failed to read automatic backup".to_string())?;
-    serde_json::from_str(&raw).map_err(|_| "automatic backup is invalid".to_string())
+    storage::restore_latest_backup(&state.preferences_path)
 }
 
 #[tauri::command]
@@ -1849,149 +1622,6 @@ mod snapshot_cache_tests {
         assert_eq!(stale.freshness, "stale");
         assert_eq!(stale.snapshots[0].status, "stale");
         assert!(stale.oldest_age_seconds.unwrap() < SNAPSHOT_CACHE_TTL.as_secs());
-    }
-}
-
-#[cfg(test)]
-mod persistence_tests {
-    use super::*;
-
-    fn temporary_root(label: &str) -> PathBuf {
-        let nonce = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after the Unix epoch")
-            .as_nanos();
-        std::env::temp_dir().join(format!(
-            "quota-float-{label}-{}-{nonce}",
-            std::process::id()
-        ))
-    }
-
-    #[test]
-    fn app_data_restore_persists_both_files() {
-        let root = temporary_root("restore-success");
-        let preferences_path = root.join("preferences.json");
-        let runtime_path = root.join("runtime-state.json");
-        let previous = WidgetPreferences::default();
-        let mut next = previous.clone();
-        next.alert_threshold = 12;
-        let runtime = serde_json::json!({ "schemaVersion": 2, "events": [] });
-
-        persist_app_data(&preferences_path, &runtime_path, &previous, &next, &runtime)
-            .expect("app data should persist");
-        assert_eq!(load_preferences(&preferences_path).alert_threshold, 12);
-        assert_eq!(read_json_with_backup(&runtime_path), runtime);
-        fs::remove_dir_all(root).expect("temporary restore directory should be removable");
-    }
-
-    #[test]
-    fn app_data_restore_rolls_back_settings_when_runtime_write_fails() {
-        let root = temporary_root("restore-rollback");
-        fs::create_dir_all(&root).expect("temporary restore directory should be created");
-        let preferences_path = root.join("preferences.json");
-        let previous = WidgetPreferences::default();
-        persist_preferences(&preferences_path, &previous)
-            .expect("previous settings should persist");
-        let mut next = previous.clone();
-        next.alert_threshold = 12;
-        let blocked_parent = root.join("blocked");
-        fs::write(&blocked_parent, b"not a directory").expect("blocking file should be created");
-        let runtime_path = blocked_parent.join("runtime-state.json");
-
-        assert!(persist_app_data(
-            &preferences_path,
-            &runtime_path,
-            &previous,
-            &next,
-            &serde_json::json!({ "schemaVersion": 2 }),
-        )
-        .is_err());
-        assert_eq!(
-            load_preferences(&preferences_path).alert_threshold,
-            previous.alert_threshold
-        );
-        fs::remove_dir_all(root).expect("temporary restore directory should be removable");
-    }
-
-    #[test]
-    fn backup_serialization_stays_within_the_import_limit() {
-        let root = temporary_root("backup-round-trip");
-        let target = root.join("backup.json");
-        let bundle = serde_json::json!({
-            "schemaVersion": 1,
-            "preferences": {},
-            "runtimeState": runtime_state_default()
-        });
-
-        let serialized = serialize_backup(&bundle).expect("backup should fit");
-        persist_serialized_json(&target, &serialized).expect("backup should persist");
-
-        assert!(serialized.len() as u64 <= MAX_APP_DATA_BYTES);
-        assert_eq!(
-            read_json_candidate_bounded(&target, MAX_APP_DATA_BYTES),
-            Some(bundle)
-        );
-        fs::remove_dir_all(root).expect("temporary backup directory should be removable");
-    }
-
-    #[test]
-    fn oversized_backup_is_rejected_before_persistence() {
-        let oversized = serde_json::json!({ "payload": "x".repeat(MAX_APP_DATA_BYTES as usize) });
-        assert_eq!(
-            serialize_backup(&oversized).unwrap_err(),
-            "backup exceeds the 20 MiB safety limit"
-        );
-    }
-
-    #[test]
-    fn runtime_state_validation_is_bounded_and_legacy_compatible() {
-        assert!(validate_runtime_state(&serde_json::json!({
-            "history": [],
-            "unknownLegacyField": true
-        }))
-        .is_ok());
-        assert!(validate_runtime_state(&serde_json::json!({ "schemaVersion": 1 })).is_ok());
-        assert_eq!(
-            validate_runtime_state(&serde_json::json!({ "schemaVersion": 3 })).unwrap_err(),
-            "runtime state schema version is unsupported"
-        );
-        assert_eq!(
-            validate_runtime_state(&serde_json::json!({
-                "events": vec![serde_json::Value::Null; MAX_RUNTIME_EVENT_ITEMS + 1]
-            }))
-            .unwrap_err(),
-            "runtime state events section exceeds its safety limit"
-        );
-        let many_notification_keys = (0..300)
-            .map(|index| {
-                (
-                    format!("legacy:{index}"),
-                    serde_json::json!("2026-01-01T00:00:00Z"),
-                )
-            })
-            .collect::<serde_json::Map<_, _>>();
-        assert!(validate_runtime_state(&serde_json::json!({
-            "lastNotifications": many_notification_keys
-        }))
-        .is_ok());
-    }
-
-    #[test]
-    fn invalid_runtime_primary_falls_back_to_valid_bounded_backup() {
-        let root = temporary_root("runtime-fallback");
-        fs::create_dir_all(&root).expect("temporary directory should be created");
-        let target = root.join("runtime-state.json");
-        fs::write(&target, br#"{"schemaVersion":99}"#).expect("invalid primary should persist");
-        let backup = target.with_extension("json.bak");
-        let expected = serde_json::json!({ "schemaVersion": 2, "history": [] });
-        fs::write(
-            &backup,
-            serde_json::to_vec(&expected).expect("backup should serialize"),
-        )
-        .expect("backup should persist");
-
-        assert_eq!(read_json_with_backup(&target), expected);
-        fs::remove_dir_all(root).expect("temporary runtime directory should be removable");
     }
 }
 
@@ -3072,6 +2702,7 @@ pub fn run() {
             set_widget_locked,
             set_widget_always_on_top,
             get_runtime_state,
+            get_focus_panel_history,
             set_runtime_state,
             apply_app_data,
             export_app_data,

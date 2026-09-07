@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EMPTY_RUNTIME_STATE } from "./activity";
 import {
   applyAppData,
+  fetchCodexResetForecast,
   fetchSnapshots,
   fetchCodexTokenUsage,
   getVolcengineDiagnostics,
@@ -9,6 +10,7 @@ import {
   notifyFocusPanels,
   openFocusPanel,
   readCachedSnapshots,
+  readFocusPanelHistory,
   reconnectVolcengine,
   resizeWidgetToContent,
   setWidgetExpanded,
@@ -45,9 +47,32 @@ beforeEach(() => {
   api.calls.length = 0;
   events.listen.mockReset();
   vi.stubGlobal("window", { __TAURI_INTERNALS__: {}, setInterval, clearInterval });
+  vi.stubEnv("VITE_WDIO", "0");
 });
 
+afterEach(() => vi.unstubAllEnvs());
+
 describe("widget transitions", () => {
+  it("keeps native E2E provider reads on isolated synthetic data", async () => {
+    vi.stubEnv("VITE_WDIO", "1");
+
+    const snapshots = await fetchSnapshots(true, ["codex"]);
+    const cached = await readCachedSnapshots(["codex"]);
+    const forecast = await fetchCodexResetForecast();
+    const usage = await fetchCodexTokenUsage(true, true);
+    const diagnostics = await getVolcengineDiagnostics();
+    const reconnected = await reconnectVolcengine();
+
+    expect(snapshots).toHaveLength(1);
+    expect(snapshots[0]).toMatchObject({ provider: "codex", displayName: "CODEX", plan: "PRO" });
+    expect(cached).toMatchObject({ freshness: "fresh", snapshots: [{ provider: "codex" }] });
+    expect(forecast).toMatchObject({ confidence: "medium", sourceCount: 3 });
+    expect(usage.buckets.length).toBeGreaterThan(0);
+    expect(diagnostics).toMatchObject({ authenticated: true, profileName: "coding-plan_personal" });
+    expect(reconnected).toEqual(diagnostics);
+    expect(api.invoke).not.toHaveBeenCalled();
+  });
+
   it("passes the monitor work area to the Rust expansion command", async () => {
     await setWidgetExpanded(true);
     expect(api.invoke).toHaveBeenCalledWith("expand_widget", {
@@ -132,6 +157,21 @@ describe("widget transitions", () => {
     await readCachedSnapshots(["codex"]);
     expect(api.invoke).toHaveBeenCalledWith("get_cached_snapshots", { providerIds: ["codex"] });
     expect(api.invoke).toHaveBeenCalledTimes(1);
+  });
+
+  it("requests only one provider's bounded detached-panel history", async () => {
+    api.invoke.mockResolvedValueOnce({
+      history: [
+        { provider: "codex", capturedAt: "2026-09-07T00:00:00Z", metric: 75, metricKind: "percent", status: "ok", resetsAt: null },
+        { provider: "codex", capturedAt: "invalid", metric: "unsafe" },
+      ],
+      dailyUsage: [],
+      dailyPaceBaselines: {},
+    });
+    const result = await readFocusPanelHistory("codex", 90);
+    expect(api.invoke).toHaveBeenCalledWith("get_focus_panel_history", { provider: "codex", rangeDays: 90 });
+    expect(api.invoke).toHaveBeenCalledTimes(1);
+    expect(result.history).toHaveLength(1);
   });
 
   it("serializes rapid preference writes so the newest state cannot be overwritten", async () => {

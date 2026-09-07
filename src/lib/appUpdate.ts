@@ -23,8 +23,44 @@ export interface AppUpdateProgress {
 }
 
 let pendingUpdate: Update | null = null;
-let checkPromise: Promise<AppUpdateInfo | null> | null = null;
 let downloadPromise: Promise<void> | null = null;
+let checkGeneration = 0;
+
+interface CheckFlight {
+  channel: UpdateChannel;
+  generation: number;
+  controller: AbortController | null;
+  promise: Promise<AppUpdateInfo | null>;
+}
+
+let checkFlight: CheckFlight | null = null;
+
+export const BETA_CHECK_TIMEOUT_MS = 15_000;
+
+type UpdateCheckErrorCode = "beta-timeout" | "beta-unavailable";
+
+class UpdateCheckError extends Error {
+  constructor(readonly code: UpdateCheckErrorCode) {
+    super(code);
+    this.name = "UpdateCheckError";
+  }
+}
+
+export function appUpdateErrorMessage(error: unknown, language: "zh-CN" | "en"): string {
+  const code = error instanceof UpdateCheckError ? error.code : null;
+  if (language === "zh-CN") {
+    return code === "beta-timeout"
+      ? "Beta 更新检查超时，请稍后重试。"
+      : "更新检查暂时不可用，请稍后重试或打开 GitHub Releases。";
+  }
+  return code === "beta-timeout"
+    ? "The Beta update check timed out. Please try again."
+    : "The update check is temporarily unavailable. Try again or open GitHub Releases.";
+}
+
+export function shouldInvalidateUpdateCheckOnChannelChange(phase: string): boolean {
+  return !["downloading", "ready", "installing"].includes(phase);
+}
 
 function updatePlatform(): AppUpdatePlatform {
   return /Macintosh|Mac OS X/i.test(navigator.userAgent) ? "macos" : "windows";
@@ -55,53 +91,139 @@ export async function openReleasePage(url = RELEASE_URL): Promise<void> {
   await openUrl(url);
 }
 
-function semverParts(value: string): { base: number[]; beta: number | null } {
-  const match = /^(\d+)\.(\d+)\.(\d+)(?:-beta\.(\d+))?$/.exec(value.replace(/^v/, ""));
-  return match
-    ? { base: match.slice(1, 4).map(Number), beta: match[4] ? Number(match[4]) : null }
-    : { base: [0, 0, 0], beta: null };
+interface SemverParts {
+  base: [number, number, number];
+  beta: number | null;
 }
 
-function isNewerVersion(candidate: string, current: string): boolean {
-  const left = semverParts(candidate);
-  const right = semverParts(current);
+function semverParts(value: string): SemverParts | null {
+  const match = /^(?:v)?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-beta\.(0|[1-9]\d*))?$/.exec(value);
+  if (!match) return null;
+  const values = match.slice(1, 5).map((part) => part === undefined ? null : Number(part));
+  if (values.some((part) => part !== null && !Number.isSafeInteger(part))) return null;
+  return { base: values.slice(0, 3) as [number, number, number], beta: values[3] };
+}
+
+function compareVersions(left: SemverParts, right: SemverParts): number {
   for (let index = 0; index < 3; index += 1) {
-    if (left.base[index] !== right.base[index]) return left.base[index] > right.base[index];
+    if (left.base[index] !== right.base[index]) return left.base[index] - right.base[index];
   }
-  if (left.beta === null) return right.beta !== null;
-  if (right.beta === null) return false;
-  return left.beta > right.beta;
+  if (left.beta === null) return right.beta === null ? 0 : 1;
+  if (right.beta === null) return -1;
+  return left.beta - right.beta;
 }
 
-async function checkBetaUpdate(): Promise<AppUpdateInfo | null> {
-  const response = await fetch("https://api.github.com/repos/silverlion2/quota-float/releases?per_page=20", { headers: { Accept: "application/vnd.github+json" } });
-  if (!response.ok) throw new Error(`Beta update check failed (${response.status}).`);
-  const releases = await response.json() as Array<{ prerelease?: boolean; draft?: boolean; tag_name?: string; body?: string; published_at?: string; html_url?: string }>;
-  const release = releases.find((item) => item.prerelease && !item.draft && item.tag_name && item.html_url);
-  if (!release?.tag_name || !release.html_url) return null;
-  const { getVersion } = await import("@tauri-apps/api/app");
-  const current = await getVersion();
-  const version = release.tag_name.replace(/^v/, "");
-  if (!isNewerVersion(version, current)) return null;
-  return { version, body: release.body?.trim() || null, date: release.published_at ?? null, platform: updatePlatform(), channel: "beta", releaseUrl: release.html_url, automaticInstall: false };
+interface GithubRelease {
+  prerelease?: boolean;
+  draft?: boolean;
+  tag_name?: string;
+  body?: string;
+  published_at?: string;
+  html_url?: string;
 }
 
-export async function checkForAppUpdate(channel: UpdateChannel = "stable"): Promise<AppUpdateInfo | null> {
-  if (channel === "beta") return isTauri() ? checkBetaUpdate() : null;
-  if (pendingUpdate) return updateInfo(pendingUpdate);
-  if (!isTauri()) return null;
-  if (checkPromise) return checkPromise;
+function highestBetaRelease(releases: GithubRelease[], currentVersion: string): GithubRelease | null {
+  const current = semverParts(currentVersion);
+  if (!current) return null;
+  return releases
+    .map((release) => ({ release, version: release.tag_name ? semverParts(release.tag_name) : null }))
+    .filter((candidate): candidate is { release: GithubRelease; version: SemverParts } => (
+      candidate.release.prerelease === true
+      && candidate.release.draft !== true
+      && Boolean(candidate.release.html_url)
+      && candidate.version?.beta !== null
+      && candidate.version !== null
+    ))
+    .filter((candidate) => compareVersions(candidate.version, current) > 0)
+    .sort((left, right) => compareVersions(right.version, left.version))[0]?.release ?? null;
+}
 
-  checkPromise = (async () => {
+async function checkBetaUpdate(controller: AbortController): Promise<AppUpdateInfo | null> {
+  const { signal } = controller;
+  let timedOut = false;
+  const timeout = window.setTimeout(() => {
+    timedOut = true;
+    if (!signal.aborted) controller.abort();
+  }, BETA_CHECK_TIMEOUT_MS);
+  try {
+    const response = await fetch("https://api.github.com/repos/silverlion2/quota-float/releases?per_page=20", {
+      headers: { Accept: "application/vnd.github+json" },
+      signal,
+    });
+    if (signal.aborted) {
+      if (timedOut) throw new UpdateCheckError("beta-timeout");
+      return null;
+    }
+    if (!response.ok) throw new UpdateCheckError("beta-unavailable");
+    const payload: unknown = await response.json().catch(() => null);
+    if (signal.aborted) {
+      if (timedOut) throw new UpdateCheckError("beta-timeout");
+      return null;
+    }
+    if (!Array.isArray(payload)) throw new UpdateCheckError("beta-unavailable");
+    const { getVersion } = await import("@tauri-apps/api/app");
+    const current = await getVersion();
+    if (signal.aborted) {
+      if (timedOut) throw new UpdateCheckError("beta-timeout");
+      return null;
+    }
+    const release = highestBetaRelease(payload as GithubRelease[], current);
+    if (!release?.tag_name || !release.html_url) return null;
+    const version = release.tag_name.replace(/^v/, "");
+    return { version, body: release.body?.trim() || null, date: release.published_at ?? null, platform: updatePlatform(), channel: "beta", releaseUrl: release.html_url, automaticInstall: false };
+  } catch (error) {
+    if (signal.aborted && timedOut) throw new UpdateCheckError("beta-timeout");
+    if (signal.aborted) return null;
+    if (error instanceof UpdateCheckError) throw error;
+    throw new UpdateCheckError("beta-unavailable");
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+function invalidateCheck(): void {
+  checkGeneration += 1;
+  const flight = checkFlight;
+  checkFlight = null;
+  flight?.controller?.abort();
+}
+
+export function cancelAppUpdateCheck(): void {
+  invalidateCheck();
+}
+
+export function checkForAppUpdate(channel: UpdateChannel = "stable"): Promise<AppUpdateInfo | null> {
+  if (!isTauri()) return Promise.resolve(null);
+  if (checkFlight?.channel === channel) return checkFlight.promise;
+
+  invalidateCheck();
+  if (channel === "beta") invalidatePendingUpdate();
+  if (channel === "stable" && pendingUpdate) return Promise.resolve(updateInfo(pendingUpdate));
+  const generation = checkGeneration;
+  const controller = channel === "beta" ? new AbortController() : null;
+  const promise = (async () => {
+    if (channel === "beta") return checkBetaUpdate(controller!);
     const { check } = await import("@tauri-apps/plugin-updater");
     const update = await check({ timeout: 15_000 });
+    if (generation !== checkGeneration) {
+      if (update) await Promise.resolve(update.close()).catch(() => undefined);
+      return null;
+    }
     pendingUpdate = update;
     return update ? updateInfo(update) : null;
-  })();
-  try {
-    return await checkPromise;
-  } finally {
-    checkPromise = null;
+  })().then((result) => generation === checkGeneration ? result : null)
+    .finally(() => {
+      if (checkFlight?.generation === generation) checkFlight = null;
+    });
+  checkFlight = { channel, generation, controller, promise };
+  return promise;
+}
+
+function invalidatePendingUpdate(): void {
+  const update = pendingUpdate;
+  pendingUpdate = null;
+  if (update) {
+    void Promise.resolve(update.close()).catch(() => undefined);
   }
 }
 
@@ -148,9 +270,8 @@ export async function installAppUpdate(): Promise<void> {
 }
 
 export async function discardAppUpdate(): Promise<void> {
+  invalidateCheck();
   const update = pendingUpdate;
   pendingUpdate = null;
-  checkPromise = null;
-  downloadPromise = null;
   if (update) await Promise.resolve(update.close()).catch(() => undefined);
 }

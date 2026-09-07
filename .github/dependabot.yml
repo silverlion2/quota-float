@@ -6,16 +6,32 @@ updates:
       interval: weekly
       day: monday
     groups:
-      frontend-dependencies:
+      runtime-dependencies:
         patterns: ["*"]
+        exclude-patterns: ["@tauri-apps/*"]
+        dependency-type: production
+        update-types: ["minor", "patch"]
+      build-test-tooling:
+        patterns: ["*"]
+        exclude-patterns: ["@tauri-apps/*"]
+        dependency-type: development
+        update-types: ["minor", "patch"]
+      tauri-javascript:
+        patterns: ["@tauri-apps/*"]
+        update-types: ["minor", "patch"]
   - package-ecosystem: cargo
     directory: /src-tauri
     schedule:
       interval: weekly
       day: monday
     groups:
-      rust-dependencies:
+      tauri-rust:
+        patterns: ["tauri", "tauri-*"]
+        update-types: ["minor", "patch"]
+      rust-runtime:
         patterns: ["*"]
+        exclude-patterns: ["tauri", "tauri-*"]
+        update-types: ["minor", "patch"]
   - package-ecosystem: github-actions
     directory: /
     schedule:

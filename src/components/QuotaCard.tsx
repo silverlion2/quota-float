@@ -13,6 +13,7 @@ import { ProviderMark } from "./ProviderMark";
 import { ProviderLogoSlider } from "./ProviderLogoSlider";
 import { QuotaHistoryCurve } from "./QuotaHistoryCurve";
 import { EMPTY_UPDATE_STATE, UpdatePanel, type UpdateViewState } from "./UpdatePanel";
+import { ErrorBoundary } from "./ErrorBoundary";
 
 const UsageInsightsPanel = lazy(() => import("./UsageInsightsPanel").then((module) => ({ default: module.UsageInsightsPanel })));
 
@@ -979,8 +980,9 @@ export const QuotaCard = memo(function QuotaCard({
         aria-hidden={overlayOpen || undefined}
         inert={overlayOpen || undefined}
       >
-        {insightsOpen ? <Suspense fallback={<div className="usage-chart-empty" role="status">{language === "en" ? "Loading usage insights…" : "正在加载用量洞察…"}</div>}>
-          <UsageInsightsPanel
+        {insightsOpen ? <ErrorBoundary language={language} resetKey={insightsOpen}>
+          <Suspense fallback={<div className="usage-chart-empty" role="status">{language === "en" ? "Loading usage insights…" : "正在加载用量洞察…"}</div>}>
+            <UsageInsightsPanel
             snapshot={snapshot}
             snapshots={snapshots}
             history={history}
@@ -992,8 +994,9 @@ export const QuotaCard = memo(function QuotaCard({
             onSelectProvider={onSelectProvider}
             onPreferences={onPreferences}
             onOpenResetForecast={onOpenResetForecast}
-          />
-        </Suspense> : null}
+            />
+          </Suspense>
+        </ErrorBoundary> : null}
       </div>
       </div>
     </main>

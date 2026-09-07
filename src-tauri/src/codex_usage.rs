@@ -533,7 +533,8 @@ fn load_index_with_limit(
         return (empty_index(), "rebuilt".to_string());
     }
     for candidate in [path.to_path_buf(), path.with_extension("json.bak")] {
-        let Some(value) = crate::read_json_candidate_bounded(&candidate, max_index_bytes) else {
+        let Some(value) = crate::storage::read_json_candidate_bounded(&candidate, max_index_bytes)
+        else {
             continue;
         };
         if let Ok(index) = serde_json::from_value::<PersistedUsageIndex>(value) {
@@ -674,7 +675,7 @@ fn collect_from(
     };
     let cache_value = serde_json::to_value(&persisted)
         .map_err(|_| "Codex token metadata index could not be serialized.".to_string())?;
-    if crate::persist_json_value(cache_path, &cache_value).is_err() {
+    if crate::storage::persist_json_value(cache_path, &cache_value).is_err() {
         cache_status = "volatile".to_string();
     }
 

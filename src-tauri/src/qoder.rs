@@ -5,12 +5,12 @@ mod windows {
     use super::*;
     use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
     use base64::{engine::general_purpose::STANDARD, Engine};
-    use rusqlite::Connection;
+    use rusqlite::{params, Connection, OptionalExtension};
     use serde::Deserialize;
     use serde_json::Value;
     use std::{
-        fs,
         path::{Path, PathBuf},
+        time::Duration,
     };
     use windows_sys::Win32::{
         Foundation::LocalFree,
@@ -21,6 +21,10 @@ mod windows {
     struct SecretBlob {
         data: Vec<u8>,
     }
+
+    const MAX_LOCAL_STATE_BYTES: u64 = 1024 * 1024;
+    const MAX_SECRET_JSON_BYTES: usize = 1024 * 1024;
+    const SQLITE_BUSY_TIMEOUT: Duration = Duration::from_millis(250);
 
     fn roots() -> Vec<PathBuf> {
         let Some(roaming) = dirs::data_dir() else {
@@ -62,10 +66,13 @@ mod windows {
     }
 
     fn encryption_key(root: &Path) -> Result<Vec<u8>, String> {
-        let state: Value = serde_json::from_slice(
-            &fs::read(root.join("Local State")).map_err(|_| "Qoder Local State is unavailable.")?,
+        let raw = crate::storage::read_bytes_candidate_bounded(
+            &root.join("Local State"),
+            MAX_LOCAL_STATE_BYTES,
         )
-        .map_err(|_| "Qoder Local State has an unsupported format.")?;
+        .ok_or("Qoder Local State is unavailable or exceeds its safety limit.")?;
+        let state: Value = serde_json::from_slice(&raw)
+            .map_err(|_| "Qoder Local State has an unsupported format.")?;
         let encoded = state
             .pointer("/os_crypt/encrypted_key")
             .and_then(Value::as_str)
@@ -77,18 +84,32 @@ mod windows {
         decrypt_dpapi(payload)
     }
 
-    fn read_secret(root: &Path, key: &[u8], name: &str) -> Result<Value, String> {
+    fn open_account_cache(root: &Path) -> Result<Connection, String> {
         let db = root.join("User").join("globalStorage").join("state.vscdb");
-        let connection =
-            Connection::open_with_flags(db, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
-                .map_err(|_| "Qoder account cache is unavailable.")?;
-        let raw: String = connection
+        let flags =
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX;
+        let connection = Connection::open_with_flags(db, flags)
+            .map_err(|_| "Qoder account cache is unavailable.")?;
+        connection
+            .busy_timeout(SQLITE_BUSY_TIMEOUT)
+            .map_err(|_| "Qoder account cache could not be bounded.")?;
+        Ok(connection)
+    }
+
+    fn read_secret(connection: &Connection, key: &[u8], name: &str) -> Result<Value, String> {
+        let raw = connection
             .query_row(
-                "SELECT value FROM ItemTable WHERE key = ?1",
-                [name],
-                |row| row.get(0),
+                "SELECT CASE WHEN length(CAST(value AS BLOB)) <= ?2 THEN value END FROM ItemTable WHERE key = ?1",
+                params![name, MAX_SECRET_JSON_BYTES as i64],
+                |row| row.get::<_, Option<String>>(0),
             )
-            .map_err(|_| "Sign in to Qoder to view quota.")?;
+            .optional()
+            .map_err(|_| "Qoder account cache could not be read.")?
+            .ok_or("Sign in to Qoder to view quota.")?
+            .ok_or("Qoder account cache entry exceeds its safety limit.")?;
+        if raw.len() > MAX_SECRET_JSON_BYTES {
+            return Err("Qoder account cache entry exceeds its safety limit.".into());
+        }
         let secret: SecretBlob = serde_json::from_str(&raw)
             .map_err(|_| "Qoder account cache has an unsupported format.")?;
         if secret.data.len() < 31 || &secret.data[..3] != b"v10" {
@@ -110,8 +131,9 @@ mod windows {
         Some(
             match (|| {
                 let key = encryption_key(&root)?;
-                let user = read_secret(&root, &key, "secret://aicoding.auth.userInfo")?;
-                let plan = read_secret(&root, &key, "secret://aicoding.auth.userPlan").ok();
+                let connection = open_account_cache(&root)?;
+                let user = read_secret(&connection, &key, "secret://aicoding.auth.userInfo")?;
+                let plan = read_secret(&connection, &key, "secret://aicoding.auth.userPlan").ok();
                 let quota = user
                     .get("quota")
                     .and_then(Value::as_f64)
@@ -147,12 +169,48 @@ mod windows {
             },
         )
     }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn sqlite_secret_read_rejects_oversized_values_before_decryption() {
+            let connection = Connection::open_in_memory().unwrap();
+            connection
+                .execute(
+                    "CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT)",
+                    [],
+                )
+                .unwrap();
+            connection
+                .execute(
+                    "INSERT INTO ItemTable (key, value) VALUES (?1, ?2)",
+                    params!["secret", "x".repeat(MAX_SECRET_JSON_BYTES + 1)],
+                )
+                .unwrap();
+
+            assert_eq!(
+                read_secret(&connection, &[0; 32], "secret").unwrap_err(),
+                "Qoder account cache entry exceeds its safety limit."
+            );
+        }
+    }
 }
 
-pub fn fetch_snapshot() -> Option<ProviderSnapshot> {
+pub async fn fetch_snapshot() -> Option<ProviderSnapshot> {
     #[cfg(windows)]
     {
-        windows::snapshot()
+        tokio::task::spawn_blocking(windows::snapshot)
+            .await
+            .unwrap_or_else(|_| {
+                Some(ProviderSnapshot::provider_failure(
+                    "qoder",
+                    "QODER",
+                    "unavailable",
+                    "Qoder local cache reader failed.",
+                ))
+            })
     }
     #[cfg(not(windows))]
     {

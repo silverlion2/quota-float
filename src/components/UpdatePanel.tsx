@@ -31,6 +31,9 @@ export function UpdatePanel({ state, language, onClose, onDownload, onInstall, o
   const dialogRef = useModalDialog<HTMLElement>(onClose, state.phase !== "installing");
   const t = copy[language];
   const version = state.info?.version;
+  const channelSubtitle = state.info?.channel === "beta"
+    ? (language === "en" ? "Beta channel · manual download from GitHub Releases" : "Beta 通道 · 从 GitHub Releases 手动下载")
+    : t.updateCenterSubtitle;
   const busy = state.phase === "checking" || state.phase === "downloading" || state.phase === "installing";
   const title = state.phase === "idle" || state.phase === "checking"
     ? t.updateChecking
@@ -63,7 +66,7 @@ export function UpdatePanel({ state, language, onClose, onDownload, onInstall, o
         <div>
           <p className="update-kicker">UPDATE CENTER · {(state.info?.channel ?? "stable").toUpperCase()}</p>
           <h2 id="app-update-title">{t.updateCenterTitle}</h2>
-          <p>{t.updateCenterSubtitle}</p>
+          <p>{channelSubtitle}</p>
         </div>
         <button type="button" onClick={onClose} disabled={state.phase === "installing"} aria-label={t.updateClose} title={t.updateClose} data-dialog-initial-focus><X /></button>
       </header>

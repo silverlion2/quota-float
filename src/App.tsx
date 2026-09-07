@@ -1,9 +1,10 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { QuotaBar, QuotaBottleneckBar, QuotaCard, QuotaOrb } from "./components/QuotaCard";
 import { EMPTY_UPDATE_STATE } from "./components/UpdatePanel";
 import type { UpdateViewState } from "./components/UpdatePanel";
 import { applyAppData, createAutomaticBackup, exportAppData, fetchCodexResetForecast, fetchSnapshots, getAppDiagnostics, getAutostartEnabled, getPreferences, getRuntimeState, getVolcengineDiagnostics, importAppData, listenDesktopEvents, notifyFocusPanels, openExternalUrl, openFocusPanel, reconnectVolcengine, resizeWidgetToContent, restoreLatestBackup, sendDesktopNotification, setAlwaysOnTop, setAutostartEnabled, setWidgetExpanded, startDragging, updatePreferences, updateRuntimeState } from "./lib/bridge";
-import { checkForAppUpdate, discardAppUpdate, downloadAppUpdate, installAppUpdate, openReleasePage } from "./lib/appUpdate";
+import { appUpdateErrorMessage, cancelAppUpdateCheck, checkForAppUpdate, discardAppUpdate, downloadAppUpdate, installAppUpdate, openReleasePage, shouldInvalidateUpdateCheckOnChannelChange } from "./lib/appUpdate";
 import type { AppUpdateInfo } from "./lib/appUpdate";
 import { copy, nextLanguage, normalizeLanguage } from "./lib/i18n";
 import { nextProviderIndex, normalizeProviderOrder } from "./lib/providers";
@@ -63,6 +64,7 @@ export default function App() {
   const collapseContentTimer = useRef<number | null>(null);
   const hoverSequence = useRef(0);
   const updateSequence = useRef(0);
+  const updateChannelRef = useRef(preferences.updateChannel);
   const refreshFlight = useRef<SingleFlightState<void>>({ current: null });
   const runtimeStateRef = useRef<RuntimeState>(EMPTY_RUNTIME_STATE);
   const preferencesRef = useRef<WidgetPreferences>(DEFAULT_PREFS);
@@ -150,11 +152,22 @@ export default function App() {
       await startUpdateDownload(info, manual);
     }).catch((error) => {
       if (updateSequence.current !== sequence) return;
-      setUpdateState({ phase: "error", info: null, progress: null, error: errorMessage(error, t.updateFailed) });
+      setUpdateState({ phase: "error", info: null, progress: null, error: appUpdateErrorMessage(error, language) });
       setOperationError(t.updateFailed);
       if (manual) setUpdateOpen(true);
     });
-  }, [preferences.automaticUpdates, preferences.skippedUpdateVersion, preferences.updateChannel, startUpdateDownload, t.updateFailed, updateState.phase]);
+  }, [language, preferences.automaticUpdates, preferences.skippedUpdateVersion, preferences.updateChannel, startUpdateDownload, t.updateFailed, updateState.phase]);
+
+  useEffect(() => {
+    if (updateChannelRef.current === preferences.updateChannel) return;
+    updateChannelRef.current = preferences.updateChannel;
+    if (!shouldInvalidateUpdateCheckOnChannelChange(updateState.phase)) return;
+    ++updateSequence.current;
+    cancelAppUpdateCheck();
+    setUpdateState(EMPTY_UPDATE_STATE);
+    setUpdateOpen(false);
+    void discardAppUpdate();
+  }, [preferences.updateChannel, updateState.phase]);
 
   const refresh = useCallback((force = false) => runSingleFlight(refreshFlight.current, async () => {
     const preferenceSnapshot = preferencesRef.current;
@@ -401,6 +414,15 @@ export default function App() {
     }
     setUpdateOpen(true);
   }, [checkUpdate, updateState.phase]);
+
+  const handleUpdateClose = useCallback(() => {
+    if (updateState.phase === "checking") {
+      ++updateSequence.current;
+      cancelAppUpdateCheck();
+      setUpdateState(EMPTY_UPDATE_STATE);
+    }
+    setUpdateOpen(false);
+  }, [updateState.phase]);
 
   const handleUpdateDownload = useCallback(() => {
     if (updateState.info) void startUpdateDownload(updateState.info, true);
@@ -650,7 +672,7 @@ export default function App() {
       updateState={updateState}
       updateOpen={updateOpen}
       onUpdateOpen={handleUpdateOpen}
-      onUpdateClose={() => setUpdateOpen(false)}
+      onUpdateClose={handleUpdateClose}
       onUpdateDownload={handleUpdateDownload}
       onUpdateInstall={handleUpdateInstall}
       onUpdateRetry={() => checkUpdate(true)}
@@ -665,8 +687,9 @@ export default function App() {
         void getAppDiagnostics().then(setAppDiagnostics).catch(() => undefined);
       }}
       controlCenter={(
-        <Suspense fallback={<div className="loading-card" role="status" aria-label={language === "en" ? "Loading control center" : "正在加载控制中心"}><span /><span /><span /></div>}>
-          <ControlCenter
+        <ErrorBoundary language={language} resetKey={controlOpen}>
+          <Suspense fallback={<div className="loading-card" role="status" aria-label={language === "en" ? "Loading control center" : "正在加载控制中心"}><span /><span /><span /></div>}>
+            <ControlCenter
             preferences={preferences}
             runtimeState={runtimeState}
             snapshots={snapshots}
@@ -686,8 +709,9 @@ export default function App() {
               setAutostartState(enabled);
               void setAutostartEnabled(enabled).then(setAutostartState).catch(() => { setAutostartState(previous); setOperationError(language === "en" ? "Autostart could not be changed." : "无法修改开机启动设置。"); });
             }}
-          />
-        </Suspense>
+            />
+          </Suspense>
+        </ErrorBoundary>
       )}
       isConsuming={consumingProviders.has(current.provider)}
       consumingProviders={consumingProviders}

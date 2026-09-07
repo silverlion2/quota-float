@@ -1,9 +1,9 @@
 import { DotsSix, X } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { resolveAppearanceMode, systemPrefersDark } from "../lib/appearance";
-import { closeFocusPanel, getPreferences, getRuntimeState, listenFocusPanelUpdates, readCachedSnapshots, startFocusPanelDragging } from "../lib/bridge";
+import { closeFocusPanel, getPreferences, listenFocusPanelUpdates, readCachedSnapshots, readFocusPanelHistory, startFocusPanelDragging } from "../lib/bridge";
 import { normalizeWidgetPreferences } from "../lib/preferences";
-import type { CockpitRegion, ProviderId, ProviderSnapshot, RuntimeState, WidgetPreferences } from "../types";
+import type { CockpitRegion, FocusPanelHistory, ProviderId, ProviderSnapshot, WidgetPreferences } from "../types";
 import { CockpitDashboard } from "./QuotaCard";
 
 const providerIds = new Set<ProviderId>(["codex", "claude", "qoder", "trae", "workbuddy", "volcengine", "antigravity"]);
@@ -20,7 +20,7 @@ const target = targetFromLocation();
 
 interface FocusPanelState {
   preferences: WidgetPreferences;
-  runtimeState: RuntimeState;
+  history: FocusPanelHistory;
   snapshot: ProviderSnapshot;
 }
 
@@ -32,14 +32,14 @@ export function FocusPanelApp() {
   const reload = useCallback(async () => {
     if (!target) return;
     try {
-      const [preferencesValue, runtimeState, cache] = await Promise.all([getPreferences(), getRuntimeState(), readCachedSnapshots([target.provider])]);
+      const [preferencesValue, history, cache] = await Promise.all([getPreferences(), readFocusPanelHistory(target.provider, 90), readCachedSnapshots([target.provider])]);
       const snapshot = cache.snapshots.find((item) => item.provider === target.provider);
       if (!snapshot) {
         setValue(null);
         setError("No cached quota data yet. Refresh the provider in the main window.");
         return;
       }
-      setValue({ preferences: normalizeWidgetPreferences(preferencesValue), runtimeState, snapshot });
+      setValue({ preferences: normalizeWidgetPreferences(preferencesValue), history, snapshot });
       setError(null);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Focus panel could not be refreshed.");
@@ -96,9 +96,9 @@ export function FocusPanelApp() {
         {value && target ? (
           <CockpitDashboard
             snapshot={value.snapshot}
-            history={value.runtimeState.history}
-            dailyUsage={value.runtimeState.dailyUsage}
-            paceBaselines={value.runtimeState.dailyPaceBaselines}
+            history={value.history.history}
+            dailyUsage={value.history.dailyUsage}
+            paceBaselines={value.history.dailyPaceBaselines}
             language={language}
             focusedRegion={target.region}
             onFocusRegion={() => undefined}

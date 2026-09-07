@@ -8,10 +8,10 @@ jobs:
   frontend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version-file: .node-version
           cache: npm
       - run: npm ci
       - run: npm run version:check
@@ -38,10 +38,10 @@ jobs:
             artifact-path: src-tauri/target/universal-apple-darwin/release/bundle/**
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version-file: .node-version
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
       - name: Install macOS universal targets
@@ -53,6 +53,12 @@ jobs:
       - run: npm ci
       - run: cargo test --manifest-path src-tauri/Cargo.toml
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+      - name: Build isolated synthetic-data native E2E binary
+        if: runner.os == 'Windows'
+        run: npm run test:e2e:build
+      - name: Run native WebView critical-path smoke tests
+        if: runner.os == 'Windows'
+        run: npm run test:e2e
       - run: ${{ matrix.build-command }}
       - name: Verify Windows artifacts with Microsoft Defender
         if: runner.os == 'Windows'

@@ -119,7 +119,7 @@ No. `npm run dev` uses mock data. Real quota reading requires the Tauri desktop 
 
 ## Development
 
-Requirements: Node.js 20+, Rust stable, and the [Tauri 2 system dependencies](https://v2.tauri.app/start/prerequisites/) for your platform.
+Requirements: Node.js 24.14.0 (the repository default in `.node-version`; Node 22.18+ within 22.x or Node 24.x is supported), npm 10 or 11, Rust stable, and the [Tauri 2 system dependencies](https://v2.tauri.app/start/prerequisites/) for your platform. The native TypeScript config loader requires built-in type stripping. See the [dependency and toolchain policy](docs/DEPENDENCY-POLICY.md).
 
 ```bash
 npm install
