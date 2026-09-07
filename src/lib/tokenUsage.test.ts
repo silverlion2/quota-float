@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CodexTokenUsageBucket, CodexTokenUsageReport } from "../types";
-import { buildApiBudgetForecast, buildModelBreakdown, buildTokenFilterOptions, buildTokenHeatmap, buildTokenSeries, estimateBucketCost, relativeChange, summarizeTokenReport, usageCoverageStart } from "./tokenUsage";
+import { buildApiBudgetForecast, buildModelBreakdown, buildTokenFilterOptions, buildTokenHeatmap, buildTokenSeries, estimateBucketCost, relativeChange, summarizeTokenBuckets, summarizeTokenReport, usageCoverageStart } from "./tokenUsage";
 
 const bucket = (overrides: Partial<CodexTokenUsageBucket> = {}): CodexTokenUsageBucket => ({
   bucketStart: "2026-08-16T02:00:00Z",
@@ -22,16 +22,26 @@ const bucket = (overrides: Partial<CodexTokenUsageBucket> = {}): CodexTokenUsage
 describe("token usage", () => {
   it("estimates API-equivalent cost with cached and cache-write rates", () => {
     const cost = estimateBucketCost(bucket());
-    expect(cost?.inputUsd).toBeCloseTo(1.5);
-    expect(cost?.cachedInputUsd).toBeCloseTo(.3);
-    expect(cost?.cacheWriteUsd).toBeCloseTo(.625);
-    expect(cost?.outputUsd).toBeCloseTo(3);
-    expect(cost?.totalUsd).toBeCloseTo(5.425);
+    expect(cost?.inputUsd).toBeCloseTo(1.2);
+    expect(cost?.cachedInputUsd).toBeCloseTo(.24);
+    expect(cost?.cacheWriteUsd).toBeCloseTo(.5);
+    expect(cost?.outputUsd).toBeCloseTo(2);
+    expect(cost?.totalUsd).toBeCloseTo(3.94);
   });
 
-  it("uses long-context rates and leaves unknown models unpriced", () => {
+  it("prices Astra, uses long-context rates, and leaves unknown models unpriced", () => {
+    expect(estimateBucketCost(bucket({ model: "gpt-6-astra" }))?.totalUsd).toBeCloseTo(9.85);
     expect(estimateBucketCost(bucket({ contextTier: "long" }))?.totalUsd).toBeGreaterThan(estimateBucketCost(bucket())!.totalUsd);
     expect(estimateBucketCost(bucket({ model: "unknown-model" }))).toBeNull();
+  });
+
+  it("counts Astra as priced while unknown models still reduce coverage", () => {
+    const summary = summarizeTokenBuckets([
+      bucket({ model: "gpt-6-astra", sessionKey: "s-astra" }),
+      bucket({ model: "future-model", sessionKey: "s-unknown" }),
+    ]);
+    expect(summary.pricedTokenCoverage).toBe(.5);
+    expect(summary.unpricedModels).toEqual(["future-model"]);
   });
 
   it("summarizes the selected and previous rolling windows", () => {

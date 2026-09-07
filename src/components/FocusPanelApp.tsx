@@ -1,7 +1,7 @@
 import { DotsSix, X } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { resolveAppearanceMode, systemPrefersDark } from "../lib/appearance";
-import { closeFocusPanel, fetchSnapshots, getPreferences, getRuntimeState, listenFocusPanelUpdates, startFocusPanelDragging } from "../lib/bridge";
+import { closeFocusPanel, getPreferences, getRuntimeState, listenFocusPanelUpdates, readCachedSnapshots, startFocusPanelDragging } from "../lib/bridge";
 import { normalizeWidgetPreferences } from "../lib/preferences";
 import type { CockpitRegion, ProviderId, ProviderSnapshot, RuntimeState, WidgetPreferences } from "../types";
 import { CockpitDashboard } from "./QuotaCard";
@@ -32,9 +32,13 @@ export function FocusPanelApp() {
   const reload = useCallback(async () => {
     if (!target) return;
     try {
-      const [preferencesValue, runtimeState, snapshots] = await Promise.all([getPreferences(), getRuntimeState(), fetchSnapshots()]);
-      const snapshot = snapshots.find((item) => item.provider === target.provider);
-      if (!snapshot) throw new Error("Provider snapshot is unavailable.");
+      const [preferencesValue, runtimeState, cache] = await Promise.all([getPreferences(), getRuntimeState(), readCachedSnapshots([target.provider])]);
+      const snapshot = cache.snapshots.find((item) => item.provider === target.provider);
+      if (!snapshot) {
+        setValue(null);
+        setError("No cached quota data yet. Refresh the provider in the main window.");
+        return;
+      }
       setValue({ preferences: normalizeWidgetPreferences(preferencesValue), runtimeState, snapshot });
       setError(null);
     } catch (reason) {

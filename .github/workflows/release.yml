@@ -328,23 +328,61 @@ jobs:
             xcrun stapler validate "$app_path"
           fi
 
+  upgrade-smoke:
+    if: ${{ always() && needs.publish-draft.result == 'success' && !contains(needs.verify.outputs.tag, '-') }}
+    needs: [verify, publish-draft]
+    runs-on: windows-latest
+    # GitHub only exposes draft releases to tokens with push access. The script performs GET/download calls only.
+    permissions:
+      contents: write
+    outputs:
+      candidate_release_id: ${{ steps.upgrade.outputs.candidate_release_id }}
+      candidate_asset_id: ${{ steps.upgrade.outputs.candidate_asset_id }}
+      candidate_asset_name: ${{ steps.upgrade.outputs.candidate_asset_name }}
+      candidate_sha256: ${{ steps.upgrade.outputs.candidate_sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.verify.outputs.tag }}
+      - name: Verify previous-to-candidate per-user upgrade while the release is draft
+        id: upgrade
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./scripts/verify-windows-upgrade.ps1 -Repository "${{ github.repository }}" -CurrentTag "${{ needs.verify.outputs.tag }}"
+
   finalize:
-    needs: [verify, create-release-ref, publish-draft]
-    if: ${{ always() && needs.publish-draft.result == 'success' }}
+    needs: [verify, create-release-ref, publish-draft, upgrade-smoke]
+    if: >-
+      ${{
+        always() &&
+        needs.publish-draft.result == 'success' &&
+        (
+          contains(needs.verify.outputs.tag, '-') ||
+          needs.upgrade-smoke.result == 'success'
+        )
+      }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
     outputs:
       release_url: ${{ steps.publish.outputs.release_url }}
+      release_id: ${{ steps.publish.outputs.release_id }}
     steps:
-      - name: Verify the artifact set and publish the draft
+      - name: Verify the gated artifact set and publish the draft
         id: publish
         uses: actions/github-script@v7
         env:
           RELEASE_TAG: ${{ needs.verify.outputs.tag }}
+          CANDIDATE_RELEASE_ID: ${{ needs.upgrade-smoke.outputs.candidate_release_id }}
+          CANDIDATE_ASSET_ID: ${{ needs.upgrade-smoke.outputs.candidate_asset_id }}
+          CANDIDATE_ASSET_NAME: ${{ needs.upgrade-smoke.outputs.candidate_asset_name }}
+          CANDIDATE_SHA256: ${{ needs.upgrade-smoke.outputs.candidate_sha256 }}
         with:
           script: |
+            const crypto = require("crypto");
             const tag = process.env.RELEASE_TAG;
+            const stable = !tag.includes("-");
             const releases = await github.paginate(github.rest.repos.listReleases, {
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -373,6 +411,53 @@ jobs:
               core.setFailed(`Refusing to publish ${tag}; missing: ${missing.join(", ")}. Uploaded: ${names.join(", ")}`);
               return;
             }
+            const windowsInstallers = release.assets.filter((asset) => /_x64-setup\.exe$/.test(asset.name));
+            if (windowsInstallers.length !== 1) {
+              core.setFailed(`Refusing to publish ${tag}; expected exactly one Windows installer, found ${windowsInstallers.length}.`);
+              return;
+            }
+            if (stable) {
+              const expected = {
+                releaseId: process.env.CANDIDATE_RELEASE_ID,
+                assetId: process.env.CANDIDATE_ASSET_ID,
+                assetName: process.env.CANDIDATE_ASSET_NAME,
+                sha256: process.env.CANDIDATE_SHA256?.toLowerCase(),
+              };
+              if (!expected.releaseId || !expected.assetId || !expected.assetName || !/^[0-9a-f]{64}$/.test(expected.sha256 ?? "")) {
+                core.setFailed(`Refusing to publish stable ${tag}; the draft upgrade smoke did not emit complete artifact evidence.`);
+                return;
+              }
+              const installer = windowsInstallers[0];
+              if (
+                String(release.id) !== expected.releaseId ||
+                String(installer.id) !== expected.assetId ||
+                installer.name !== expected.assetName
+              ) {
+                core.setFailed(`Refusing to publish ${tag}; the draft or Windows installer changed after upgrade smoke.`);
+                return;
+              }
+              const downloaded = await github.request("GET /repos/{owner}/{repo}/releases/assets/{asset_id}", {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                asset_id: installer.id,
+                headers: { accept: "application/octet-stream" },
+              });
+              const observedSha256 = crypto.createHash("sha256").update(Buffer.from(downloaded.data)).digest("hex");
+              if (observedSha256 !== expected.sha256) {
+                core.setFailed(`Refusing to publish ${tag}; the tested Windows installer digest changed.`);
+                return;
+              }
+              const { data: candidateNow } = await github.rest.repos.getRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                release_id: release.id,
+              });
+              if (!candidateNow.draft || !candidateNow.assets.some((asset) => asset.id === installer.id)) {
+                core.setFailed(`Refusing to publish ${tag}; the tested draft asset is no longer present.`);
+                return;
+              }
+              core.info(`Upgrade gate verified draft asset ${installer.id} at sha256:${observedSha256}.`);
+            }
             const { data: published } = await github.rest.repos.updateRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -381,18 +466,67 @@ jobs:
               prerelease: tag.includes("-"),
             });
             core.setOutput("release_url", published.html_url);
+            core.setOutput("release_id", String(published.id));
             core.info(`Published ${tag} with ${names.length} verified assets: ${published.html_url}`);
 
-  upgrade-smoke:
-    if: ${{ always() && needs.finalize.result == 'success' && !contains(needs.verify.outputs.tag, '-') }}
-    needs: [verify, finalize]
-    runs-on: windows-latest
+  post-release-distribution:
+    needs: [verify, finalize, upgrade-smoke]
+    if: ${{ always() && needs.finalize.result == 'success' }}
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.verify.outputs.tag }}
-      - name: Verify previous-to-current per-user upgrade
-        shell: powershell
+      - name: Check the published asset inventory and tested installer distribution
+        uses: actions/github-script@v7
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./scripts/verify-windows-upgrade.ps1 -Repository "${{ github.repository }}" -CurrentTag "${{ needs.verify.outputs.tag }}"
+          RELEASE_TAG: ${{ needs.verify.outputs.tag }}
+          RELEASE_ID: ${{ needs.finalize.outputs.release_id }}
+          CANDIDATE_ASSET_ID: ${{ needs.upgrade-smoke.outputs.candidate_asset_id }}
+          CANDIDATE_SHA256: ${{ needs.upgrade-smoke.outputs.candidate_sha256 }}
+        with:
+          script: |
+            const crypto = require("crypto");
+            const tag = process.env.RELEASE_TAG;
+            const { data: release } = await github.rest.repos.getRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: Number(process.env.RELEASE_ID),
+            });
+            if (release.draft || release.tag_name !== tag) {
+              core.setFailed(`Post-release distribution check could not resolve public ${tag}.`);
+              return;
+            }
+            const names = release.assets.map((asset) => asset.name);
+            const required = [
+              ["updater manifest", (name) => name === "latest.json"],
+              ["Windows installer", (name) => /_x64-setup\.exe$/.test(name)],
+              ["Windows updater signature", (name) => /_x64-setup\.exe\.sig$/.test(name)],
+              ["macOS Universal DMG", (name) => /_universal\.dmg$/.test(name)],
+              ["macOS updater archive", (name) => /_universal\.app\.tar\.gz$/.test(name)],
+              ["macOS updater signature", (name) => /_universal\.app\.tar\.gz\.sig$/.test(name)],
+            ];
+            const missing = required.filter(([, matches]) => !names.some(matches)).map(([label]) => label);
+            if (missing.length > 0) {
+              core.setFailed(`Public ${tag} is missing distributed assets: ${missing.join(", ")}.`);
+              return;
+            }
+            if (!tag.includes("-")) {
+              const installer = release.assets.find((asset) => String(asset.id) === process.env.CANDIDATE_ASSET_ID);
+              if (!installer) {
+                core.setFailed(`Public ${tag} no longer exposes the installer that passed upgrade smoke.`);
+                return;
+              }
+              const downloaded = await github.request("GET /repos/{owner}/{repo}/releases/assets/{asset_id}", {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                asset_id: installer.id,
+                headers: { accept: "application/octet-stream" },
+              });
+              const digest = crypto.createHash("sha256").update(Buffer.from(downloaded.data)).digest("hex");
+              if (digest !== process.env.CANDIDATE_SHA256) {
+                core.setFailed(`Public ${tag} installer does not match the upgrade-tested draft asset.`);
+                return;
+              }
+            }
+            core.info(`Public distribution check passed for ${tag} with ${names.length} assets.`);

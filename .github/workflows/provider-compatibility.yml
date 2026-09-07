@@ -7,8 +7,8 @@ on:
   push:
     paths:
       - "src-tauri/src/**"
-      - "src/providers.ts"
-      - "src/bridge.ts"
+      - "src/lib/providers.ts"
+      - "src/lib/bridge.ts"
       - "src/**/*.test.ts"
       - "src/**/*.test.tsx"
       - ".github/workflows/provider-compatibility.yml"

@@ -4,7 +4,7 @@ import { OPENAI_PRICING_CATALOG, pricingForModel, ratesForModel } from "./openai
 export type UsageRange = "today" | "24h" | "7d" | "30d" | "90d" | "all";
 
 export const OPENAI_PRICING_SOURCE = OPENAI_PRICING_CATALOG.source;
-export const OPENAI_PRICING_UPDATED_AT = OPENAI_PRICING_CATALOG.effectiveAt;
+export const OPENAI_PRICING_UPDATED_AT = OPENAI_PRICING_CATALOG.verifiedAt;
 export const OPENAI_PRICING_VERSION = OPENAI_PRICING_CATALOG.version;
 
 export interface TokenUsageFilters {

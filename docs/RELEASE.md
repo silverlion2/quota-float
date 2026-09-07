@@ -44,8 +44,9 @@ npm run publish:release -- patch --dry-run
 - 确认验证后 `main` 未变化，再创建 release commit 与 tag，并通过一次 atomic push 同时写入远端。
 - 创建 release ref 时直接同步已测试过的机械版本文件，不再重复安装 Rust/Linux 桌面依赖或执行第二次 Rust 编译检查。
 - Windows/macOS 并行构建草稿产物；Windows Defender 扫描实际待发布的 Windows executable 与 installer，不重复编译预检包。
-- 检查 `latest.json`、Windows installer/签名、macOS DMG/updater archive/签名齐全后，才将草稿 Release 转为公开。
-- Stable 版本公开后执行 Windows previous-to-current upgrade smoke。
+- 检查 `latest.json`、Windows installer/签名、macOS DMG/updater archive/签名齐全。
+- Stable 版本在 Release 仍为草稿时执行 Windows previous-public-to-draft-candidate upgrade smoke；记录被安装候选的 Release ID、asset ID 与 SHA-256，并在公开前重新下载核对，确保通过测试的就是将公开的同一份 installer。
+- 上述门槛通过后才将草稿 Release 转为公开；随后执行非阻断的公开分发可达性与资产一致性检查，不再次安装软件。
 
 同一时间只允许一个 Release workflow 运行。GitHub Actions 使用默认 `GITHUB_TOKEN` 创建的 commit/tag 不依赖第二条 tag workflow 被触发，后续构建和发布都在当前 workflow 内继续。
 
@@ -58,7 +59,7 @@ npm run release -- patch --dry-run
 npm run release -- patch
 ```
 
-脚本会校验版本、测试并构建，随后创建 release commit 与 `v*` tag，并在获得授权后推送 `main` 和 tag。外部推送的 tag 仍兼容 `.github/workflows/release.yml`；它会验证 tag/版本、构建 Windows/macOS 草稿产物、执行 Defender 扫描、检查附件完整性、公开 Release，并运行 Stable 升级烟测。
+脚本会校验版本、测试并构建，随后创建 release commit 与 `v*` tag，并在获得授权后推送 `main` 和 tag。外部推送的 tag 仍兼容 `.github/workflows/release.yml`；它会验证 tag/版本、构建 Windows/macOS 草稿产物、执行 Defender 扫描和 Stable 草稿候选升级烟测，检查附件与候选身份一致后才公开 Release。
 
 工作流完成后必须检查公开 Release、完整产物和所有 job 的最终结论。当前流程及授权边界见 [GITHUB-RELEASE-CHECKLIST.md](GITHUB-RELEASE-CHECKLIST.md)；最近一次完整证据见 [RELEASE-0.3.5.md](RELEASE-0.3.5.md)。
 

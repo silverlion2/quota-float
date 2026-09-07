@@ -17,22 +17,25 @@ export interface ModelPricing {
 }
 
 export interface OpenAiPricingCatalog {
-  schemaVersion: 1;
+  schemaVersion: 2;
   version: string;
-  effectiveAt: string;
+  verifiedAt: string;
   source: string;
+  pricingTier: "standard";
   unit: "USD per 1M tokens";
   models: ModelPricing[];
 }
 
 export const OPENAI_PRICING_CATALOG: OpenAiPricingCatalog = {
-  schemaVersion: 1,
-  version: "2026-08-16.1",
-  effectiveAt: "2026-08-16",
+  schemaVersion: 2,
+  version: "2026-09-07.1",
+  verifiedAt: "2026-09-07",
   source: "https://developers.openai.com/api/docs/pricing",
+  pricingTier: "standard",
   unit: "USD per 1M tokens",
   models: [
-    { model: "gpt-5.6-sol", label: "GPT-5.6 Sol", aliases: ["gpt-5.6"], short: { input: 5, cachedInput: .5, cacheWrite: 6.25, output: 30 }, long: { input: 10, cachedInput: 1, cacheWrite: 12.5, output: 45 }, longContextThreshold: 272_000 },
+    { model: "gpt-6-astra", label: "GPT-6 Astra", aliases: [], short: { input: 10, cachedInput: 1, cacheWrite: 12.5, output: 50 }, long: { input: 20, cachedInput: 2, cacheWrite: 25, output: 75 }, longContextThreshold: 272_000 },
+    { model: "gpt-5.6-sol", label: "GPT-5.6 Sol", aliases: ["gpt-5.6"], short: { input: 4, cachedInput: .4, cacheWrite: 5, output: 20 }, long: { input: 8, cachedInput: .8, cacheWrite: 10, output: 30 }, longContextThreshold: 272_000 },
     { model: "gpt-5.6-terra", label: "GPT-5.6 Terra", aliases: [], short: { input: 2, cachedInput: .2, cacheWrite: 2.5, output: 12 }, long: { input: 4, cachedInput: .4, cacheWrite: 5, output: 18 }, longContextThreshold: 272_000 },
     { model: "gpt-5.6-luna", label: "GPT-5.6 Luna", aliases: [], short: { input: .2, cachedInput: .02, cacheWrite: .25, output: 1.2 }, long: { input: .4, cachedInput: .04, cacheWrite: .5, output: 1.8 }, longContextThreshold: 272_000 },
     { model: "gpt-5.5", label: "GPT-5.5", aliases: [], short: { input: 5, cachedInput: .5, cacheWrite: 5, output: 30 }, long: { input: 10, cachedInput: 1, cacheWrite: 10, output: 45 }, longContextThreshold: 272_000 },

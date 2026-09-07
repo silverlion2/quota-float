@@ -12,7 +12,7 @@ mod workbuddy;
 
 use std::{
     fs,
-    io::Write,
+    io::{Read, Write},
     path::{Path, PathBuf},
     sync::Mutex,
     time::{Duration, Instant},
@@ -48,6 +48,11 @@ const EDGE_SAFE_INSET_LOGICAL: f64 = 4.0;
 const MAX_EXPANDED_LOGICAL_HEIGHT: f64 = 1_200.0 - EDGE_SAFE_INSET_LOGICAL * 2.0;
 const SNAP_THRESHOLD_LOGICAL: f64 = 24.0;
 const POSITION_EPSILON: u32 = 2;
+const MAX_APP_DATA_BYTES: u64 = 20 * 1024 * 1024;
+const MAX_RUNTIME_HISTORY_ITEMS: usize = 120_000;
+const MAX_RUNTIME_DAILY_USAGE_ITEMS: usize = 100_000;
+const MAX_RUNTIME_EVENT_ITEMS: usize = 200;
+const MAX_RUNTIME_LAYOUT_ITEMS: usize = 12;
 
 #[derive(Clone, Copy)]
 enum HorizontalDock {
@@ -197,7 +202,7 @@ struct AppState {
     preferences_path: PathBuf,
     runtime_state_path: PathBuf,
     fetch_lock: tokio::sync::Mutex<()>,
-    snapshot_cache: Mutex<Option<(Instant, Vec<ProviderSnapshot>)>>,
+    snapshot_cache: Mutex<SnapshotCache>,
     codex_usage_fetch_lock: tokio::sync::Mutex<()>,
     codex_usage_cache: Mutex<Option<(Instant, codex_usage::CodexTokenUsageReport)>>,
     codex_usage_index_path: PathBuf,
@@ -205,6 +210,28 @@ struct AppState {
     simulate_short_window_for_testing: Mutex<bool>,
     geometry: Mutex<Option<WidgetGeometryState>>,
     drag_mode: Mutex<Option<WidgetMode>>,
+}
+
+const SNAPSHOT_CACHE_TTL: Duration = Duration::from_secs(30);
+
+#[derive(Clone)]
+struct CachedProviderSnapshot {
+    cached_at: Instant,
+    snapshot: ProviderSnapshot,
+}
+
+#[derive(Default)]
+struct SnapshotCache {
+    values: Vec<CachedProviderSnapshot>,
+    last_full_refresh: Option<Instant>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SnapshotCacheRead {
+    snapshots: Vec<ProviderSnapshot>,
+    freshness: &'static str,
+    oldest_age_seconds: Option<u64>,
 }
 
 #[derive(Serialize)]
@@ -257,12 +284,118 @@ async fn fetch_snapshots_uncached(
 ) -> Vec<ProviderSnapshot> {
     let _guard = state.fetch_lock.lock().await;
     let values = collect_snapshots(&state.client, provider_ids).await;
-    if provider_ids.is_none() {
-        if let Ok(mut cache) = state.snapshot_cache.lock() {
-            *cache = Some((Instant::now(), values.clone()));
-        }
+    if let Ok(mut cache) = state.snapshot_cache.lock() {
+        let refreshed_providers = provider_ids.map_or_else(
+            || {
+                provider_registry::PROVIDERS
+                    .iter()
+                    .map(|provider| provider.id.to_string())
+                    .collect::<Vec<_>>()
+            },
+            <[String]>::to_vec,
+        );
+        merge_snapshot_cache(
+            &mut cache,
+            values.clone(),
+            &refreshed_providers,
+            Instant::now(),
+            provider_ids.is_none(),
+        );
     }
     apply_short_window_test_override(state.inner(), values)
+}
+
+fn snapshot_has_last_known_good(snapshot: &ProviderSnapshot) -> bool {
+    snapshot.short_window.is_some()
+        || snapshot.weekly_window.is_some()
+        || snapshot.monthly_window.is_some()
+        || snapshot.balance_remaining.is_some()
+        || snapshot.reset_credits.is_some()
+}
+
+fn merge_snapshot_cache(
+    cache: &mut SnapshotCache,
+    incoming: Vec<ProviderSnapshot>,
+    refreshed_providers: &[String],
+    cached_at: Instant,
+    full_refresh: bool,
+) {
+    let mut merged = cache
+        .values
+        .iter()
+        .filter(|entry| !refreshed_providers.contains(&entry.snapshot.provider))
+        .cloned()
+        .collect::<Vec<_>>();
+
+    for provider in refreshed_providers {
+        let next = incoming
+            .iter()
+            .filter(|snapshot| snapshot.provider == *provider)
+            .cloned()
+            .collect::<Vec<_>>();
+        let transient_failure = next.len() == 1
+            && matches!(next[0].status.as_str(), "loading" | "stale" | "unavailable");
+        let previous = cache
+            .values
+            .iter()
+            .filter(|entry| {
+                entry.snapshot.provider == *provider
+                    && snapshot_has_last_known_good(&entry.snapshot)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        if transient_failure && !previous.is_empty() {
+            let failure_message = next[0].message.clone();
+            merged.extend(previous.into_iter().map(|mut entry| {
+                entry.snapshot.status = "stale".into();
+                entry.snapshot.message = failure_message.clone();
+                entry
+            }));
+        } else {
+            merged.extend(next.into_iter().map(|snapshot| CachedProviderSnapshot {
+                cached_at,
+                snapshot,
+            }));
+        }
+    }
+
+    cache.values = merged;
+    if full_refresh {
+        cache.last_full_refresh = Some(cached_at);
+    }
+}
+
+fn read_snapshot_cache(
+    cache: &SnapshotCache,
+    provider_ids: Option<&[String]>,
+) -> SnapshotCacheRead {
+    let entries = cache
+        .values
+        .iter()
+        .filter(|entry| provider_ids.is_none_or(|ids| ids.contains(&entry.snapshot.provider)))
+        .collect::<Vec<_>>();
+    if entries.is_empty() {
+        return SnapshotCacheRead {
+            snapshots: Vec::new(),
+            freshness: "empty",
+            oldest_age_seconds: None,
+        };
+    }
+    let oldest_age = entries
+        .iter()
+        .map(|entry| entry.cached_at.elapsed())
+        .max()
+        .unwrap_or_default();
+    let snapshots = entries
+        .into_iter()
+        .map(|entry| entry.snapshot.clone())
+        .collect::<Vec<_>>();
+    let stale = snapshots.iter().any(|snapshot| snapshot.status == "stale");
+    SnapshotCacheRead {
+        snapshots,
+        freshness: if stale { "stale" } else { "fresh" },
+        oldest_age_seconds: Some(oldest_age.as_secs()),
+    }
 }
 
 fn load_preferences(path: &Path) -> WidgetPreferences {
@@ -307,17 +440,15 @@ fn persist_preferences(path: &Path, value: &WidgetPreferences) -> Result<(), Str
     Ok(())
 }
 
-fn persist_json_value(path: &Path, value: &serde_json::Value) -> Result<(), String> {
+fn persist_serialized_json(path: &Path, serialized: &[u8]) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|_| "failed to create data directory".to_string())?;
     }
-    let serialized = serde_json::to_vec_pretty(value)
-        .map_err(|_| "failed to serialize application data".to_string())?;
     let temporary = path.with_extension("json.tmp");
     let backup = path.with_extension("json.bak");
     let mut file = fs::File::create(&temporary)
         .map_err(|_| "failed to create temporary data file".to_string())?;
-    file.write_all(&serialized)
+    file.write_all(serialized)
         .and_then(|_| file.sync_all())
         .map_err(|_| "failed to write application data".to_string())?;
     if path.exists() {
@@ -331,6 +462,111 @@ fn persist_json_value(path: &Path, value: &serde_json::Value) -> Result<(), Stri
     Ok(())
 }
 
+fn persist_json_value(path: &Path, value: &serde_json::Value) -> Result<(), String> {
+    let serialized = serde_json::to_vec_pretty(value)
+        .map_err(|_| "failed to serialize application data".to_string())?;
+    persist_serialized_json(path, &serialized)
+}
+
+fn serialize_backup(value: &serde_json::Value) -> Result<Vec<u8>, String> {
+    let serialized = serde_json::to_vec_pretty(value)
+        .map_err(|_| "failed to serialize backup data".to_string())?;
+    if serialized.len() as u64 > MAX_APP_DATA_BYTES {
+        return Err("backup exceeds the 20 MiB safety limit".to_string());
+    }
+    Ok(serialized)
+}
+
+fn runtime_state_default() -> serde_json::Value {
+    serde_json::json!({
+        "schemaVersion": 2,
+        "history": [],
+        "dailyUsage": [],
+        "usageMemory": {
+            "retentionDays": 0,
+            "firstCapturedAt": null,
+            "lastCapturedAt": null,
+            "totalSamples": 0
+        },
+        "events": [],
+        "savedLayouts": [],
+        "lastNotifications": {},
+        "dailyPaceBaselines": {}
+    })
+}
+
+fn validate_runtime_state(value: &serde_json::Value) -> Result<(), String> {
+    let Some(state) = value.as_object() else {
+        return Err("runtime state must be a JSON object".to_string());
+    };
+    if let Some(version) = state.get("schemaVersion") {
+        let Some(version) = version.as_u64() else {
+            return Err("runtime state schema version is invalid".to_string());
+        };
+        if !(1..=2).contains(&version) {
+            return Err("runtime state schema version is unsupported".to_string());
+        }
+    }
+    for (field, limit) in [
+        ("history", MAX_RUNTIME_HISTORY_ITEMS),
+        ("dailyUsage", MAX_RUNTIME_DAILY_USAGE_ITEMS),
+        ("events", MAX_RUNTIME_EVENT_ITEMS),
+        ("savedLayouts", MAX_RUNTIME_LAYOUT_ITEMS),
+    ] {
+        if let Some(section) = state.get(field) {
+            let Some(items) = section.as_array() else {
+                return Err(format!("runtime state {field} section is invalid"));
+            };
+            if items.len() > limit {
+                return Err(format!(
+                    "runtime state {field} section exceeds its safety limit"
+                ));
+            }
+        }
+    }
+    if state
+        .get("usageMemory")
+        .is_some_and(|section| !section.is_object())
+    {
+        return Err("runtime state usageMemory section is invalid".to_string());
+    }
+    for field in ["lastNotifications", "dailyPaceBaselines"] {
+        if let Some(section) = state.get(field) {
+            if !section.is_object() {
+                return Err(format!("runtime state {field} section is invalid"));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn persist_runtime_state(path: &Path, value: &serde_json::Value) -> Result<(), String> {
+    validate_runtime_state(value)?;
+    let serialized = serde_json::to_vec_pretty(value)
+        .map_err(|_| "failed to serialize application data".to_string())?;
+    if serialized.len() as u64 > MAX_APP_DATA_BYTES {
+        return Err("runtime state exceeds the 20 MiB safety limit".to_string());
+    }
+    persist_serialized_json(path, &serialized)
+}
+
+pub(crate) fn read_json_candidate_bounded(
+    path: &Path,
+    max_bytes: u64,
+) -> Option<serde_json::Value> {
+    let file = fs::File::open(path).ok()?;
+    let metadata = file.metadata().ok()?;
+    if !metadata.is_file() || metadata.len() > max_bytes {
+        return None;
+    }
+    let mut raw = Vec::with_capacity(metadata.len().min(max_bytes) as usize);
+    file.take(max_bytes + 1).read_to_end(&mut raw).ok()?;
+    if raw.len() as u64 > max_bytes {
+        return None;
+    }
+    serde_json::from_slice(&raw).ok()
+}
+
 fn persist_app_data(
     preferences_path: &Path,
     runtime_state_path: &Path,
@@ -339,7 +575,7 @@ fn persist_app_data(
     next_runtime_state: &serde_json::Value,
 ) -> Result<(), String> {
     persist_preferences(preferences_path, next_preferences)?;
-    if let Err(error) = persist_json_value(runtime_state_path, next_runtime_state) {
+    if let Err(error) = persist_runtime_state(runtime_state_path, next_runtime_state) {
         return match persist_preferences(preferences_path, previous_preferences) {
             Ok(()) => Err(error),
             Err(rollback_error) => Err(format!(
@@ -353,27 +589,9 @@ fn persist_app_data(
 fn read_json_with_backup(path: &Path) -> serde_json::Value {
     [path.to_path_buf(), path.with_extension("json.bak")]
         .into_iter()
-        .find_map(|candidate| {
-            fs::read_to_string(candidate)
-                .ok()
-                .and_then(|raw| serde_json::from_str(&raw).ok())
-        })
-        .unwrap_or_else(|| {
-            serde_json::json!({
-                "schemaVersion": 2,
-                "history": [],
-                "dailyUsage": [],
-                "usageMemory": {
-                    "retentionDays": 0,
-                    "firstCapturedAt": null,
-                    "lastCapturedAt": null,
-                    "totalSamples": 0
-                },
-                "events": [],
-                "savedLayouts": [],
-                "lastNotifications": {}
-            })
-        })
+        .filter_map(|candidate| read_json_candidate_bounded(&candidate, MAX_APP_DATA_BYTES))
+        .find(|value| validate_runtime_state(value).is_ok())
+        .unwrap_or_else(runtime_state_default)
 }
 
 #[tauri::command]
@@ -386,7 +604,7 @@ fn set_runtime_state(
     runtime_state: serde_json::Value,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    persist_json_value(&state.runtime_state_path, &runtime_state)
+    persist_runtime_state(&state.runtime_state_path, &runtime_state)
 }
 
 #[tauri::command]
@@ -416,6 +634,7 @@ async fn export_app_data(
     bundle: serde_json::Value,
     app: AppHandle,
 ) -> Result<Option<String>, String> {
+    let serialized = serialize_backup(&bundle)?;
     let filename = format!(
         "quota-float-backup-{}.json",
         chrono::Local::now().format("%Y-%m-%d")
@@ -435,7 +654,7 @@ async fn export_app_data(
     if target.extension().and_then(|value| value.to_str()) != Some("json") {
         return Err("backup file must use the .json extension".into());
     }
-    persist_json_value(&target, &bundle)?;
+    persist_serialized_json(&target, &serialized)?;
     Ok(Some(target.to_string_lossy().into_owned()))
 }
 
@@ -487,7 +706,6 @@ async fn export_usage_data(
 
 #[tauri::command]
 async fn import_app_data(app: AppHandle) -> Result<Option<serde_json::Value>, String> {
-    const MAX_BACKUP_BYTES: u64 = 20 * 1024 * 1024;
     let Some(target) = app
         .dialog()
         .file()
@@ -504,13 +722,14 @@ async fn import_app_data(app: AppHandle) -> Result<Option<serde_json::Value>, St
     }
     let metadata =
         fs::metadata(&target).map_err(|_| "failed to inspect backup file".to_string())?;
-    if !metadata.is_file() || metadata.len() > MAX_BACKUP_BYTES {
-        return Err("backup file is too large".into());
+    if !metadata.is_file() || metadata.len() > MAX_APP_DATA_BYTES {
+        return Err("backup exceeds the 20 MiB safety limit".into());
     }
-    let raw = fs::read_to_string(target).map_err(|_| "failed to read backup file".to_string())?;
-    serde_json::from_str(&raw)
+    read_json_candidate_bounded(&target, MAX_APP_DATA_BYTES)
         .map(Some)
-        .map_err(|_| "backup file is not valid JSON".to_string())
+        .ok_or_else(|| {
+            "backup file is not valid JSON or exceeds the 20 MiB safety limit".to_string()
+        })
 }
 
 #[tauri::command]
@@ -650,20 +869,26 @@ fn notify_focus_panels(app: AppHandle) {
 
 #[tauri::command]
 async fn get_snapshots(state: State<'_, AppState>) -> Result<Vec<ProviderSnapshot>, String> {
-    const CACHE_TTL: Duration = Duration::from_secs(30);
     if let Ok(cache) = state.snapshot_cache.lock() {
-        if let Some((time, values)) = &*cache {
-            if time.elapsed() < CACHE_TTL {
-                return Ok(apply_short_window_test_override(&state, values.clone()));
-            }
+        if cache
+            .last_full_refresh
+            .is_some_and(|time| time.elapsed() < SNAPSHOT_CACHE_TTL)
+        {
+            let values = cache
+                .values
+                .iter()
+                .map(|entry| entry.snapshot.clone())
+                .collect();
+            return Ok(apply_short_window_test_override(&state, values));
         }
     }
     let _guard = match state.fetch_lock.try_lock() {
         Ok(guard) => guard,
         Err(_) => {
             if let Ok(cache) = state.snapshot_cache.lock() {
-                if let Some((_, values)) = &*cache {
-                    return Ok(apply_short_window_test_override(&state, values.clone()));
+                if !cache.values.is_empty() {
+                    let values = read_snapshot_cache(&cache, None).snapshots;
+                    return Ok(apply_short_window_test_override(&state, values));
                 }
             }
             return Ok(vec![ProviderSnapshot::failure(
@@ -673,17 +898,45 @@ async fn get_snapshots(state: State<'_, AppState>) -> Result<Vec<ProviderSnapsho
         }
     };
     if let Ok(cache) = state.snapshot_cache.lock() {
-        if let Some((time, values)) = &*cache {
-            if time.elapsed() < CACHE_TTL {
-                return Ok(apply_short_window_test_override(&state, values.clone()));
-            }
+        if cache
+            .last_full_refresh
+            .is_some_and(|time| time.elapsed() < SNAPSHOT_CACHE_TTL)
+        {
+            let values = cache
+                .values
+                .iter()
+                .map(|entry| entry.snapshot.clone())
+                .collect();
+            return Ok(apply_short_window_test_override(&state, values));
         }
     }
     let values = collect_snapshots(&state.client, None).await;
     if let Ok(mut cache) = state.snapshot_cache.lock() {
-        *cache = Some((Instant::now(), values.clone()));
+        let refreshed_providers = provider_registry::PROVIDERS
+            .iter()
+            .map(|provider| provider.id.to_string())
+            .collect::<Vec<_>>();
+        merge_snapshot_cache(
+            &mut cache,
+            values.clone(),
+            &refreshed_providers,
+            Instant::now(),
+            true,
+        );
     }
     Ok(apply_short_window_test_override(&state, values))
+}
+
+#[tauri::command]
+fn get_cached_snapshots(
+    provider_ids: Option<Vec<String>>,
+    state: State<'_, AppState>,
+) -> Result<SnapshotCacheRead, String> {
+    let cache = state
+        .snapshot_cache
+        .lock()
+        .map_err(|_| "Snapshot cache is temporarily unavailable.".to_string())?;
+    Ok(read_snapshot_cache(&cache, provider_ids.as_deref()))
 }
 
 #[tauri::command]
@@ -750,7 +1003,7 @@ async fn reconnect_volcengine(
     let _guard = state.fetch_lock.lock().await;
     volcengine::reconnect().await?;
     if let Ok(mut cache) = state.snapshot_cache.lock() {
-        *cache = None;
+        *cache = SnapshotCache::default();
     }
     Ok(volcengine::diagnostics().await)
 }
@@ -1403,6 +1656,203 @@ fn resize_expanded_widget(
 }
 
 #[cfg(test)]
+mod snapshot_cache_tests {
+    use super::*;
+
+    fn successful_snapshot(provider: &str, remaining: f64) -> ProviderSnapshot {
+        ProviderSnapshot {
+            provider: provider.into(),
+            display_name: provider.to_uppercase(),
+            plan: Some("PRO".into()),
+            short_window: None,
+            weekly_window: Some(models::UsageWindow {
+                remaining_percent: remaining,
+                resets_at: None,
+                window_seconds: 604_800,
+            }),
+            monthly_window: None,
+            reset_credits: None,
+            reset_credit_expires_at: Vec::new(),
+            balance_remaining: None,
+            balance_unit: None,
+            updated_at: "2026-09-07T00:00:00Z".into(),
+            status: "ok".into(),
+            message: None,
+        }
+    }
+
+    #[test]
+    fn targeted_refresh_merges_by_provider_without_freshening_other_entries() {
+        let old_time = Instant::now() - Duration::from_secs(120);
+        let mut cache = SnapshotCache {
+            values: vec![
+                CachedProviderSnapshot {
+                    cached_at: old_time,
+                    snapshot: successful_snapshot("codex", 70.0),
+                },
+                CachedProviderSnapshot {
+                    cached_at: old_time,
+                    snapshot: successful_snapshot("qoder", 50.0),
+                },
+            ],
+            last_full_refresh: Some(old_time),
+        };
+        let now = Instant::now();
+
+        merge_snapshot_cache(
+            &mut cache,
+            vec![successful_snapshot("codex", 65.0)],
+            &["codex".into()],
+            now,
+            false,
+        );
+
+        let codex = cache
+            .values
+            .iter()
+            .find(|entry| entry.snapshot.provider == "codex")
+            .expect("Codex should remain cached");
+        let qoder = cache
+            .values
+            .iter()
+            .find(|entry| entry.snapshot.provider == "qoder")
+            .expect("Qoder should remain cached");
+        assert_eq!(
+            codex
+                .snapshot
+                .weekly_window
+                .as_ref()
+                .unwrap()
+                .remaining_percent,
+            65.0
+        );
+        assert!(codex.cached_at >= now);
+        assert_eq!(qoder.cached_at, old_time);
+        assert_eq!(cache.last_full_refresh, Some(old_time));
+    }
+
+    #[test]
+    fn partial_failure_preserves_only_the_failed_providers_last_known_good_value() {
+        let old_time = Instant::now() - Duration::from_secs(60);
+        let mut cache = SnapshotCache {
+            values: vec![
+                CachedProviderSnapshot {
+                    cached_at: old_time,
+                    snapshot: successful_snapshot("codex", 70.0),
+                },
+                CachedProviderSnapshot {
+                    cached_at: old_time,
+                    snapshot: successful_snapshot("qoder", 50.0),
+                },
+            ],
+            last_full_refresh: Some(old_time),
+        };
+
+        merge_snapshot_cache(
+            &mut cache,
+            vec![
+                ProviderSnapshot::provider_failure(
+                    "codex",
+                    "CODEX",
+                    "unavailable",
+                    "Temporary failure",
+                ),
+                successful_snapshot("qoder", 40.0),
+            ],
+            &["codex".into(), "qoder".into()],
+            Instant::now(),
+            false,
+        );
+
+        let codex = cache
+            .values
+            .iter()
+            .find(|entry| entry.snapshot.provider == "codex")
+            .unwrap();
+        let qoder = cache
+            .values
+            .iter()
+            .find(|entry| entry.snapshot.provider == "qoder")
+            .unwrap();
+        assert_eq!(codex.snapshot.status, "stale");
+        assert_eq!(
+            codex
+                .snapshot
+                .weekly_window
+                .as_ref()
+                .unwrap()
+                .remaining_percent,
+            70.0
+        );
+        assert_eq!(codex.cached_at, old_time);
+        assert_eq!(
+            qoder
+                .snapshot
+                .weekly_window
+                .as_ref()
+                .unwrap()
+                .remaining_percent,
+            40.0
+        );
+    }
+
+    #[test]
+    fn cache_reads_keep_normal_balanced_and_focus_intervals_fresh() {
+        let empty = read_snapshot_cache(&SnapshotCache::default(), None);
+        assert_eq!(empty.freshness, "empty");
+        assert!(empty.snapshots.is_empty());
+
+        let fresh_cache = SnapshotCache {
+            values: vec![
+                CachedProviderSnapshot {
+                    cached_at: Instant::now() - Duration::from_secs(5 * 60),
+                    snapshot: successful_snapshot("codex", 70.0),
+                },
+                CachedProviderSnapshot {
+                    cached_at: Instant::now() - Duration::from_secs(15 * 60),
+                    snapshot: successful_snapshot("qoder", 50.0),
+                },
+            ],
+            last_full_refresh: None,
+        };
+        let fresh = read_snapshot_cache(&fresh_cache, None);
+        assert_eq!(fresh.freshness, "fresh");
+        assert_eq!(fresh.snapshots[0].status, "ok");
+        assert_eq!(fresh.snapshots[1].status, "ok");
+        assert!(fresh.oldest_age_seconds.unwrap() >= 15 * 60);
+    }
+
+    #[test]
+    fn transient_failure_is_stale_even_inside_request_cache_ttl() {
+        let cached_at = Instant::now();
+        let mut cache = SnapshotCache {
+            values: vec![CachedProviderSnapshot {
+                cached_at,
+                snapshot: successful_snapshot("codex", 70.0),
+            }],
+            last_full_refresh: None,
+        };
+        merge_snapshot_cache(
+            &mut cache,
+            vec![ProviderSnapshot::provider_failure(
+                "codex",
+                "CODEX",
+                "unavailable",
+                "Temporary failure",
+            )],
+            &["codex".into()],
+            Instant::now(),
+            false,
+        );
+
+        let stale = read_snapshot_cache(&cache, Some(&["codex".into()]));
+        assert_eq!(stale.freshness, "stale");
+        assert_eq!(stale.snapshots[0].status, "stale");
+        assert!(stale.oldest_age_seconds.unwrap() < SNAPSHOT_CACHE_TTL.as_secs());
+    }
+}
+
+#[cfg(test)]
 mod persistence_tests {
     use super::*;
 
@@ -1461,6 +1911,87 @@ mod persistence_tests {
             previous.alert_threshold
         );
         fs::remove_dir_all(root).expect("temporary restore directory should be removable");
+    }
+
+    #[test]
+    fn backup_serialization_stays_within_the_import_limit() {
+        let root = temporary_root("backup-round-trip");
+        let target = root.join("backup.json");
+        let bundle = serde_json::json!({
+            "schemaVersion": 1,
+            "preferences": {},
+            "runtimeState": runtime_state_default()
+        });
+
+        let serialized = serialize_backup(&bundle).expect("backup should fit");
+        persist_serialized_json(&target, &serialized).expect("backup should persist");
+
+        assert!(serialized.len() as u64 <= MAX_APP_DATA_BYTES);
+        assert_eq!(
+            read_json_candidate_bounded(&target, MAX_APP_DATA_BYTES),
+            Some(bundle)
+        );
+        fs::remove_dir_all(root).expect("temporary backup directory should be removable");
+    }
+
+    #[test]
+    fn oversized_backup_is_rejected_before_persistence() {
+        let oversized = serde_json::json!({ "payload": "x".repeat(MAX_APP_DATA_BYTES as usize) });
+        assert_eq!(
+            serialize_backup(&oversized).unwrap_err(),
+            "backup exceeds the 20 MiB safety limit"
+        );
+    }
+
+    #[test]
+    fn runtime_state_validation_is_bounded_and_legacy_compatible() {
+        assert!(validate_runtime_state(&serde_json::json!({
+            "history": [],
+            "unknownLegacyField": true
+        }))
+        .is_ok());
+        assert!(validate_runtime_state(&serde_json::json!({ "schemaVersion": 1 })).is_ok());
+        assert_eq!(
+            validate_runtime_state(&serde_json::json!({ "schemaVersion": 3 })).unwrap_err(),
+            "runtime state schema version is unsupported"
+        );
+        assert_eq!(
+            validate_runtime_state(&serde_json::json!({
+                "events": vec![serde_json::Value::Null; MAX_RUNTIME_EVENT_ITEMS + 1]
+            }))
+            .unwrap_err(),
+            "runtime state events section exceeds its safety limit"
+        );
+        let many_notification_keys = (0..300)
+            .map(|index| {
+                (
+                    format!("legacy:{index}"),
+                    serde_json::json!("2026-01-01T00:00:00Z"),
+                )
+            })
+            .collect::<serde_json::Map<_, _>>();
+        assert!(validate_runtime_state(&serde_json::json!({
+            "lastNotifications": many_notification_keys
+        }))
+        .is_ok());
+    }
+
+    #[test]
+    fn invalid_runtime_primary_falls_back_to_valid_bounded_backup() {
+        let root = temporary_root("runtime-fallback");
+        fs::create_dir_all(&root).expect("temporary directory should be created");
+        let target = root.join("runtime-state.json");
+        fs::write(&target, br#"{"schemaVersion":99}"#).expect("invalid primary should persist");
+        let backup = target.with_extension("json.bak");
+        let expected = serde_json::json!({ "schemaVersion": 2, "history": [] });
+        fs::write(
+            &backup,
+            serde_json::to_vec(&expected).expect("backup should serialize"),
+        )
+        .expect("backup should persist");
+
+        assert_eq!(read_json_with_backup(&target), expected);
+        fs::remove_dir_all(root).expect("temporary runtime directory should be removable");
     }
 }
 
@@ -2498,7 +3029,7 @@ pub fn run() {
                 preferences_path,
                 runtime_state_path,
                 fetch_lock: tokio::sync::Mutex::new(()),
-                snapshot_cache: Mutex::new(None),
+                snapshot_cache: Mutex::new(SnapshotCache::default()),
                 codex_usage_fetch_lock: tokio::sync::Mutex::new(()),
                 codex_usage_cache: Mutex::new(None),
                 codex_usage_index_path,
@@ -2523,6 +3054,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_snapshots,
+            get_cached_snapshots,
             refresh_snapshots,
             get_codex_reset_forecast,
             get_codex_token_usage,

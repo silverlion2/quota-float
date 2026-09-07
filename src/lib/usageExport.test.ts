@@ -42,6 +42,11 @@ describe("usage export", () => {
     expect(json).toContain("Project 1");
     expect(csv).not.toContain("private-project-name");
     expect(json).not.toContain("secret-session-key");
+    expect(csv).toContain("2026-09-07.1");
+    expect(json).toContain('"verifiedAt": "2026-09-07"');
+    expect(json).toContain('"pricingTier": "standard"');
+    expect(json).toContain("including historical rows");
+    expect(json).not.toContain("effectiveAt");
   });
 
   it("builds a standalone share card and versioned pricing catalog", () => {
@@ -52,6 +57,9 @@ describe("usage export", () => {
     const svg = buildUsageShareSvg(summary, models, budget, "7d", "zh-CN", now);
     expect(svg).toContain("<svg");
     expect(svg).toContain("API 等价费用");
-    expect(buildPricingCatalogJson()).toContain('"schemaVersion": 1');
+    const catalog = buildPricingCatalogJson();
+    expect(catalog).toContain('"schemaVersion": 2');
+    expect(catalog).toContain('"model": "gpt-6-astra"');
+    expect(catalog).toContain('"pricingTier": "standard"');
   });
 });

@@ -521,21 +521,28 @@ fn empty_index() -> PersistedUsageIndex {
 }
 
 fn load_index(path: &Path, rebuild: bool) -> (PersistedUsageIndex, String) {
+    load_index_with_limit(path, rebuild, MAX_INDEX_BYTES)
+}
+
+fn load_index_with_limit(
+    path: &Path,
+    rebuild: bool,
+    max_index_bytes: u64,
+) -> (PersistedUsageIndex, String) {
     if rebuild {
         return (empty_index(), "rebuilt".to_string());
     }
-    let backup = path.with_extension("json.bak");
-    let metadata = fs::metadata(path).or_else(|_| fs::metadata(&backup));
-    if metadata.as_ref().is_err() || metadata.is_ok_and(|value| value.len() > MAX_INDEX_BYTES) {
-        return (empty_index(), "rebuilt".to_string());
-    }
-    let value = crate::read_json_with_backup(path);
-    match serde_json::from_value::<PersistedUsageIndex>(value) {
-        Ok(index) if index.schema_version == INDEX_SCHEMA_VERSION => {
-            (index, "incremental".to_string())
+    for candidate in [path.to_path_buf(), path.with_extension("json.bak")] {
+        let Some(value) = crate::read_json_candidate_bounded(&candidate, max_index_bytes) else {
+            continue;
+        };
+        if let Ok(index) = serde_json::from_value::<PersistedUsageIndex>(value) {
+            if index.schema_version == INDEX_SCHEMA_VERSION {
+                return (index, "incremental".to_string());
+            }
         }
-        _ => (empty_index(), "rebuilt".to_string()),
     }
+    (empty_index(), "rebuilt".to_string())
 }
 
 fn collect_from(
@@ -858,6 +865,47 @@ mod tests {
             Some("2024-01-02T02:00:00+00:00")
         );
         assert!(report.range_days > 90);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn oversized_backup_index_is_not_read_after_a_corrupt_primary() {
+        let stamp = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = env::temp_dir().join(format!("quota-float-index-limit-{stamp}"));
+        fs::create_dir_all(&root).unwrap();
+        let cache = root.join("usage-index.json");
+        fs::write(&cache, b"{").unwrap();
+        fs::write(cache.with_extension("json.bak"), br#"{"schemaVersion":3}"#).unwrap();
+
+        let (index, status) = load_index_with_limit(&cache, false, 8);
+
+        assert_eq!(status, "rebuilt");
+        assert_eq!(index.schema_version, INDEX_SCHEMA_VERSION);
+        assert!(index.files.is_empty());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn bounded_backup_index_is_used_when_primary_is_oversized() {
+        let stamp = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = env::temp_dir().join(format!("quota-float-index-fallback-{stamp}"));
+        fs::create_dir_all(&root).unwrap();
+        let cache = root.join("usage-index.json");
+        let serialized = serde_json::to_vec(&empty_index()).unwrap();
+        fs::write(&cache, vec![b'x'; serialized.len() + 1]).unwrap();
+        fs::write(cache.with_extension("json.bak"), &serialized).unwrap();
+
+        let (index, status) = load_index_with_limit(&cache, false, serialized.len() as u64);
+
+        assert_eq!(status, "incremental");
+        assert_eq!(index.schema_version, INDEX_SCHEMA_VERSION);
+        assert!(index.files.is_empty());
         fs::remove_dir_all(root).unwrap();
     }
 }

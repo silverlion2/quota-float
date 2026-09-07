@@ -1,4 +1,4 @@
-import type { AppDiagnostics, BarPlacement, CockpitRegion, CodexTokenUsageReport, CompactLayout, ProviderId, ProviderSnapshot, ResetForecast, RuntimeState, VolcengineDiagnostics, WidgetPreferences } from "../types";
+import type { AppDiagnostics, BarPlacement, CockpitRegion, CodexTokenUsageReport, CompactLayout, ProviderId, ProviderSnapshot, ResetForecast, RuntimeState, SnapshotCacheRead, VolcengineDiagnostics, WidgetPreferences } from "../types";
 import { EMPTY_RUNTIME_STATE, normalizeRuntimeState } from "./activity";
 import { DEFAULT_WIDGET_PREFERENCES } from "./preferences";
 
@@ -154,6 +154,15 @@ export async function fetchSnapshots(force = false, providerIds?: ProviderSnapsh
   const { invoke } = await import("@tauri-apps/api/core");
   if (providerIds) return invoke<ProviderSnapshot[]>("refresh_snapshots", { providerIds });
   return invoke<ProviderSnapshot[]>(force ? "refresh_snapshots" : "get_snapshots");
+}
+
+export async function readCachedSnapshots(providerIds?: ProviderSnapshot["provider"][]): Promise<SnapshotCacheRead> {
+  if (!isTauri()) {
+    const snapshots = providerIds ? mockSnapshots.filter((snapshot) => providerIds.includes(snapshot.provider)) : mockSnapshots;
+    return { snapshots, freshness: snapshots.length > 0 ? "fresh" : "empty", oldestAgeSeconds: snapshots.length > 0 ? 0 : null };
+  }
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<SnapshotCacheRead>("get_cached_snapshots", { providerIds });
 }
 
 export async function fetchCodexResetForecast(): Promise<ResetForecast | null> {

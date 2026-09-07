@@ -40,6 +40,12 @@ export interface ProviderSnapshot {
   message: string | null;
 }
 
+export interface SnapshotCacheRead {
+  snapshots: ProviderSnapshot[];
+  freshness: "fresh" | "stale" | "empty";
+  oldestAgeSeconds: number | null;
+}
+
 export interface ResetForecast {
   score: number;
   windowHours: number;

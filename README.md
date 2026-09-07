@@ -103,7 +103,7 @@ No. Quota remains provider-reported or comes from a supported local account cach
 
 ### Is the estimated cost my Codex bill?
 
-No. It is an API-equivalent estimate using an embedded snapshot of official OpenAI standard token prices. Codex subscription usage, API billing, tool fees, regional processing, and special service tiers can differ.
+No. It is an API-equivalent estimate using an embedded snapshot of official OpenAI Standard token prices. All selected usage, including retained history, is re-estimated with the currently embedded catalog version; Quota Float does not reconstruct the price in effect when a past request ran. Codex subscription usage, API billing, tool fees, regional processing, and special service tiers can differ.
 
 ### Do I need to enter an API key or copy a token?
 

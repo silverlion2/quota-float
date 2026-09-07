@@ -18,6 +18,7 @@ import { parseBackupBundle } from "./lib/backup";
 import { resolveAppearanceMode, systemPrefersDark } from "./lib/appearance";
 import { loadStartupState } from "./lib/startup";
 import { runSingleFlight, type SingleFlightState } from "./lib/singleFlight";
+import { requestLatest, type LatestRequestState } from "./lib/latestRequest";
 import { monitoredProviderIds, nextProviderRefreshDelay, providersDueForRefresh, type ProviderAttemptTimes } from "./lib/refreshPolicy";
 import type { AppDiagnostics, CockpitRegion, ProviderId, ProviderSnapshot, ResetForecast, RuntimeState, VolcengineDiagnostics, WidgetPreferences } from "./types";
 
@@ -55,6 +56,7 @@ export default function App() {
   const snapshotsRef = useRef<ProviderSnapshot[]>([]);
   const providerAttempts = useRef<ProviderAttemptTimes>({});
   const resetForecastRef = useRef<ResetForecast | null>(null);
+  const resetForecastRequest = useRef<LatestRequestState>({ sequence: 0 });
   const previousMetric = useRef(new Map<string, number>());
   const consumptionTimers = useRef(new Map<string, number>());
   const collapseTimer = useRef<number | null>(null);
@@ -163,15 +165,14 @@ export default function App() {
     if (providerIds.length === 0) return;
     const attemptedAt = Date.now();
     for (const provider of providerIds) providerAttempts.current[provider] = attemptedAt;
-    try {
-      const [values, forecast] = await Promise.all([
-        fetchSnapshots(true, providerIds),
-        providerIds.includes("codex") ? fetchCodexResetForecast().catch(() => null) : Promise.resolve(undefined),
-      ]);
-      if (forecast !== undefined) {
+    if (providerIds.includes("codex")) {
+      requestLatest(resetForecastRequest.current, fetchCodexResetForecast, (forecast) => {
         resetForecastRef.current = forecast;
         setCodexResetForecast(forecast);
-      }
+      });
+    }
+    try {
+      const values = await fetchSnapshots(true, providerIds);
       for (const item of values) {
         const percentWindows = trackedQuotaWindows(item);
         const nextMetric = percentWindows.length > 0
@@ -197,7 +198,7 @@ export default function App() {
         detectedReset = detectRecentCodexReset(nextCodex, snapshotsRef.current.find((item) => item.provider === "codex") ?? null, now);
         setRecentCodexReset((current) => detectedReset ?? (isRecentCodexReset(current, now) ? current : null));
       }
-      const activity = recordSnapshotActivity(runtimeStateRef.current, snapshotsRef.current, values, detectedReset, preferencesRef.current.alertThreshold, now, preferencesRef.current.language, preferencesRef.current.notificationCooldownMinutes, forecast ?? resetForecastRef.current);
+      const activity = recordSnapshotActivity(runtimeStateRef.current, snapshotsRef.current, values, detectedReset, preferencesRef.current.alertThreshold, now, preferencesRef.current.language, preferencesRef.current.notificationCooldownMinutes, resetForecastRef.current);
       let nextRuntimeState = activity.state;
       const notificationPreferences = preferencesRef.current;
       if (notificationPreferences.notificationsEnabled && !isQuietHour(now.getHours(), notificationPreferences.quietHoursStart, notificationPreferences.quietHoursEnd)) {

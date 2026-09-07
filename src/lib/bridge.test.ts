@@ -8,6 +8,7 @@ import {
   listenDesktopEvents,
   notifyFocusPanels,
   openFocusPanel,
+  readCachedSnapshots,
   reconnectVolcengine,
   resizeWidgetToContent,
   setWidgetExpanded,
@@ -125,6 +126,12 @@ describe("widget transitions", () => {
   it("passes targeted provider refreshes to the native command", async () => {
     await fetchSnapshots(false, ["codex", "antigravity"]);
     expect(api.invoke).toHaveBeenCalledWith("refresh_snapshots", { providerIds: ["codex", "antigravity"] });
+  });
+
+  it("reads detached-panel data only from the native snapshot cache", async () => {
+    await readCachedSnapshots(["codex"]);
+    expect(api.invoke).toHaveBeenCalledWith("get_cached_snapshots", { providerIds: ["codex"] });
+    expect(api.invoke).toHaveBeenCalledTimes(1);
   });
 
   it("serializes rapid preference writes so the newest state cannot be overwritten", async () => {

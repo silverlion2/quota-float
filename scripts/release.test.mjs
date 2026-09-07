@@ -99,7 +99,7 @@ describe("release automation", () => {
     expect(releaseWorkflow).toContain("verify-windows-defender.ps1 -EnableRealTimeProtection -Path");
     expect(releaseWorkflow).not.toContain("verify-windows-defender.ps1 -UpdateSignatures");
     expect(releaseWorkflow.indexOf("tauri-apps/tauri-action@v0")).toBeLessThan(releaseWorkflow.indexOf("verify-windows-defender.ps1 -EnableRealTimeProtection"));
-    expect(releaseWorkflow).toContain("Verify the artifact set and publish the draft");
+    expect(releaseWorkflow).toContain("Verify the gated artifact set and publish the draft");
     expect(releaseWorkflow).toContain("missing: ${missing.join");
     expect(ciWorkflow).toContain("--config src-tauri/tauri.ci.conf.json");
     expect(ciWorkflow).toContain("verify-windows-defender.ps1 -EnableRealTimeProtection -Path");
@@ -107,5 +107,42 @@ describe("release automation", () => {
     expect(defenderScript).toContain("Set-MpPreference -DisableRealtimeMonitoring $false");
     expect(defenderScript).toContain("Get-MpThreatDetection");
     expect(ciConfig.bundle.createUpdaterArtifacts).toBe(false);
+  });
+
+  it("smoke tests the stable draft candidate before publishing the identical installer", () => {
+    const workflow = readFileSync(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
+    const upgradeScript = readFileSync(new URL("./verify-windows-upgrade.ps1", import.meta.url), "utf8");
+    const upgradeJob = workflow.match(/\n  upgrade-smoke:\n[\s\S]*?\n  finalize:/)?.[0] ?? "";
+    const finalizeJob = workflow.match(/\n  finalize:\n[\s\S]*?\n  post-release-distribution:/)?.[0] ?? "";
+
+    expect(workflow.indexOf("\n  upgrade-smoke:")).toBeLessThan(workflow.indexOf("\n  finalize:"));
+    expect(upgradeJob).toContain("needs: [verify, publish-draft]");
+    expect(upgradeJob).not.toContain("needs.finalize");
+    expect(upgradeJob).toContain("while the release is draft");
+    expect(upgradeJob).toMatch(/GitHub only exposes draft releases[\s\S]*?permissions:\s+contents: write/);
+    expect(finalizeJob).toContain("needs.upgrade-smoke.result == 'success'");
+    expect(finalizeJob).toContain("CANDIDATE_RELEASE_ID");
+    expect(finalizeJob).toContain("CANDIDATE_ASSET_ID");
+    expect(finalizeJob).toContain("CANDIDATE_SHA256");
+    expect(finalizeJob).toContain("the tested Windows installer digest changed");
+    expect(workflow).toContain("post-release-distribution:");
+    expect(workflow).toMatch(/post-release-distribution:[\s\S]*?continue-on-error: true/);
+
+    expect(upgradeScript).toContain("including drafts");
+    expect(upgradeScript).toContain('Invoke-GitHubJson "repos/$Repository/releases/latest"');
+    expect(upgradeScript).toContain("the draft gate ran too late");
+    expect(upgradeScript).toContain('Accept = "application/octet-stream"');
+    expect(upgradeScript).toContain('Get-FileHash -LiteralPath $currentInstaller.FullName -Algorithm SHA256');
+    expect(upgradeScript).toContain('Write-CiOutput "candidate_asset_id"');
+    expect(upgradeScript).toContain("changed during the upgrade smoke test");
+  });
+
+  it("watches the current frontend provider contract paths", () => {
+    const workflow = readFileSync(new URL("../.github/workflows/provider-compatibility.yml", import.meta.url), "utf8");
+
+    expect(workflow).toContain('      - "src/lib/providers.ts"');
+    expect(workflow).toContain('      - "src/lib/bridge.ts"');
+    expect(workflow).not.toContain('      - "src/providers.ts"');
+    expect(workflow).not.toContain('      - "src/bridge.ts"');
   });
 });
