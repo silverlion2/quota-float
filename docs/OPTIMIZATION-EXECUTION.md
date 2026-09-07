@@ -46,32 +46,39 @@ Integrated updates/UI, storage/performance, and toolchain/E2E patches, including
 
 Integrated frontend validation: 35 files / 246 tests passed; production build and bundle budgets passed (entry 212,948 B; all JS 559,837 B; gzip JS 174,948 B). Entry plus shared preloads is larger than the entry alone, so this is not a measured startup-speed claim. Rust: 84 tests passed; fmt and check passed. E2E spec TypeScript, workflow YAML, capability JSON and version checks passed. Native E2E execution remains pending and must not be reported as passing based on configuration alone.
 
+### Batch 3 progress
+
+- Progressive results: assigned to `01a07c85-e413-71b1-b7cb-d626ea764d02`, baseline `3bf4721`.
+- Opaque project identity and on-demand weekly/monthly reports: assigned to `01a07c86-1ae5-7060-9341-cc5a8b68cac3`, same baseline.
+- Measurement tooling: integrated the reproducible synthetic history script and the bounded single-process CPU/memory sampler from `01a07c86-2b6e-7430-9496-ab48c23670c2`. Node fixture ran successfully; PowerShell AST and a 5-second capture of the explicitly identified E2E process passed (six rows). This short active-test capture validates the tool only, not idle performance, whole-app memory, startup or disk IO. The sampler explicitly excludes WebView2/GPU child processes. This task can be archived after committing its completed tooling.
+- Native E2E: the isolated release binary builds. Unrestricted local execution revealed test hover/persisted-state/stale-element issues and a real Windows detached-window deadlock in synchronous `open_focus_panel`. Coordinator changed the command to async and is rebuilding/retesting; no passing native result is claimed yet.
+
 | Review item | State | Completion criterion |
 |---|---|---|
 | Windows multi-DPI/multi-monitor visual acceptance | Device validation pending | Real supported display configurations and recorded results |
 | Real Mac window/runtime acceptance | Device unavailable in current scope | Real Mac artifact and runtime/visual evidence |
-| Per-provider progressive results | Next implementation | Healthy provider data visible before slow batch finishes; no duplicate notifications |
-| Blocking adapter IO bounds | Batch 2 | Read-only blocking isolation and meaningful timeout/size/SQLite limits |
+| Per-provider progressive results | Batch 3 active | Healthy provider data visible before slow batch finishes; no duplicate notifications |
+| Blocking adapter IO bounds | Complete for Qoder; other adapters retain existing limits | Read-only blocking isolation and meaningful timeout/size/SQLite limits |
 | Runtime state writes and large-history performance | Batch 2 / follow-up measurement | Serialize/coalesce writes if warranted, benchmark realistic bounded history |
-| Honest retention and truncation semantics | Batch 2 | UI/docs reflect finite capacity and actual coverage |
-| Focused history IPC | Batch 2 | Detached pane receives only bounded target data |
+| Honest retention and truncation semantics | Complete | UI/docs reflect finite capacity and actual coverage |
+| Focused history IPC | Complete | Detached pane receives only bounded target data |
 | Desktop performance budgets | Coordinator follow-up | Reproducible startup/idle/CPU/memory/IO measurement with explicit environment limitations |
-| Lazy auxiliary entries | Batch 2 | Build measurements and correct preview/focus startup |
-| Beta timeout/cancellation/single-flight | Batch 2 | Race and retry tests |
-| Beta highest supported version/channel policy | Batch 2 | Valid semantic version candidates and stable transition policy |
-| Native E2E in CI | Batch 2 | Isolated fixture, no real credentials; automated smoke configuration and runnable tests |
-| Platform support matrix | Batch 2 | Source-backed Windows/macOS support statuses |
+| Lazy auxiliary entries | Implemented; native smoke pending | Build measurements and correct preview/focus startup |
+| Beta timeout/cancellation/single-flight | Complete | Race and retry tests |
+| Beta highest supported version/channel policy | Complete | Valid semantic version candidates and stable transition policy |
+| Native E2E in CI | Implemented; local execution in progress | Isolated fixture, no real credentials; automated smoke configuration and runnable tests |
+| Platform support matrix | Complete | Source-backed Windows/macOS support statuses |
 | Version/docs/screenshots accuracy | Batch 2 / follow-up | Source version separated from published/verified versions; screenshots only from actual render |
 | OS signing/notarization | Certificate/environment dependent | Verify project-owned signing and exact artifacts only with authorization |
-| Node/Rust toolchain requirements | Batch 2 | Declared requirements match CI/native config loader |
-| Dependency upgrades | Batch 2 assessment + safe upgrades | Official migration/compatibility checked; local gates pass; no blind version churn |
-| Dependency update groups/override lifecycle | Batch 2 | Bounded groups and documented removal conditions |
+| Node/Rust toolchain requirements | Complete | Declared requirements match CI/native config loader |
+| Dependency upgrades | Assessment complete; major migrations explicitly deferred | Official migration/compatibility checked; local gates pass; no blind version churn |
+| Dependency update groups/override lifecycle | Complete | Bounded groups and documented removal conditions |
 | Core module responsibility separation | Batch 2 / follow-up | Incremental storage/UI/scheduling extraction with behavior tests |
-| UI error isolation | Batch 2 | Localized recovery without sensitive stack/data exposure |
+| UI error isolation | Complete | Localized recovery without sensitive stack/data exposure |
 | Actionable provider errors | Complete | Safe localized guidance in commit 3339534 |
-| Budget selection semantics | Batch 2 | Selected-window projection and on-open alert limitations explicit |
-| Same-name project identity | Design then implementation | Local opaque identity, migration and export privacy; no stored raw paths |
-| Local weekly/monthly aggregate reports | Design then implementation | Prompt-free bounded local summaries and coverage labeling |
+| Budget selection semantics | Complete | Selected-window projection and on-open alert limitations explicit |
+| Same-name project identity | Batch 3 active | Local opaque identity, migration and export privacy; no stored raw paths |
+| Local weekly/monthly aggregate reports | Batch 3 active | Prompt-free bounded local summaries and coverage labeling |
 | macOS in-app updater | Platform-dependent evaluation | Existing fallback preserved until signed real update validation |
 | Additional providers/macOS adapters | Source-dependent evaluation | Identified read-only source and fixtures; no fabricated support |
 | Bottom Bar | Separate design required | Existing explicit exclusion honored until interaction/geometry scope is resolved |
