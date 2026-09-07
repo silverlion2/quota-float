@@ -181,6 +181,39 @@ describe("Quota Float desktop widget", () => {
     await dialog.waitForDisplayed({ reverse: true });
   });
 
+  it("shows local weekly and monthly reports with explicit filter scope", async () => {
+    await browser.tauri.execute(() => {
+      document.querySelectorAll<HTMLButtonElement>(".quota-panel-tabs button")[1]?.click();
+    });
+    const report = await browser.$('[aria-label="Local period usage summary"]');
+    await report.waitForExist();
+    expect(await report.getText()).toContain("LOCAL PERIOD REPORT");
+    await browser.tauri.execute(() => {
+      document.querySelectorAll<HTMLButtonElement>('[aria-label="Local period usage summary"] .usage-range-tabs button')[1]?.click();
+    });
+    await browser.waitUntil(async () => browser.tauri.execute(() =>
+      document.querySelectorAll('[aria-label="Local period usage summary"] .usage-range-tabs button')[1]?.getAttribute("aria-pressed") === "true",
+    ));
+    expect(await browser.tauri.execute(() => document.querySelectorAll(".usage-period-metrics > div").length)).toBe(4);
+    const selectedProject = await browser.tauri.execute(() => {
+      const select = document.querySelectorAll<HTMLSelectElement>(".usage-dimension-filters select")[1];
+      select.value = select.options[1].value;
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      return select.value;
+    });
+    expect(selectedProject).not.toBe("");
+    await browser.waitUntil(async () => (await browser.$('[aria-label="Local period usage summary"]').getText()).includes("FILTERED"));
+    await browser.tauri.execute(() => {
+      const select = document.querySelectorAll<HTMLSelectElement>(".usage-dimension-filters select")[1];
+      select.value = "";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await browser.waitUntil(async () => !(await browser.$('[aria-label="Local period usage summary"]').getText()).includes("FILTERED"));
+    await browser.tauri.execute(() => {
+      document.querySelectorAll<HTMLButtonElement>(".quota-panel-tabs button")[0]?.click();
+    });
+  });
+
   it("opens the update dialog without navigating away", async () => {
     const opened = await browser.tauri.execute(() => {
       const button = document.querySelector<HTMLButtonElement>(".update-action");

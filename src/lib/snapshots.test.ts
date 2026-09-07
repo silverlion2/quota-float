@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProviderSnapshot } from "../types";
-import { mergeSnapshots } from "./snapshots";
+import { finalizeSnapshotProgress, mergeSnapshotProgress, mergeSnapshots } from "./snapshots";
 
 const success: ProviderSnapshot = {
   provider: "codex",
@@ -39,5 +39,58 @@ describe("snapshot failure handling", () => {
     expect(mergeSnapshots([success, qoder], [{ ...success, weeklyWindow: { ...success.weeklyWindow!, remainingPercent: 88 } }], ["codex"]))
       .toEqual([qoder, expect.objectContaining({ provider: "codex", weeklyWindow: expect.objectContaining({ remainingPercent: 88 }) })]);
     expect(mergeSnapshots([success, qoder], [], ["qoder"])).toEqual([success]);
+  });
+
+  it("shows a fast provider before the remaining request completes without changing the baseline", () => {
+    const qoder = { ...success, provider: "qoder" as const, displayName: "QODER", weeklyWindow: { ...success.weeklyWindow!, remainingPercent: 50 } };
+    const baseline = [success, qoder];
+    const state = { requestId: "refresh-1", receivedProviders: new Set<ProviderSnapshot["provider"]>(), finalized: false };
+    const nextQoder = { ...qoder, weeklyWindow: { ...qoder.weeklyWindow!, remainingPercent: 40 } };
+
+    const progressive = mergeSnapshotProgress(state, "refresh-1", baseline, {
+      requestId: "refresh-1",
+      requestedProviderIds: ["codex", "qoder"],
+      providerId: "qoder",
+      snapshots: [nextQoder],
+    });
+
+    expect(progressive?.find((item) => item.provider === "qoder")?.weeklyWindow?.remainingPercent).toBe(40);
+    expect(progressive?.find((item) => item.provider === "codex")?.weeklyWindow?.remainingPercent).toBe(42);
+    expect(baseline[1].weeklyWindow?.remainingPercent).toBe(50);
+  });
+
+  it("ignores duplicate provider progress and late request events", () => {
+    const state = { requestId: "refresh-current", receivedProviders: new Set<ProviderSnapshot["provider"]>(), finalized: false };
+    const event = {
+      requestId: "refresh-current",
+      requestedProviderIds: ["codex" as const],
+      providerId: "codex" as const,
+      snapshots: [{ ...success, weeklyWindow: { ...success.weeklyWindow!, remainingPercent: 38 } }],
+    };
+
+    expect(mergeSnapshotProgress(state, "refresh-current", [success], event)).not.toBeNull();
+    expect(mergeSnapshotProgress(state, "refresh-current", [success], event)).toBeNull();
+    expect(mergeSnapshotProgress({ requestId: "refresh-old", receivedProviders: new Set(), finalized: false }, "refresh-current", [success], { ...event, requestId: "refresh-old" })).toBeNull();
+  });
+
+  it("opens the final history and notification phase only once for the current request", () => {
+    const state = { requestId: "refresh-current", receivedProviders: new Set<ProviderSnapshot["provider"]>(), finalized: false };
+
+    expect(finalizeSnapshotProgress(state, "refresh-current")).toBe(true);
+    expect(finalizeSnapshotProgress(state, "refresh-current")).toBe(false);
+    expect(finalizeSnapshotProgress({ ...state, requestId: "refresh-old", finalized: false }, "refresh-current")).toBe(false);
+  });
+
+  it("ignores progress that arrives after the current request is finalized", () => {
+    const state = { requestId: "refresh-current", receivedProviders: new Set<ProviderSnapshot["provider"]>(), finalized: false };
+    expect(finalizeSnapshotProgress(state, "refresh-current")).toBe(true);
+
+    expect(mergeSnapshotProgress(state, "refresh-current", [success], {
+      requestId: "refresh-current",
+      requestedProviderIds: ["codex"],
+      providerId: "codex",
+      snapshots: [{ ...success, weeklyWindow: { ...success.weeklyWindow!, remainingPercent: 10 } }],
+    })).toBeNull();
+    expect(state.receivedProviders).toEqual(new Set());
   });
 });

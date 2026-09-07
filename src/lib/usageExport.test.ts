@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { CodexTokenUsageReport } from "../types";
-import { buildApiBudgetForecast, buildModelBreakdown, summarizeTokenReport } from "./tokenUsage";
-import { buildPricingCatalogJson, buildUsageCsv, buildUsageJson, buildUsageShareSvg } from "./usageExport";
+import { buildApiBudgetForecast, buildCurrentPeriodUsageReport, buildModelBreakdown, summarizeTokenReport } from "./tokenUsage";
+import { buildPeriodUsageJson, buildPricingCatalogJson, buildUsageCsv, buildUsageJson, buildUsageShareSvg } from "./usageExport";
 
 const report: CodexTokenUsageReport = {
   generatedAt: "2026-08-16T12:00:00Z",
@@ -21,6 +21,7 @@ const report: CodexTokenUsageReport = {
     model: "gpt-5.6-sol",
     contextTier: "short",
     project: "private-project-name",
+    projectId: "p-secret-project-id",
     terminal: "Desktop",
     sessionKey: "secret-session-key",
     inputTokens: 1_000_000,
@@ -42,6 +43,8 @@ describe("usage export", () => {
     expect(json).toContain("Project 1");
     expect(csv).not.toContain("private-project-name");
     expect(json).not.toContain("secret-session-key");
+    expect(csv).not.toContain("p-secret-project-id");
+    expect(json).not.toContain("p-secret-project-id");
     expect(csv).toContain("2026-09-07.1");
     expect(json).toContain('"verifiedAt": "2026-09-07"');
     expect(json).toContain('"pricingTier": "standard"');
@@ -61,5 +64,20 @@ describe("usage export", () => {
     expect(catalog).toContain('"schemaVersion": 2');
     expect(catalog).toContain('"model": "gpt-6-astra"');
     expect(catalog).toContain('"pricingTier": "standard"');
+  });
+
+  it("exports an aggregate period summary without project identity", () => {
+    const now = new Date("2026-08-16T12:00:00Z");
+    const json = buildPeriodUsageJson(buildCurrentPeriodUsageReport(report, "month", now, { projectId: "p-secret-project-id" }));
+
+    expect(json).toContain('"reportType": "monthly_usage_summary"');
+    expect(json).toContain('"apiEquivalentUsd"');
+    expect(json).toContain('"unrecordedHours"');
+    expect(json).toContain("idle or uncollected");
+    expect(json).toContain('"projectFiltered": true');
+    expect(json).toContain('"modelFiltered": false');
+    expect(json).not.toContain("private-project-name");
+    expect(json).not.toContain("p-secret-project-id");
+    expect(json).not.toContain("secret-session-key");
   });
 });

@@ -7,6 +7,7 @@ const bucket = (overrides: Partial<CodexTokenUsageBucket> = {}): CodexTokenUsage
   model: "gpt-5.6-sol",
   contextTier: "short",
   project: "quota-float",
+  projectId: "p-quota-float",
   terminal: "Desktop",
   sessionKey: "s-test",
   inputTokens: 1_000_000,

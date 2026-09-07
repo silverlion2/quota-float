@@ -1946,6 +1946,8 @@ button.usage-stat-card:hover { border-color: color-mix(in srgb, var(--accent-col
 .usage-summary-grid .usage-stat-card--warning > strong { color: #f1ba78; }
 .usage-summary-grid .usage-stat-card--over > strong { color: #ff8b88; }
 
+.usage-period-metrics { display: grid; grid-template-columns: 1.55fr repeat(3, minmax(0, 1fr)); gap: 5px; }
+
 .usage-plan-comparison {
   min-width: 0;
   display: grid;

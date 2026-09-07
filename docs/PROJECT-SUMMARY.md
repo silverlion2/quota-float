@@ -6,6 +6,8 @@ Quota Float 是一款 Windows/macOS Tauri 桌面悬浮窗：它只读复用本�
 
 ## 当前产品形态
 
+- 平台刷新按完成顺序渐进显示，慢平台不会延迟其他平台的可见结果；最终批次统一处理提醒和历史，避免重复副作用。Codex 项目筛选使用 Rust 内生成的不透明身份区分同名目录；本周/本月报告按需汇总至当前时间，导出不包含原始路径、项目身份或提示词。
+
 - 平台目录包含 Codex、Claude、Qoder、TRAE、WorkBuddy、火山方舟 Coding Plan 和 Google Antigravity。当前源码在 Windows 支持全部七个平台；macOS 支持 Codex、Claude、火山方舟和 Antigravity，Qoder、TRAE、WorkBuddy 的适配器在非 Windows 构建中返回未检测到。源码支持不等于近期真实账号实测，详细矩阵见 [PROVIDER-COMPATIBILITY.md](PROVIDER-COMPATIBILITY.md)。
 - 紧凑视图包括 Float、Ring、Bar 与 Bottleneck；Bar 和 Bottleneck 可磁吸顶部、左侧或右侧，顶部尺寸为 `400×38`，左右侧轨为 `64×320`。Bottleneck 为每个平台提取最低剩余额度周期并按风险排序，平台点击仍只改变当前选择。
 - Bar 的边缘与沿边偏移会写入偏好、布局方案、导出文件和恢复备份；偏移采用 `0…1` 归一化值，可适配工作区与缩放变化。

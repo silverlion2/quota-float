@@ -2,6 +2,7 @@ import type { CodexTokenUsageBucket, CodexTokenUsageReport } from "../types";
 import { OPENAI_PRICING_CATALOG, pricingForModel, ratesForModel } from "./openaiPricing";
 
 export type UsageRange = "today" | "24h" | "7d" | "30d" | "90d" | "all";
+export type UsageReportPeriod = "week" | "month";
 
 export const OPENAI_PRICING_SOURCE = OPENAI_PRICING_CATALOG.source;
 export const OPENAI_PRICING_UPDATED_AT = OPENAI_PRICING_CATALOG.verifiedAt;
@@ -9,7 +10,7 @@ export const OPENAI_PRICING_VERSION = OPENAI_PRICING_CATALOG.version;
 
 export interface TokenUsageFilters {
   model?: string;
-  project?: string;
+  projectId?: string;
   terminal?: string;
 }
 
@@ -55,7 +56,7 @@ export interface ModelUsageSummary extends TokenUsageSummary {
 
 export interface TokenFilterOptions {
   models: string[];
-  projects: string[];
+  projects: Array<{ id: string; name: string; label: string }>;
   terminals: string[];
 }
 
@@ -85,6 +86,25 @@ export interface ApiBudgetForecast {
   utilization: number;
   status: "disabled" | "on_track" | "warning" | "over";
   daysInMonth: number;
+}
+
+export interface PeriodUsageReport {
+  period: UsageReportPeriod;
+  start: string;
+  end: string;
+  generatedAt: string;
+  elapsedHours: number;
+  recordedHours: number;
+  unrecordedHours: number;
+  indexTruncated: boolean;
+  coverageStatus: "recorded" | "truncated" | "no_records";
+  scope: {
+    filtered: boolean;
+    modelFiltered: boolean;
+    projectFiltered: boolean;
+    terminalFiltered: boolean;
+  };
+  summary: TokenUsageSummary;
 }
 
 export function usageCoverageStart(report: CodexTokenUsageReport, fallback = new Date()): Date {
@@ -128,7 +148,7 @@ export function estimateBucketCost(bucket: CodexTokenUsageBucket): TokenCostBrea
 export function filterTokenBuckets(buckets: CodexTokenUsageBucket[], filters: TokenUsageFilters = {}): CodexTokenUsageBucket[] {
   return buckets.filter((bucket) => {
     if (filters.model && bucket.model !== filters.model) return false;
-    if (filters.project && bucket.project !== filters.project) return false;
+    if (filters.projectId && bucket.projectId !== filters.projectId) return false;
     if (filters.terminal && bucket.terminal !== filters.terminal) return false;
     return true;
   });
@@ -188,7 +208,7 @@ export function summarizeTokenBuckets(buckets: CodexTokenUsageBucket[]): TokenUs
     summary.requests += Math.max(0, bucket.requests);
     if (bucket.contextTier === "long") summary.longContextTokens += Math.max(0, bucket.totalTokens);
     models.add(bucket.model || "unknown");
-    projects.add(bucket.project || "Unknown");
+    projects.add(bucket.projectId);
     terminals.add(bucket.terminal || "Other");
     sessions.add(bucket.sessionKey || `${bucket.bucketStart}:${bucket.model}`);
     activeHours.add(bucket.bucketStart);
@@ -237,7 +257,7 @@ export function summarizeTokenReport(report: CodexTokenUsageReport, range: Usage
 export function buildModelBreakdown(report: CodexTokenUsageReport, range: UsageRange, now = new Date(), filters: TokenUsageFilters = {}): ModelUsageSummary[] {
   const bounds = usageRangeBounds(range, now, usageCoverageStart(report, now));
   const byModel = new Map<string, CodexTokenUsageBucket[]>();
-  for (const bucket of bucketsInWindow(report.buckets, bounds.start, bounds.end, { project: filters.project, terminal: filters.terminal })) {
+  for (const bucket of bucketsInWindow(report.buckets, bounds.start, bounds.end, { projectId: filters.projectId, terminal: filters.terminal })) {
     if (filters.model && bucket.model !== filters.model) continue;
     const list = byModel.get(bucket.model) ?? [];
     list.push(bucket);
@@ -253,9 +273,18 @@ export function buildModelBreakdown(report: CodexTokenUsageReport, range: UsageR
 export function buildTokenFilterOptions(report: CodexTokenUsageReport, range: UsageRange, now = new Date()): TokenFilterOptions {
   const bounds = usageRangeBounds(range, now, usageCoverageStart(report, now));
   const buckets = bucketsInWindow(report.buckets, bounds.start, bounds.end);
+  const projectsById = new Map<string, string>();
+  for (const bucket of buckets) projectsById.set(bucket.projectId, bucket.project || "Unknown");
+  const nameCounts = new Map<string, number>();
+  for (const name of projectsById.values()) nameCounts.set(name, (nameCounts.get(name) ?? 0) + 1);
+  const projects = [...projectsById.entries()].map(([id, name]) => ({
+    id,
+    name,
+    label: (nameCounts.get(name) ?? 0) > 1 && id !== "unknown" ? `${name} · ${id.slice(-6)}` : name,
+  })).sort((left, right) => left.label.localeCompare(right.label) || left.id.localeCompare(right.id));
   return {
     models: [...new Set(buckets.map((bucket) => bucket.model).filter(Boolean))].sort(),
-    projects: [...new Set(buckets.map((bucket) => bucket.project || "Unknown"))].sort(),
+    projects,
     terminals: [...new Set(buckets.map((bucket) => bucket.terminal || "Other"))].sort(),
   };
 }
@@ -263,6 +292,45 @@ export function buildTokenFilterOptions(report: CodexTokenUsageReport, range: Us
 export function summarizeCurrentMonthTokenUsage(report: CodexTokenUsageReport, now = new Date(), filters: TokenUsageFilters = {}): TokenUsageSummary {
   const start = new Date(now.getFullYear(), now.getMonth(), 1);
   return summarizeTokenBuckets(bucketsInWindow(report.buckets, start, now, filters));
+}
+
+export function buildCurrentPeriodUsageReport(
+  report: CodexTokenUsageReport,
+  period: UsageReportPeriod,
+  now = new Date(),
+  filters: TokenUsageFilters = {},
+): PeriodUsageReport {
+  const start = period === "month"
+    ? new Date(now.getFullYear(), now.getMonth(), 1)
+    : new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7));
+  const end = new Date(now);
+  const selectedBuckets = bucketsInWindow(report.buckets, start, end, filters);
+  const summary = summarizeTokenBuckets(selectedBuckets);
+  const elapsedHours = Math.max(0, Math.ceil((end.getTime() - start.getTime()) / 3_600_000));
+  const recordedHours = new Set(selectedBuckets.map((bucket) => Math.floor(Date.parse(bucket.bucketStart) / 3_600_000))).size;
+  const unrecordedHours = Math.max(0, elapsedHours - recordedHours);
+  const coverageStatus = report.truncated
+    ? "truncated"
+    : recordedHours > 0 ? "recorded" : "no_records";
+  const scope = {
+    filtered: Boolean(filters.model || filters.projectId || filters.terminal),
+    modelFiltered: Boolean(filters.model),
+    projectFiltered: Boolean(filters.projectId),
+    terminalFiltered: Boolean(filters.terminal),
+  };
+  return {
+    period,
+    start: start.toISOString(),
+    end: end.toISOString(),
+    generatedAt: now.toISOString(),
+    elapsedHours,
+    recordedHours,
+    unrecordedHours,
+    indexTruncated: report.truncated,
+    coverageStatus,
+    scope,
+    summary,
+  };
 }
 
 export function buildApiBudgetForecast(summary: TokenUsageSummary, range: UsageRange, budgetUsd: number, now = new Date(), coverageStart = now, currentMonthUsd = summary.cost.totalUsd): ApiBudgetForecast {

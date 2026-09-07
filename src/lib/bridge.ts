@@ -1,4 +1,4 @@
-import type { AppDiagnostics, BarPlacement, CockpitRegion, CodexTokenUsageReport, CompactLayout, FocusPanelHistory, ProviderId, ProviderSnapshot, ResetForecast, RuntimeState, SnapshotCacheRead, VolcengineDiagnostics, WidgetPreferences } from "../types";
+import type { AppDiagnostics, BarPlacement, CockpitRegion, CodexTokenUsageReport, CompactLayout, FocusPanelHistory, ProviderId, ProviderSnapshot, ResetForecast, RuntimeState, SnapshotCacheRead, SnapshotRefreshProgress, VolcengineDiagnostics, WidgetPreferences } from "../types";
 import { EMPTY_RUNTIME_STATE, normalizeRuntimeState } from "./activity";
 import { DEFAULT_WIDGET_PREFERENCES } from "./preferences";
 
@@ -104,6 +104,7 @@ function mockCodexTokenUsage(): CodexTokenUsageReport {
       model: index < 90 ? "gpt-5.4" : index < 180 ? "gpt-5.5" : "gpt-5.6-sol",
       contextTier: index % 11 === 0 ? "long" as const : "short" as const,
       project: ["quota-float", "atlas", "research-lab"][index % 3],
+      projectId: ["p-mock-quota-float", "p-mock-atlas", "p-mock-research-lab"][index % 3],
       terminal: ["Desktop", "CLI", "VS Code"][index % 3],
       sessionKey: `s-mock-${index % 24}`,
       inputTokens,
@@ -150,11 +151,63 @@ function enqueueDataWrite(operation: () => Promise<void>): Promise<void> {
 export const isTauri = () => "__TAURI_INTERNALS__" in window;
 export const usesSyntheticData = () => !isTauri() || import.meta.env.VITE_WDIO === "1";
 
+let snapshotRefreshSequence = 0;
+
+export function createSnapshotRefreshRequestId(): string {
+  snapshotRefreshSequence += 1;
+  return `refresh-${Date.now().toString(36)}-${snapshotRefreshSequence.toString(36)}`;
+}
+
+export async function fetchSnapshotsProgressively(
+  requestId: string,
+  providerIds: ProviderSnapshot["provider"][] | undefined,
+  onProgress: (progress: SnapshotRefreshProgress) => void,
+): Promise<ProviderSnapshot[]> {
+  if (usesSyntheticData()) {
+    const requestedProviderIds = providerIds ?? mockSnapshots.map((snapshot) => snapshot.provider);
+    const values = mockSnapshots.filter((snapshot) => requestedProviderIds.includes(snapshot.provider));
+    for (const providerId of requestedProviderIds) {
+      await Promise.resolve();
+      onProgress({
+        requestId,
+        requestedProviderIds,
+        providerId,
+        snapshots: values.filter((snapshot) => snapshot.provider === providerId),
+      });
+    }
+    return values;
+  }
+  const [{ invoke }, { listen }] = await Promise.all([
+    import("@tauri-apps/api/core"),
+    import("@tauri-apps/api/event"),
+  ]);
+  const requested = new Set(providerIds);
+  const received = new Set<ProviderSnapshot["provider"]>();
+  const unlisten = await listen<SnapshotRefreshProgress>("snapshot-refresh-progress", (event) => {
+    const progress = event.payload;
+    const targetMatches = providerIds === undefined
+      || progress.requestedProviderIds.length === requested.size
+        && progress.requestedProviderIds.every((provider) => requested.has(provider));
+    if (progress.requestId !== requestId
+      || !targetMatches
+      || providerIds !== undefined && !requested.has(progress.providerId)
+      || received.has(progress.providerId)
+      || progress.snapshots.some((snapshot) => snapshot.provider !== progress.providerId)) return;
+    received.add(progress.providerId);
+    onProgress(progress);
+  });
+  try {
+    return await invoke<ProviderSnapshot[]>("refresh_snapshots", { requestId, providerIds });
+  } finally {
+    unlisten();
+  }
+}
+
 export async function fetchSnapshots(force = false, providerIds?: ProviderSnapshot["provider"][]): Promise<ProviderSnapshot[]> {
   if (usesSyntheticData()) return providerIds ? mockSnapshots.filter((snapshot) => providerIds.includes(snapshot.provider)) : mockSnapshots;
   const { invoke } = await import("@tauri-apps/api/core");
-  if (providerIds) return invoke<ProviderSnapshot[]>("refresh_snapshots", { providerIds });
-  return invoke<ProviderSnapshot[]>(force ? "refresh_snapshots" : "get_snapshots");
+  if (providerIds || force) return fetchSnapshotsProgressively(createSnapshotRefreshRequestId(), providerIds, () => undefined);
+  return invoke<ProviderSnapshot[]>("get_snapshots");
 }
 
 export async function readCachedSnapshots(providerIds?: ProviderSnapshot["provider"][]): Promise<SnapshotCacheRead> {

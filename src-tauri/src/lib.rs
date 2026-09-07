@@ -231,6 +231,15 @@ struct SnapshotCacheRead {
     oldest_age_seconds: Option<u64>,
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SnapshotRefreshProgress {
+    request_id: String,
+    requested_provider_ids: Vec<String>,
+    provider_id: String,
+    snapshots: Vec<ProviderSnapshot>,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct AppDiagnostics {
@@ -277,29 +286,52 @@ async fn collect_snapshots(
 
 async fn fetch_snapshots_uncached(
     state: &State<'_, AppState>,
+    app: &AppHandle,
+    request_id: &str,
     provider_ids: Option<&[String]>,
 ) -> Vec<ProviderSnapshot> {
     let _guard = state.fetch_lock.lock().await;
-    let values = collect_snapshots(&state.client, provider_ids).await;
-    if let Ok(mut cache) = state.snapshot_cache.lock() {
-        let refreshed_providers = provider_ids.map_or_else(
-            || {
-                provider_registry::PROVIDERS
-                    .iter()
-                    .map(|provider| provider.id.to_string())
-                    .collect::<Vec<_>>()
-            },
-            <[String]>::to_vec,
-        );
-        merge_snapshot_cache(
-            &mut cache,
-            values.clone(),
-            &refreshed_providers,
-            Instant::now(),
-            provider_ids.is_none(),
-        );
+    let requested_provider_ids = provider_registry::normalized_provider_ids(provider_ids);
+    let values = provider_registry::collect_progressive(
+        &state.client,
+        provider_ids,
+        |provider, snapshots| {
+            if let Ok(mut cache) = state.snapshot_cache.lock() {
+                merge_snapshot_cache(
+                    &mut cache,
+                    snapshots.to_vec(),
+                    &[provider.id.to_string()],
+                    Instant::now(),
+                    false,
+                );
+            }
+            let snapshots = apply_short_window_test_override(state.inner(), snapshots.to_vec());
+            let _ = app.emit_to(
+                "widget",
+                "snapshot-refresh-progress",
+                SnapshotRefreshProgress {
+                    request_id: request_id.to_string(),
+                    requested_provider_ids: requested_provider_ids.clone(),
+                    provider_id: provider.id.to_string(),
+                    snapshots,
+                },
+            );
+        },
+    )
+    .await;
+    if provider_ids.is_none() {
+        if let Ok(mut cache) = state.snapshot_cache.lock() {
+            cache.last_full_refresh = Some(Instant::now());
+        }
     }
     apply_short_window_test_override(state.inner(), values)
+}
+
+fn valid_snapshot_request_id(request_id: &str) -> bool {
+    (1..=64).contains(&request_id.len())
+        && request_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
 }
 
 fn snapshot_has_last_known_good(snapshot: &ProviderSnapshot) -> bool {
@@ -714,10 +746,15 @@ fn get_cached_snapshots(
 
 #[tauri::command]
 async fn refresh_snapshots(
+    request_id: String,
     provider_ids: Option<Vec<String>>,
+    app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Vec<ProviderSnapshot>, String> {
-    Ok(fetch_snapshots_uncached(&state, provider_ids.as_deref()).await)
+    if !valid_snapshot_request_id(&request_id) {
+        return Err("invalid snapshot refresh request".to_string());
+    }
+    Ok(fetch_snapshots_uncached(&state, &app, &request_id, provider_ids.as_deref()).await)
 }
 
 #[tauri::command]
@@ -1452,6 +1489,15 @@ mod snapshot_cache_tests {
             status: "ok".into(),
             message: None,
         }
+    }
+
+    #[test]
+    fn progressive_refresh_request_ids_are_bounded_and_non_sensitive() {
+        assert!(valid_snapshot_request_id("refresh-mkl5-42"));
+        assert!(!valid_snapshot_request_id(""));
+        assert!(!valid_snapshot_request_id("contains token"));
+        assert!(!valid_snapshot_request_id("../refresh"));
+        assert!(!valid_snapshot_request_id(&"x".repeat(65)));
     }
 
     #[test]

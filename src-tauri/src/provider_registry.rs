@@ -3,9 +3,9 @@ use crate::{
     models::{ProviderSnapshot, UsageWindow},
     qoder, trae, volcengine, workbuddy,
 };
-use futures_util::future::join_all;
+use futures_util::{stream::FuturesUnordered, StreamExt};
 use reqwest::Client;
-use std::time::Duration;
+use std::{future::Future, pin::Pin, time::Duration};
 
 const RETRYABLE_STATUSES: [&str; 3] = ["unavailable", "stale", "loading"];
 const VALID_STATUSES: [&str; 5] = ["ok", "stale", "loading", "unavailable", "signed_out"];
@@ -244,18 +244,6 @@ fn batch_is_retryable(values: &[ProviderSnapshot]) -> bool {
         .any(|snapshot| RETRYABLE_STATUSES.contains(&snapshot.status.as_str()))
 }
 
-async fn fetch_selected(
-    client: &Client,
-    providers: impl IntoIterator<Item = ProviderDescriptor>,
-) -> Vec<(ProviderKind, Vec<ProviderSnapshot>)> {
-    join_all(
-        providers
-            .into_iter()
-            .map(|provider| async move { (provider.kind, provider.fetch(client).await) }),
-    )
-    .await
-}
-
 fn selected_providers(provider_ids: &[String]) -> Vec<ProviderDescriptor> {
     PROVIDERS
         .iter()
@@ -264,30 +252,40 @@ fn selected_providers(provider_ids: &[String]) -> Vec<ProviderDescriptor> {
         .collect()
 }
 
-async fn collect_providers(
-    client: &Client,
-    providers: Vec<ProviderDescriptor>,
-) -> Vec<ProviderSnapshot> {
-    let mut batches = fetch_selected(client, providers.iter().copied()).await;
+type ProviderFuture<'a> =
+    Pin<Box<dyn Future<Output = (ProviderDescriptor, Vec<ProviderSnapshot>)> + Send + 'a>>;
 
+async fn fetch_provider_with_retries(
+    client: &Client,
+    provider: ProviderDescriptor,
+) -> Vec<ProviderSnapshot> {
+    let mut values = provider.fetch(client).await;
+    if !provider.supports_same_cycle_retry() {
+        return values;
+    }
     for delay in [400_u64, 1_200_u64] {
-        let retry = batches
-            .iter()
-            .filter(|(_, values)| batch_is_retryable(values))
-            .filter_map(|(kind, _)| providers.iter().find(|provider| provider.kind == *kind))
-            .filter(|provider| provider.supports_same_cycle_retry())
-            .copied()
-            .collect::<Vec<_>>();
-        if retry.is_empty() {
+        if !batch_is_retryable(&values) {
             break;
         }
-
         tokio::time::sleep(Duration::from_millis(delay)).await;
-        for (kind, values) in fetch_selected(client, retry).await {
-            if let Some((_, current)) = batches.iter_mut().find(|(current, _)| *current == kind) {
-                *current = values;
-            }
-        }
+        values = provider.fetch(client).await;
+    }
+    values
+}
+
+async fn collect_provider_futures<F>(
+    providers: &[ProviderDescriptor],
+    futures: Vec<ProviderFuture<'_>>,
+    mut on_provider: F,
+) -> Vec<ProviderSnapshot>
+where
+    F: FnMut(ProviderDescriptor, &[ProviderSnapshot]),
+{
+    let mut pending = futures.into_iter().collect::<FuturesUnordered<_>>();
+    let mut batches = Vec::with_capacity(providers.len());
+    while let Some((provider, values)) = pending.next().await {
+        on_provider(provider, &values);
+        batches.push((provider.kind, values));
     }
 
     providers
@@ -302,12 +300,53 @@ async fn collect_providers(
         .collect()
 }
 
+async fn collect_providers<F>(
+    client: &Client,
+    providers: Vec<ProviderDescriptor>,
+    on_provider: F,
+) -> Vec<ProviderSnapshot>
+where
+    F: FnMut(ProviderDescriptor, &[ProviderSnapshot]),
+{
+    let futures = providers
+        .iter()
+        .copied()
+        .map(|provider| {
+            Box::pin(async move {
+                let values = fetch_provider_with_retries(client, provider).await;
+                (provider, values)
+            }) as ProviderFuture<'_>
+        })
+        .collect();
+    collect_provider_futures(&providers, futures, on_provider).await
+}
+
 pub async fn collect(client: &Client) -> Vec<ProviderSnapshot> {
-    collect_providers(client, PROVIDERS.to_vec()).await
+    collect_providers(client, PROVIDERS.to_vec(), |_, _| {}).await
 }
 
 pub async fn collect_selected(client: &Client, provider_ids: &[String]) -> Vec<ProviderSnapshot> {
-    collect_providers(client, selected_providers(provider_ids)).await
+    collect_providers(client, selected_providers(provider_ids), |_, _| {}).await
+}
+
+pub async fn collect_progressive<F>(
+    client: &Client,
+    provider_ids: Option<&[String]>,
+    on_provider: F,
+) -> Vec<ProviderSnapshot>
+where
+    F: FnMut(ProviderDescriptor, &[ProviderSnapshot]),
+{
+    let providers = provider_ids.map_or_else(|| PROVIDERS.to_vec(), selected_providers);
+    collect_providers(client, providers, on_provider).await
+}
+
+pub fn normalized_provider_ids(provider_ids: Option<&[String]>) -> Vec<String> {
+    provider_ids
+        .map_or_else(|| PROVIDERS.to_vec(), selected_providers)
+        .into_iter()
+        .map(|provider| provider.id.to_string())
+        .collect()
 }
 
 #[cfg(test)]
@@ -404,6 +443,35 @@ mod tests {
                 .map(|provider| provider.id)
                 .collect::<Vec<_>>(),
             vec!["codex", "antigravity"]
+        );
+    }
+
+    #[tokio::test]
+    async fn progressive_completion_is_early_while_final_results_keep_registry_order() {
+        let codex = PROVIDERS[0];
+        let qoder = PROVIDERS[2];
+        let providers = vec![codex, qoder];
+        let futures: Vec<ProviderFuture<'static>> = vec![
+            Box::pin(async move {
+                tokio::time::sleep(Duration::from_millis(25)).await;
+                (codex, vec![snapshot("codex", "ok")])
+            }),
+            Box::pin(async move { (qoder, vec![snapshot("qoder", "ok")]) }),
+        ];
+        let mut completion_order = Vec::new();
+
+        let values = collect_provider_futures(&providers, futures, |provider, _| {
+            completion_order.push(provider.id.to_string());
+        })
+        .await;
+
+        assert_eq!(completion_order, ["qoder", "codex"]);
+        assert_eq!(
+            values
+                .iter()
+                .map(|snapshot| snapshot.provider.as_str())
+                .collect::<Vec<_>>(),
+            ["codex", "qoder"]
         );
     }
 

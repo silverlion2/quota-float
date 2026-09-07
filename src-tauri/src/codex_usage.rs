@@ -17,7 +17,7 @@ const MAX_SCAN_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const MAX_INDEX_BYTES: u64 = 128 * 1024 * 1024;
 const MAX_METADATA_LINE_BYTES: usize = 64 * 1024;
 const LONG_CONTEXT_THRESHOLD: u64 = 272_000;
-const INDEX_SCHEMA_VERSION: u8 = 3;
+const INDEX_SCHEMA_VERSION: u8 = 4;
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -26,6 +26,7 @@ pub struct CodexTokenUsageBucket {
     pub model: String,
     pub context_tier: String,
     pub project: String,
+    pub project_id: String,
     pub terminal: String,
     pub session_key: String,
     pub input_tokens: u64,
@@ -103,6 +104,7 @@ struct MetadataRecord {
 struct SessionContext {
     model: String,
     project: String,
+    project_id: String,
     terminal: String,
     session_key: String,
 }
@@ -135,7 +137,7 @@ struct BucketAccumulator {
     requests: u64,
 }
 
-type BucketKey = (String, String, String, String, String, String);
+type BucketKey = (String, String, String, String, String, String, String);
 
 struct BoundedLine {
     retained: bool,
@@ -242,18 +244,73 @@ fn read_bounded_line<R: BufRead>(
     }
 }
 
-fn safe_project(cwd: &str) -> String {
-    let normalized = cwd.trim().trim_end_matches(['/', '\\']);
-    let candidate = Path::new(normalized)
-        .file_name()
-        .and_then(|value| value.to_str())
+fn normalized_project_path(cwd: &str) -> Option<String> {
+    let value = cwd.trim();
+    if value.is_empty() || value.chars().any(char::is_control) {
+        return None;
+    }
+    let unc_path = value.starts_with("\\\\") || value.starts_with("//");
+    let windows_like = value.starts_with('\\')
+        || unc_path
+        || value.as_bytes().get(1) == Some(&b':')
+        || value.contains('\\');
+    let mut normalized = String::with_capacity(value.len());
+    let mut previous_separator = false;
+    for character in value.chars() {
+        let character = if character == '\\' { '/' } else { character };
+        if character == '/' {
+            if !previous_separator {
+                normalized.push(character);
+            }
+            previous_separator = true;
+        } else {
+            normalized.push(character);
+            previous_separator = false;
+        }
+    }
+    while normalized.len() > 1 && normalized.ends_with('/') {
+        normalized.pop();
+    }
+    if unc_path && normalized.starts_with('/') {
+        normalized.insert(0, '/');
+    }
+    if windows_like {
+        normalized = normalized.to_lowercase();
+    }
+    (!normalized.is_empty()).then_some(normalized)
+}
+
+fn safe_project_identity(cwd: &str) -> (String, String) {
+    let Some(normalized) = normalized_project_path(cwd) else {
+        return ("Unknown".to_string(), "unknown".to_string());
+    };
+    let display_path = cwd.trim().replace('\\', "/");
+    let candidate = display_path
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
         .unwrap_or("")
         .trim();
-    if candidate.is_empty() || candidate.len() > 80 || candidate.chars().any(char::is_control) {
+    let project = if candidate.is_empty()
+        || candidate.len() > 80
+        || candidate.chars().any(char::is_control)
+    {
         "Unknown".to_string()
     } else {
         candidate.to_string()
-    }
+    };
+    let mut hasher = Sha256::new();
+    hasher.update(b"quota-float:local-project:v1\0");
+    hasher.update(normalized.as_bytes());
+    let digest = hasher.finalize();
+    let project_id = format!(
+        "p-{}",
+        digest[..16]
+            .iter()
+            .map(|value| format!("{value:02x}"))
+            .collect::<String>()
+    );
+    (project, project_id)
 }
 
 fn safe_terminal(source: Option<&str>, originator: Option<&str>) -> String {
@@ -309,7 +366,7 @@ fn add_record(
     };
     if record.kind == "session_meta" {
         if let Some(cwd) = record.payload.cwd.as_deref() {
-            context.project = safe_project(cwd);
+            (context.project, context.project_id) = safe_project_identity(cwd);
         }
         context.terminal = safe_terminal(
             record.payload.source.as_deref(),
@@ -326,7 +383,7 @@ fn add_record(
             context.model = model;
         }
         if let Some(cwd) = record.payload.cwd.as_deref() {
-            context.project = safe_project(cwd);
+            (context.project, context.project_id) = safe_project_identity(cwd);
         }
         return false;
     }
@@ -372,6 +429,11 @@ fn add_record(
         } else {
             context.project.clone()
         },
+        if context.project_id.is_empty() {
+            "unknown".to_string()
+        } else {
+            context.project_id.clone()
+        },
         if context.terminal.is_empty() {
             "Other".to_string()
         } else {
@@ -408,6 +470,7 @@ fn bucket_key(bucket: &CodexTokenUsageBucket) -> BucketKey {
         bucket.model.clone(),
         bucket.context_tier.clone(),
         bucket.project.clone(),
+        bucket.project_id.clone(),
         bucket.terminal.clone(),
         bucket.session_key.clone(),
     )
@@ -440,12 +503,16 @@ fn buckets_from_accumulators(
     buckets
         .into_iter()
         .map(
-            |((bucket_start, model, context_tier, project, terminal, session_key), value)| {
+            |(
+                (bucket_start, model, context_tier, project, project_id, terminal, session_key),
+                value,
+            )| {
                 CodexTokenUsageBucket {
                     bucket_start,
                     model,
                     context_tier,
                     project,
+                    project_id,
                     terminal,
                     session_key,
                     input_tokens: value.input_tokens,
@@ -764,16 +831,46 @@ mod tests {
         assert!(!add_record(br#"{"timestamp":"2026-08-16T02:00:00Z","type":"session_meta","payload":{"cwd":"C:/work/quiet-project","source":"vscode","instructions":"not retained"}}"#, cutoff, &mut context, &mut buckets));
         assert!(!add_record(br#"{"timestamp":"2026-08-16T02:03:00Z","type":"turn_context","payload":{"model":"gpt-5.6-sol","cwd":"C:/work/quiet-project"}}"#, cutoff, &mut context, &mut buckets));
         assert!(add_record(br#"{"timestamp":"2026-08-16T02:12:00Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":300000,"cached_input_tokens":250000,"cache_write_input_tokens":1000,"output_tokens":900,"reasoning_output_tokens":400,"total_tokens":300900}}}}"#, cutoff, &mut context, &mut buckets));
-        let ((bucket_start, model, tier, project, terminal, session), bucket) =
+        let ((bucket_start, model, tier, project, project_id, terminal, session), bucket) =
             buckets.into_iter().next().unwrap();
         assert_eq!(bucket_start, "2026-08-16T02:00:00+00:00");
         assert_eq!(model, "gpt-5.6-sol");
         assert_eq!(tier, "long");
         assert_eq!(project, "quiet-project");
+        assert!(project_id.starts_with("p-"));
+        assert!(!project_id.contains("work"));
         assert_eq!(terminal, "VS Code");
         assert_eq!(session, "s-test");
         assert_eq!(bucket.total_tokens, 300_900);
         assert_eq!(bucket.requests, 1);
+    }
+
+    #[test]
+    fn project_identity_normalizes_windows_paths_and_separates_same_names() {
+        let (first_name, first_id) = safe_project_identity(r"C:\\Work\\Alpha\\quota-float\\");
+        let (same_name, same_id) = safe_project_identity("c:/work/alpha/quota-float");
+        let (other_name, other_id) = safe_project_identity("D:/clients/beta/quota-float");
+
+        assert_eq!(first_name, "quota-float");
+        assert_eq!(same_name, "quota-float");
+        assert_eq!(other_name, "quota-float");
+        assert_eq!(first_id, same_id);
+        assert_ne!(first_id, other_id);
+        assert_eq!(first_id.len(), 34);
+
+        let (_, unc_id) = safe_project_identity(r"\\Server\Share\quota-float");
+        let (_, unc_same_id) = safe_project_identity("//server/share/quota-float");
+        let (_, rooted_id) = safe_project_identity("/server/share/quota-float");
+        assert_eq!(unc_id, unc_same_id);
+        assert_ne!(unc_id, rooted_id);
+    }
+
+    #[test]
+    fn project_identity_preserves_posix_case() {
+        let (_, upper_id) = safe_project_identity("/srv/Team/Project");
+        let (_, lower_id) = safe_project_identity("/srv/team/project");
+
+        assert_ne!(upper_id, lower_id);
     }
 
     #[test]
@@ -824,6 +921,7 @@ mod tests {
         assert_eq!(first.matched_events, 1);
         let persisted = fs::read_to_string(&cache).unwrap();
         assert!(!persisted.contains("session.jsonl"));
+        assert!(!persisted.contains("C:/work/project"));
 
         let reused = collect_from(&sessions, &cache, false).unwrap();
         assert_eq!(reused.scanned_files, 0);
@@ -882,6 +980,25 @@ mod tests {
         fs::write(cache.with_extension("json.bak"), br#"{"schemaVersion":3}"#).unwrap();
 
         let (index, status) = load_index_with_limit(&cache, false, 8);
+
+        assert_eq!(status, "rebuilt");
+        assert_eq!(index.schema_version, INDEX_SCHEMA_VERSION);
+        assert!(index.files.is_empty());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rebuilds_legacy_index_instead_of_guessing_project_identity() {
+        let stamp = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = env::temp_dir().join(format!("quota-float-legacy-usage-{stamp}"));
+        fs::create_dir_all(&root).unwrap();
+        let cache = root.join("usage-index.json");
+        fs::write(&cache, br#"{"schemaVersion":3,"files":{}}"#).unwrap();
+
+        let (index, status) = load_index(&cache, false);
 
         assert_eq!(status, "rebuilt");
         assert_eq!(index.schema_version, INDEX_SCHEMA_VERSION);

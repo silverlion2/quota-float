@@ -27,7 +27,7 @@ Completed on 2026-08-29:
 
 - Add Windows Authenticode and macOS Developer ID/notarization when project-owned certificates and release authorization are available.
 - Evaluate additional providers only after documenting their official/local read-only source, credential boundary, failure isolation and fixture strategy.
-- Consider opt-in local aggregate reports or additional quota forecasts only if they remain prompt-free, credential-free and clearly distinguish provider data from estimates.
+- Local on-demand week/month aggregate reports are implemented with filter scope and coverage labels. Additional forecasts still require source-backed semantics that distinguish provider data from estimates.
 - Revisit a Bottom Bar only through a separate interaction/design proposal; it is deliberately excluded from the current placement model.
 
 Evidence: `KNOWN-LIMITATIONS.md`, the release checklist and competitive study identify signing and provider breadth as opportunities, but privacy and transparent failure behavior remain higher-priority constraints.

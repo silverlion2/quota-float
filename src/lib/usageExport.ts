@@ -7,6 +7,7 @@ import {
   usageRangeBounds,
   type ApiBudgetForecast,
   type ModelUsageSummary,
+  type PeriodUsageReport,
   type TokenUsageFilters,
   type TokenUsageSummary,
   type UsageRange,
@@ -28,18 +29,18 @@ interface ExportRow {
   apiEquivalentUsd: number | null;
 }
 
-function projectAliases(projects: string[]): Map<string, string> {
-  const known = [...new Set(projects.filter((project) => project && project !== "Unknown"))].sort();
-  return new Map([...[...known].map((project, index) => [project, `Project ${index + 1}`] as const), ["Unknown", "Unknown"]]);
+function projectAliases(projectIds: string[]): Map<string, string> {
+  const known = [...new Set(projectIds.filter((projectId) => projectId && projectId !== "unknown"))].sort();
+  return new Map([...[...known].map((projectId, index) => [projectId, `Project ${index + 1}`] as const), ["unknown", "Unknown"]]);
 }
 
 function exportRows(report: CodexTokenUsageReport, range: UsageRange, filters: TokenUsageFilters, now: Date): ExportRow[] {
   const bounds = usageRangeBounds(range, now, usageCoverageStart(report, now));
   const buckets = bucketsInWindow(report.buckets, bounds.start, bounds.end, filters);
-  const aliases = projectAliases(buckets.map((bucket) => bucket.project));
+  const aliases = projectAliases(buckets.map((bucket) => bucket.projectId));
   const rows = new Map<string, ExportRow>();
   for (const bucket of buckets) {
-    const project = aliases.get(bucket.project || "Unknown") ?? "Unknown";
+    const project = aliases.get(bucket.projectId) ?? "Unknown";
     const key = [bucket.bucketStart, bucket.model, bucket.contextTier, project, bucket.terminal].join("\u0000");
     const row = rows.get(key) ?? {
       bucketStart: bucket.bucketStart,
@@ -101,6 +102,37 @@ export function buildUsageJson(report: CodexTokenUsageReport, range: UsageRange,
     },
     privacy: "Project names are replaced with local aliases; session identifiers and prompt/response content are excluded.",
     rows: exportRows(report, range, filters, now),
+  }, null, 2);
+}
+
+export function buildPeriodUsageJson(report: PeriodUsageReport): string {
+  return JSON.stringify({
+    schemaVersion: 1,
+    reportType: `${report.period}ly_usage_summary`,
+    period: {
+      start: report.start,
+      end: report.end,
+      generatedAt: report.generatedAt,
+    },
+    scope: report.scope,
+    coverage: {
+      status: report.coverageStatus,
+      elapsedHours: report.elapsedHours,
+      recordedHours: report.recordedHours,
+      unrecordedHours: report.unrecordedHours,
+      indexTruncated: report.indexTruncated,
+      note: "A record-free hour may be idle or uncollected. It is not labeled missing and is not treated as zero usage; only indexTruncated is known incomplete evidence.",
+    },
+    pricing: {
+      version: OPENAI_PRICING_CATALOG.version,
+      verifiedAt: OPENAI_PRICING_CATALOG.verifiedAt,
+      pricingTier: OPENAI_PRICING_CATALOG.pricingTier,
+      source: OPENAI_PRICING_CATALOG.source,
+      disclaimer: "API-equivalent estimate, not a Codex subscription bill.",
+    },
+    privacy: "Aggregated local summary only; raw paths, project IDs, project names, session identifiers, prompts, and responses are excluded.",
+    apiEquivalentUsd: report.summary.cost.totalUsd,
+    summary: report.summary,
   }, null, 2);
 }
 

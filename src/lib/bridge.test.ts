@@ -2,8 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EMPTY_RUNTIME_STATE } from "./activity";
 import {
   applyAppData,
+  createSnapshotRefreshRequestId,
   fetchCodexResetForecast,
   fetchSnapshots,
+  fetchSnapshotsProgressively,
   fetchCodexTokenUsage,
   getVolcengineDiagnostics,
   listenDesktopEvents,
@@ -22,7 +24,7 @@ import { DEFAULT_WIDGET_PREFERENCES } from "./preferences";
 
 const api = vi.hoisted(() => ({
   calls: [] as string[],
-  invoke: vi.fn(async (command: string): Promise<unknown> => {
+  invoke: vi.fn(async (command: string, _args?: unknown): Promise<unknown> => {
     api.calls.push(`start:${command}`);
     await Promise.resolve();
     api.calls.push(`end:${command}`);
@@ -149,8 +151,54 @@ describe("widget transitions", () => {
   });
 
   it("passes targeted provider refreshes to the native command", async () => {
+    const unlisten = vi.fn();
+    events.listen.mockResolvedValueOnce(unlisten);
     await fetchSnapshots(false, ["codex", "antigravity"]);
-    expect(api.invoke).toHaveBeenCalledWith("refresh_snapshots", { providerIds: ["codex", "antigravity"] });
+    expect(api.invoke).toHaveBeenCalledWith("refresh_snapshots", {
+      requestId: expect.stringMatching(/^refresh-[a-z0-9]+-[a-z0-9]+$/),
+      providerIds: ["codex", "antigravity"],
+    });
+    expect(unlisten).toHaveBeenCalledOnce();
+  });
+
+  it("delivers current provider results once and ignores stale or duplicate events", async () => {
+    let progressHandler: ((event: { payload: unknown }) => void) | null = null;
+    const unlisten = vi.fn();
+    events.listen.mockImplementationOnce(async (eventName: string, handler: (event: { payload: unknown }) => void) => {
+      expect(eventName).toBe("snapshot-refresh-progress");
+      progressHandler = handler;
+      return unlisten;
+    });
+    const snapshot = (provider: "codex" | "antigravity") => ({
+      provider,
+      displayName: provider.toUpperCase(),
+      plan: null,
+      shortWindow: null,
+      weeklyWindow: null,
+      resetCredits: null,
+      updatedAt: "2026-09-08T00:00:00Z",
+      status: "ok" as const,
+      message: null,
+    });
+    api.invoke.mockImplementationOnce(async (_command: string, args: unknown) => {
+      const requestId = (args as { requestId: string }).requestId;
+      const requestedProviderIds = ["codex", "antigravity"];
+      const emit = progressHandler as unknown as (event: { payload: unknown }) => void;
+      emit({ payload: { requestId: "stale-request", requestedProviderIds, providerId: "codex", snapshots: [snapshot("codex")] } });
+      emit({ payload: { requestId, requestedProviderIds, providerId: "codex", snapshots: [snapshot("codex")] } });
+      emit({ payload: { requestId, requestedProviderIds, providerId: "codex", snapshots: [snapshot("codex")] } });
+      emit({ payload: { requestId, requestedProviderIds, providerId: "antigravity", snapshots: [snapshot("antigravity")] } });
+      return [snapshot("codex"), snapshot("antigravity")];
+    });
+    const onProgress = vi.fn();
+    const requestId = createSnapshotRefreshRequestId();
+
+    const values = await fetchSnapshotsProgressively(requestId, ["codex", "antigravity"], onProgress);
+
+    expect(onProgress).toHaveBeenCalledTimes(2);
+    expect(onProgress.mock.calls.map(([progress]) => progress.providerId)).toEqual(["codex", "antigravity"]);
+    expect(values.map((value) => value.provider)).toEqual(["codex", "antigravity"]);
+    expect(unlisten).toHaveBeenCalledOnce();
   });
 
   it("reads detached-panel data only from the native snapshot cache", async () => {

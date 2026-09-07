@@ -46,6 +46,13 @@ export interface SnapshotCacheRead {
   oldestAgeSeconds: number | null;
 }
 
+export interface SnapshotRefreshProgress {
+  requestId: string;
+  requestedProviderIds: ProviderId[];
+  providerId: ProviderId;
+  snapshots: ProviderSnapshot[];
+}
+
 export interface ResetForecast {
   score: number;
   windowHours: number;
@@ -150,6 +157,7 @@ export interface CodexTokenUsageBucket {
   model: string;
   contextTier: TokenContextTier;
   project: string;
+  projectId: string;
   terminal: string;
   sessionKey: string;
   inputTokens: number;

@@ -1,4 +1,10 @@
-import type { ProviderSnapshot } from "../types";
+import type { ProviderId, ProviderSnapshot, SnapshotRefreshProgress } from "../types";
+
+export interface ProgressiveSnapshotState {
+  requestId: string;
+  receivedProviders: Set<ProviderId>;
+  finalized: boolean;
+}
 
 export function mergeSnapshots(
   current: ProviderSnapshot[],
@@ -20,4 +26,24 @@ export function mergeSnapshots(
   const incomingProviders = new Set(incoming.map((item) => item.provider));
   const untouched = current.filter((item) => !refreshed.has(item.provider) && !incomingProviders.has(item.provider));
   return [...untouched, ...resolvedIncoming];
+}
+
+export function finalizeSnapshotProgress(state: ProgressiveSnapshotState, activeRequestId: string | null): boolean {
+  if (activeRequestId !== state.requestId || state.finalized) return false;
+  state.finalized = true;
+  return true;
+}
+
+export function mergeSnapshotProgress(
+  state: ProgressiveSnapshotState,
+  activeRequestId: string | null,
+  current: ProviderSnapshot[],
+  progress: SnapshotRefreshProgress,
+): ProviderSnapshot[] | null {
+  if (activeRequestId !== state.requestId
+    || progress.requestId !== state.requestId
+    || state.finalized
+    || state.receivedProviders.has(progress.providerId)) return null;
+  state.receivedProviders.add(progress.providerId);
+  return mergeSnapshots(current, progress.snapshots, [progress.providerId]);
 }

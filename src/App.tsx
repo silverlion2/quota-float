@@ -3,7 +3,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { QuotaBar, QuotaBottleneckBar, QuotaCard, QuotaOrb } from "./components/QuotaCard";
 import { EMPTY_UPDATE_STATE } from "./components/UpdatePanel";
 import type { UpdateViewState } from "./components/UpdatePanel";
-import { applyAppData, createAutomaticBackup, exportAppData, fetchCodexResetForecast, fetchSnapshots, getAppDiagnostics, getAutostartEnabled, getPreferences, getRuntimeState, getVolcengineDiagnostics, importAppData, listenDesktopEvents, notifyFocusPanels, openExternalUrl, openFocusPanel, reconnectVolcengine, resizeWidgetToContent, restoreLatestBackup, sendDesktopNotification, setAlwaysOnTop, setAutostartEnabled, setWidgetExpanded, startDragging, updatePreferences, updateRuntimeState } from "./lib/bridge";
+import { applyAppData, createAutomaticBackup, createSnapshotRefreshRequestId, exportAppData, fetchCodexResetForecast, fetchSnapshotsProgressively, getAppDiagnostics, getAutostartEnabled, getPreferences, getRuntimeState, getVolcengineDiagnostics, importAppData, listenDesktopEvents, notifyFocusPanels, openExternalUrl, openFocusPanel, reconnectVolcengine, resizeWidgetToContent, restoreLatestBackup, sendDesktopNotification, setAlwaysOnTop, setAutostartEnabled, setWidgetExpanded, startDragging, updatePreferences, updateRuntimeState } from "./lib/bridge";
 import { appUpdateErrorMessage, cancelAppUpdateCheck, checkForAppUpdate, discardAppUpdate, downloadAppUpdate, installAppUpdate, openReleasePage, shouldInvalidateUpdateCheckOnChannelChange } from "./lib/appUpdate";
 import type { AppUpdateInfo } from "./lib/appUpdate";
 import { copy, nextLanguage, normalizeLanguage } from "./lib/i18n";
@@ -11,7 +11,7 @@ import { nextProviderIndex, normalizeProviderOrder } from "./lib/providers";
 import { detectRecentCodexReset, isRecentCodexReset } from "./lib/resetDetection";
 import type { RecentCodexReset } from "./lib/resetDetection";
 import { trackedQuotaWindows } from "./lib/quotaPace";
-import { mergeSnapshots } from "./lib/snapshots";
+import { finalizeSnapshotProgress, mergeSnapshotProgress, mergeSnapshots, type ProgressiveSnapshotState } from "./lib/snapshots";
 import { canSendNotification, EMPTY_RUNTIME_STATE, isQuietHour, normalizeRuntimeState, normalizeRuntimeStateWithDiagnostics, recordSnapshotActivity, runtimeStatesEqual } from "./lib/activity";
 import { DEFAULT_WIDGET_PREFERENCES, normalizeWidgetPreferences } from "./lib/preferences";
 import { formatBackupRestoreNotice } from "./lib/importDiagnostics";
@@ -66,6 +66,7 @@ export default function App() {
   const updateSequence = useRef(0);
   const updateChannelRef = useRef(preferences.updateChannel);
   const refreshFlight = useRef<SingleFlightState<void>>({ current: null });
+  const activeSnapshotRequest = useRef<string | null>(null);
   const runtimeStateRef = useRef<RuntimeState>(EMPTY_RUNTIME_STATE);
   const preferencesRef = useRef<WidgetPreferences>(DEFAULT_PREFS);
   const confirmedPreferencesRef = useRef<WidgetPreferences>(DEFAULT_PREFS);
@@ -176,6 +177,10 @@ export default function App() {
       ? monitored
       : providersDueForRefresh(snapshotsRef.current, monitored, providerAttempts.current, preferenceSnapshot.resourceMode);
     if (providerIds.length === 0) return;
+    const snapshotsBeforeRefresh = snapshotsRef.current;
+    const requestId = createSnapshotRefreshRequestId();
+    const progressState: ProgressiveSnapshotState = { requestId, receivedProviders: new Set(), finalized: false };
+    activeSnapshotRequest.current = requestId;
     const attemptedAt = Date.now();
     for (const provider of providerIds) providerAttempts.current[provider] = attemptedAt;
     if (providerIds.includes("codex")) {
@@ -185,7 +190,14 @@ export default function App() {
       });
     }
     try {
-      const values = await fetchSnapshots(true, providerIds);
+      const values = await fetchSnapshotsProgressively(requestId, providerIds, (progress) => {
+        const merged = mergeSnapshotProgress(progressState, activeSnapshotRequest.current, snapshotsRef.current, progress);
+        if (!merged) return;
+        snapshotsRef.current = merged;
+        setSnapshots(merged);
+      });
+      if (!finalizeSnapshotProgress(progressState, activeSnapshotRequest.current)) return;
+      // Progressive events update view state only. History, reset detection, and notifications run once below.
       for (const item of values) {
         const percentWindows = trackedQuotaWindows(item);
         const nextMetric = percentWindows.length > 0
@@ -208,10 +220,10 @@ export default function App() {
       let detectedReset: RecentCodexReset | null = null;
       const nextCodex = values.find((item) => item.provider === "codex");
       if (nextCodex) {
-        detectedReset = detectRecentCodexReset(nextCodex, snapshotsRef.current.find((item) => item.provider === "codex") ?? null, now);
+        detectedReset = detectRecentCodexReset(nextCodex, snapshotsBeforeRefresh.find((item) => item.provider === "codex") ?? null, now);
         setRecentCodexReset((current) => detectedReset ?? (isRecentCodexReset(current, now) ? current : null));
       }
-      const activity = recordSnapshotActivity(runtimeStateRef.current, snapshotsRef.current, values, detectedReset, preferencesRef.current.alertThreshold, now, preferencesRef.current.language, preferencesRef.current.notificationCooldownMinutes, resetForecastRef.current);
+      const activity = recordSnapshotActivity(runtimeStateRef.current, snapshotsBeforeRefresh, values, detectedReset, preferencesRef.current.alertThreshold, now, preferencesRef.current.language, preferencesRef.current.notificationCooldownMinutes, resetForecastRef.current);
       let nextRuntimeState = activity.state;
       const notificationPreferences = preferencesRef.current;
       if (notificationPreferences.notificationsEnabled && !isQuietHour(now.getHours(), notificationPreferences.quietHoursStart, notificationPreferences.quietHoursEnd)) {
@@ -232,14 +244,21 @@ export default function App() {
         return merged;
       });
     } catch {
+      if (activeSnapshotRequest.current !== requestId) return;
       setSnapshots((current) => {
-        const fallbackProvider = providerIds[0] ?? "codex";
-        const next = current.length > 0
-          ? current.map((item) => providerIds.includes(item.provider) ? { ...item, status: "stale" as const, message: "Refresh failed. Please try again later." } : item)
-          : [{ provider: fallbackProvider, displayName: fallbackProvider.toUpperCase(), plan: null, shortWindow: null, weeklyWindow: null, resetCredits: null, resetCreditExpiresAt: [], updatedAt: new Date().toISOString(), status: "unavailable" as const, message: "Quota is temporarily unavailable. It will retry automatically." }];
+        const missingProviders = providerIds.filter((provider) => !progressState.receivedProviders.has(provider));
+        const represented = new Set(current.map((item) => item.provider));
+        const next = current.map((item) => missingProviders.includes(item.provider)
+          ? { ...item, status: "stale" as const, message: "Refresh failed. Please try again later." }
+          : item);
+        for (const provider of missingProviders) {
+          if (!represented.has(provider)) next.push({ provider, displayName: provider.toUpperCase(), plan: null, shortWindow: null, weeklyWindow: null, resetCredits: null, resetCreditExpiresAt: [], updatedAt: new Date().toISOString(), status: "unavailable" as const, message: "Quota is temporarily unavailable. It will retry automatically." });
+        }
         snapshotsRef.current = next;
         return next;
       });
+    } finally {
+      if (activeSnapshotRequest.current === requestId) activeSnapshotRequest.current = null;
     }
   }), [commitRuntimeState]);
 

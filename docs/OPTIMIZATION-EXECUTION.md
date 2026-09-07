@@ -46,10 +46,10 @@ Integrated updates/UI, storage/performance, and toolchain/E2E patches, including
 
 Integrated frontend validation: 35 files / 246 tests passed; production build and bundle budgets passed (entry 212,948 B; all JS 559,837 B; gzip JS 174,948 B). Entry plus shared preloads is larger than the entry alone, so this is not a measured startup-speed claim. Rust: 84 tests passed; fmt and check passed. E2E spec TypeScript, workflow YAML, capability JSON and version checks passed. Native E2E later passed all five Windows scenarios after the fixes recorded in NATIVE-E2E-2026-09-08.md.
 
-### Batch 3 progress
+### Batch 3 integration
 
-- Progressive results: assigned to `01a07c85-e413-71b1-b7cb-d626ea764d02`, baseline `3bf4721`.
-- Opaque project identity and on-demand weekly/monthly reports: assigned to `01a07c86-1ae5-7060-9341-cc5a8b68cac3`, same baseline.
+- Progressive results: integrated from `01a07c85-e413-71b1-b7cb-d626ea764d02`; patch SHA-256 `f50014993d7c53df9303a616300220e82291e043ec5093c9e9e622b9f4d3edfb`. Provider completion events are correlated and deduplicated; final-only reset/history/notification handling uses the pre-refresh baseline. React progress merging is outside state updater callbacks, and late events after finalization are ignored.
+- Opaque project identity and on-demand weekly/monthly reports: integrated from `01a07c86-1ae5-7060-9341-cc5a8b68cac3`; patch SHA-256 `a97885ea20f692370449a06ee67b2232eec0b8d875794128c4529cceb546cc8d`. Index schema 4 rebuilds retained sources; same-name projects stay distinct. Reports end at now and export only filter-scope flags and anonymous aliases. Unrecorded hours are not labeled as lost data.
 - Measurement tooling: integrated the reproducible synthetic history script and the bounded single-process CPU/memory sampler from `01a07c86-2b6e-7430-9496-ab48c23670c2`. Node fixture ran successfully; PowerShell AST and a 5-second capture of the explicitly identified E2E process passed (six rows). This short active-test capture validates the tool only, not idle performance, whole-app memory, startup or disk IO. The sampler explicitly excludes WebView2/GPU child processes. Committed as 8f7a4a1; this task is now archived.
 - Native E2E: the isolated release binary builds. Unrestricted local execution revealed test hover/persisted-state/stale-element issues and a real Windows detached-window deadlock in synchronous `open_focus_panel`. Coordinator changed the command to async; rebuilt native E2E passed all five scenarios, including detached create/render/close. Production frontend output was restored. See NATIVE-E2E-2026-09-08.md.
 
@@ -57,33 +57,35 @@ Integrated frontend validation: 35 files / 246 tests passed; production build an
 |---|---|---|
 | Windows multi-DPI/multi-monitor visual acceptance | Device validation pending | Real supported display configurations and recorded results |
 | Real Mac window/runtime acceptance | Device unavailable in current scope | Real Mac artifact and runtime/visual evidence |
-| Per-provider progressive results | Batch 3 active | Healthy provider data visible before slow batch finishes; no duplicate notifications |
+| Per-provider progressive results | Complete | Completion ordering, final-only effects, correlation, duplicates and late-event tests |
 | Blocking adapter IO bounds | Complete for Qoder; other adapters retain existing limits | Read-only blocking isolation and meaningful timeout/size/SQLite limits |
-| Runtime state writes and large-history performance | Batch 2 / follow-up measurement | Serialize/coalesce writes if warranted, benchmark realistic bounded history |
+| Runtime state writes and large-history performance | Implementation complete; native IO acceptance pending | Existing serialized queue, compact 120k-record round-trip, bounded focused IPC; no database/coalescing rewrite justified by current evidence |
 | Honest retention and truncation semantics | Complete | UI/docs reflect finite capacity and actual coverage |
 | Focused history IPC | Complete | Detached pane receives only bounded target data |
-| Desktop performance budgets | Coordinator follow-up | Reproducible startup/idle/CPU/memory/IO measurement with explicit environment limitations |
+| Desktop performance budgets | Tooling and synthetic baseline complete; whole-app acceptance pending | Root-only sampler explicitly excludes WebView2/GPU, startup and IO; no total-app budget claimed |
 | Lazy auxiliary entries | Complete; build and native focus-window smoke passed | Build measurements and correct preview/focus startup |
 | Beta timeout/cancellation/single-flight | Complete | Race and retry tests |
 | Beta highest supported version/channel policy | Complete | Valid semantic version candidates and stable transition policy |
 | Native E2E in CI | Configured; local Windows execution passed, remote CI pending | Isolated fixture, no real credentials; automated smoke configuration and runnable tests |
 | Platform support matrix | Complete | Source-backed Windows/macOS support statuses |
-| Version/docs/screenshots accuracy | Batch 2 / follow-up | Source version separated from published/verified versions; screenshots only from actual render |
+| Version/docs/screenshots accuracy | Docs complete; display-accepted screenshots dependent | Source and published/verified versions separated; historical images not relabeled as new acceptance |
 | OS signing/notarization | Certificate/environment dependent | Verify project-owned signing and exact artifacts only with authorization |
 | Node/Rust toolchain requirements | Complete | Declared requirements match CI/native config loader |
 | Dependency upgrades | Assessment complete; major migrations explicitly deferred | Official migration/compatibility checked; local gates pass; no blind version churn |
 | Dependency update groups/override lifecycle | Complete | Bounded groups and documented removal conditions |
-| Core module responsibility separation | Batch 2 / follow-up | Incremental storage/UI/scheduling extraction with behavior tests |
+| Core module responsibility separation | Complete for reviewed changes | Storage extraction, focused frontend domain functions, lazy entries and error isolation; further rewrite requires a concrete boundary |
 | UI error isolation | Complete | Localized recovery without sensitive stack/data exposure |
 | Actionable provider errors | Complete | Safe localized guidance in commit 3339534 |
 | Budget selection semantics | Complete | Selected-window projection and on-open alert limitations explicit |
-| Same-name project identity | Batch 3 active | Local opaque identity, migration and export privacy; no stored raw paths |
-| Local weekly/monthly aggregate reports | Batch 3 active | Prompt-free bounded local summaries and coverage labeling |
+| Same-name project identity | Complete | Local opaque identity, Windows/POSIX normalization and legacy reindex tests; raw paths excluded |
+| Local weekly/monthly aggregate reports | Complete | Week/month boundaries, up-to-now horizon, filter scope and export privacy tests |
 | macOS in-app updater | Platform-dependent evaluation | Existing fallback preserved until signed real update validation |
 | Additional providers/macOS adapters | Source-dependent evaluation | Identified read-only source and fixtures; no fabricated support |
 | Bottom Bar | Separate design required | Existing explicit exclusion honored until interaction/geometry scope is resolved |
 
 Do not mark the whole program complete while open validation or implementation items remain. Record justified decisions for conditional items, rather than silently dropping them. Continue independent achievable work if an item depends on a device or external authorization.
+
+Detailed optional-change decisions and outstanding acceptance dependencies are recorded in [OPTIMIZATION-DECISIONS.md](OPTIMIZATION-DECISIONS.md). Batch 3 integration passed 256 frontend tests, 89 Rust tests, production build, fmt, check and strict clippy, version and bundle checks. Bundle totals: entry 213,594 B, all JavaScript 566,079 B (176,861 B gzip), CSS 153,261 B. Native integration evidence is recorded separately in [NATIVE-E2E-2026-09-08.md](NATIVE-E2E-2026-09-08.md).
 
 ## 归档规则（用户追加）
 

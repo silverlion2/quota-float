@@ -21,6 +21,7 @@ import { OPENAI_PRICING_CATALOG } from "../lib/openaiPricing";
 import { calculateQuotaPace, paceBaselineKey, trackedQuotaWindows } from "../lib/quotaPace";
 import {
   buildApiBudgetForecast,
+  buildCurrentPeriodUsageReport,
   buildModelBreakdown,
   buildTokenFilterOptions,
   buildTokenHeatmap,
@@ -33,10 +34,11 @@ import {
   summarizeTokenReport,
   usageCoverageStart,
   type TokenUsageFilters,
+  type UsageReportPeriod,
   type UsageRange,
 } from "../lib/tokenUsage";
 import { buildCodexBillingPlanComparison } from "../lib/billingPlan";
-import { buildPricingCatalogJson, buildUsageCsv, buildUsageJson, buildUsageShareSvg } from "../lib/usageExport";
+import { buildPeriodUsageJson, buildPricingCatalogJson, buildUsageCsv, buildUsageJson, buildUsageShareSvg } from "../lib/usageExport";
 import { buildUsageCalendar, MAX_RETAINED_DAILY_SUMMARIES, MAX_RETAINED_QUOTA_SAMPLES, observedTrendUse, recentQuotaTrend, retainedQuotaCoverageStart, usageSummary } from "../lib/usageInsights";
 import type {
   CodexTokenUsageReport,
@@ -135,6 +137,7 @@ export function UsageInsightsPanel({
   const [modelFilter, setModelFilter] = useState("");
   const [projectFilter, setProjectFilter] = useState("");
   const [terminalFilter, setTerminalFilter] = useState("");
+  const [reportPeriod, setReportPeriod] = useState<UsageReportPeriod>("week");
   const [tokenReport, setTokenReport] = useState<CodexTokenUsageReport | null>(null);
   const [tokenLoading, setTokenLoading] = useState(false);
   const [tokenError, setTokenError] = useState<string | null>(null);
@@ -145,7 +148,7 @@ export function UsageInsightsPanel({
   const now = new Date();
   const filters = useMemo<TokenUsageFilters>(() => ({
     model: modelFilter || undefined,
-    project: projectFilter || undefined,
+    projectId: projectFilter || undefined,
     terminal: terminalFilter || undefined,
   }), [modelFilter, projectFilter, terminalFilter]);
 
@@ -205,7 +208,7 @@ export function UsageInsightsPanel({
     [range, snapshot.provider, tokenReport],
   );
   useEffect(() => { if (modelFilter && !filterOptions.models.includes(modelFilter)) setModelFilter(""); }, [filterOptions.models, modelFilter]);
-  useEffect(() => { if (projectFilter && !filterOptions.projects.includes(projectFilter)) setProjectFilter(""); }, [filterOptions.projects, projectFilter]);
+  useEffect(() => { if (projectFilter && !filterOptions.projects.some((project) => project.id === projectFilter)) setProjectFilter(""); }, [filterOptions.projects, projectFilter]);
   useEffect(() => { if (terminalFilter && !filterOptions.terminals.includes(terminalFilter)) setTerminalFilter(""); }, [filterOptions.terminals, terminalFilter]);
 
   const tokenComparison = useMemo(
@@ -245,6 +248,10 @@ export function UsageInsightsPanel({
       ? buildCodexBillingPlanComparison(tokenReport, preferences.codexPlanUpgradeDate, now, preferences.codexPlanValueTargetRatio)
       : null,
     [preferences.codexPlanUpgradeDate, preferences.codexPlanValueTargetRatio, snapshot.provider, tokenReport],
+  );
+  const periodReport = useMemo(
+    () => snapshot.provider === "codex" && tokenReport ? buildCurrentPeriodUsageReport(tokenReport, reportPeriod, now, filters) : null,
+    [filters, reportPeriod, snapshot.provider, tokenReport],
   );
 
   useEffect(() => {
@@ -333,6 +340,17 @@ export function UsageInsightsPanel({
     }
   };
 
+  const handlePeriodExport = async () => {
+    if (!periodReport) return;
+    setOperationMessage(null);
+    try {
+      const path = await exportUsageData(buildPeriodUsageJson(periodReport), "json");
+      if (path) setOperationMessage(english ? `Saved ${reportPeriod} summary JSON.` : `已保存${reportPeriod === "week" ? "本周" : "本月"}摘要 JSON。`);
+    } catch {
+      setOperationMessage(english ? "Export failed." : "导出失败。");
+    }
+  };
+
   return (
     <section className="usage-insights-panel" aria-label={english ? "Usage insights" : "用量洞察"} onMouseDown={(event) => event.stopPropagation()}>
       <header className="usage-insights-header">
@@ -361,7 +379,7 @@ export function UsageInsightsPanel({
 
       {snapshot.provider === "codex" ? <div className="usage-dimension-filters" aria-label={english ? "Token dimensions" : "Token 维度筛选"}>
         <label><span>{english ? "Model" : "模型"}</span><select value={modelFilter} onChange={(event) => setModelFilter(event.target.value)}><option value="">{english ? "All models" : "全部模型"}</option>{filterOptions.models.map((value) => <option key={value}>{value}</option>)}</select></label>
-        <label><span>{english ? "Project" : "项目"}</span><select value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)}><option value="">{english ? "All projects" : "全部项目"}</option>{filterOptions.projects.map((value) => <option key={value}>{value}</option>)}</select></label>
+        <label><span>{english ? "Project" : "项目"}</span><select value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)}><option value="">{english ? "All projects" : "全部项目"}</option>{filterOptions.projects.map((project) => <option key={project.id} value={project.id}>{project.label}</option>)}</select></label>
         <label><span>{english ? "Terminal" : "终端"}</span><select value={terminalFilter} onChange={(event) => setTerminalFilter(event.target.value)}><option value="">{english ? "All sources" : "全部来源"}</option>{filterOptions.terminals.map((value) => <option key={value}>{value}</option>)}</select></label>
         <small>{english ? "Tool names stay excluded to preserve the no-content boundary." : "为保持不解析正文的边界，工具名称不进入索引。"}</small>
       </div> : null}
@@ -383,6 +401,25 @@ export function UsageInsightsPanel({
         <article className="usage-stat-card usage-stat-card--forecast"><span>{english ? "Monthly outlook" : "月度费用预测"}</span><strong>{budget ? money(budget.projectedMonthlyUsd) : "—"}</strong><small>{budget ? `${rangeText} ${english ? "selected-range pace" : "所选区间节奏"} · ${money(budget.dailyAverageUsd)} ${english ? "daily avg" : "日均"}` : "—"}</small></article>
         <article className={`usage-stat-card usage-stat-card--budget usage-stat-card--${budget?.status ?? "disabled"}`}><span>{english ? "Budget status" : "预算状态"}</span><strong>{budget ? percent(budget.utilization * 100, 0) : "—"}</strong><small>{budget ? `${money(budget.budgetUsd)} ${english ? "monthly plan" : "月度预算"}` : "—"}</small></article>
       </div>
+
+      {snapshot.provider === "codex" && periodReport ? <section className={`usage-plan-comparison usage-plan-comparison--${periodReport.coverageStatus === "recorded" ? "keep" : "pending"}`} aria-label={english ? "Local period usage summary" : "本地周期用量摘要"}>
+        <header>
+          <div><CalendarDots weight="duotone" /><span>{periodReport.scope.filtered ? (english ? "LOCAL PERIOD REPORT · FILTERED" : "本地周期报告 · 已筛选摘要") : (english ? "LOCAL PERIOD REPORT" : "本地周期报告")}</span></div>
+          <div className="usage-range-tabs" role="group" aria-label={english ? "Report period" : "报告周期"}>
+            {(["week", "month"] as UsageReportPeriod[]).map((period) => <button type="button" key={period} className={reportPeriod === period ? "is-active" : ""} aria-pressed={reportPeriod === period} onClick={() => setReportPeriod(period)}>{period === "week" ? (english ? "This week" : "本周") : (english ? "This month" : "本月")}</button>)}
+            <button type="button" onClick={() => void handlePeriodExport()}><DownloadSimple />JSON</button>
+          </div>
+        </header>
+        <div className="usage-plan-metrics usage-period-metrics">
+          <div><span>{english ? "Explicit range" : "明确区间"}</span><strong>{new Intl.DateTimeFormat(english ? "en-US" : "zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(periodReport.start))} → {new Intl.DateTimeFormat(english ? "en-US" : "zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(periodReport.end))}</strong></div>
+          <div><span>{english ? "Token" : "Token"}</span><strong>{compactNumber(periodReport.summary.totalTokens, language)}</strong></div>
+          <div><span>{english ? "API equivalent" : "API 等价费用"}</span><strong>{money(periodReport.summary.cost.totalUsd)}</strong></div>
+          <div><span>{english ? "Index evidence" : "索引证据"}</span><strong>{periodReport.coverageStatus === "truncated" ? (english ? "Known incomplete" : "确认不完整") : periodReport.coverageStatus === "no_records" ? (english ? "No records" : "无记录") : (english ? "Records found" : "已有记录")}</strong></div>
+        </div>
+        <p>{english
+          ? `${periodReport.recordedHours} / ${periodReport.elapsedHours} elapsed hours contain usage records; ${periodReport.unrecordedHours} have no record (idle or uncollected) and are not treated as zero.${periodReport.indexTruncated ? " The source index is known to be truncated." : ""}`
+          : `已过 ${periodReport.elapsedHours} 小时中，${periodReport.recordedHours} 小时有用量记录；${periodReport.unrecordedHours} 小时无记录（可能空闲或未采集），不按零用量处理。${periodReport.indexTruncated ? "源索引已确认截断。" : ""}`}</p>
+      </section> : null}
 
       {snapshot.provider === "codex" ? <section className={`usage-plan-comparison usage-plan-comparison--${planComparison?.recommendation ?? "pending"}`} aria-label={english ? "Plan upgrade comparison" : "套餐升级对比"}>
         <header>
