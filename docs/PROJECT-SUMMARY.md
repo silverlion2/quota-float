@@ -6,14 +6,15 @@ Quota Float 是一款 Windows/macOS Tauri 桌面悬浮窗：它只读复用本�
 
 ## 当前产品形态
 
-- 支持 Codex、Claude、Qoder、TRAE、WorkBuddy、火山方舟 Coding Plan 和 Google Antigravity。
+- 平台目录包含 Codex、Claude、Qoder、TRAE、WorkBuddy、火山方舟 Coding Plan 和 Google Antigravity。当前源码在 Windows 支持全部七个平台；macOS 支持 Codex、Claude、火山方舟和 Antigravity，Qoder、TRAE、WorkBuddy 的适配器在非 Windows 构建中返回未检测到。源码支持不等于近期真实账号实测，详细矩阵见 [PROVIDER-COMPATIBILITY.md](PROVIDER-COMPATIBILITY.md)。
 - 紧凑视图包括 Float、Ring、Bar 与 Bottleneck；Bar 和 Bottleneck 可磁吸顶部、左侧或右侧，顶部尺寸为 `400×38`，左右侧轨为 `64×320`。Bottleneck 为每个平台提取最低剩余额度周期并按风险排序，平台点击仍只改变当前选择。
 - Bar 的边缘与沿边偏移会写入偏好、布局方案、导出文件和恢复备份；偏移采用 `0…1` 归一化值，可适配工作区与缩放变化。
 - 展开视图包括信息层级各自独立的 Dashboard、Cockpit、Provider Bar 与 Stacked，并从 Bar/Bottleneck 所在边缘向屏幕内侧展开；内容高度变化不会丢失边缘锚点。Cockpit 聚合额度环、近期趋势、节奏计划与 90 天热力图，三个区块可原位聚焦放大，也可拆成独立的原生置顶窗口。
 - 紧凑 Bar 的 Logo 区与 Bottleneck 的平台指标区保持纯平台切换，只有详情摘要区停留 650ms 才展开；Provider Bar 展开态保留右侧纵向平台列表并移除顶部横向快捷条，Cockpit 保留单一横向平台快切导航。
 - 七个平台都可通过完整 Logo 切换器快速选择，支持方向键、Home/End 的 roving keyboard navigation；平台排序、隐藏、精简与暂停集中在控制中心独立的平台页签。
 - 支持平台轮播/选择、风险优先、默认 24 小时且可切换全部记录的额度历史轨迹、额度节奏提示、桌面提醒、状态中心、托盘控制、开机启动和应用内更新；平台列表、Cockpit 与用量洞察的曲线均可悬停读取每个时间点的剩余百分比。
-- Codex Token 洞察会增量索引本机仍保留的全部 session metadata，并显示最早覆盖日期；“全部”区间按月聚合。额度历史从 Quota Float 首次采样起永久保留，近 90 天保留完整采样，更早数据保留每日端点与极值。
+- Codex Token 洞察会增量索引本机仍保留的 session metadata，并显示实际仍可用的最早覆盖日期；“全部”区间按月聚合。额度历史近 90 天保留完整采样，更早数据按日保留端点与极值，持久化容量上限为 120,000 条额度采样和 100,000 条日汇总，因此不是无限保留承诺。
+- API 等价月度展望按当前所选区间的日均费用外推，并与当前月已保留记录的累计费用分开显示；预算提醒只在 Codex 洞察打开时检查，不是持续后台账单监控。
 - 各平台按健康状态独立安排刷新与失败冷却；“项目专注模式”会降低刷新频率、停止自动轮播与无限环境动画，也可单独暂停不需要的平台监控，手动刷新仍然可用。
 - 网络或平台读取失败时保留最后一次成功数据并标记为过期；浏览器预览始终使用合成数据。
 - Codex 全局重置展望并发读取三个固定公开来源，对 48 小时概率做新鲜度校验、中位数聚合和分歧置信度判断；个人重置时间仍以 Codex 返回值为准。
@@ -26,7 +27,7 @@ Quota Float 是一款 Windows/macOS Tauri 桌面悬浮窗：它只读复用本�
 - Rust 单元测试、`fmt`、`check` 与 `clippy`：平台解析、registry、偏好迁移和物理像素窗口几何验证。
 - WebdriverIO + Tauri WebDriver：编译后的真实桌面进程、原生桥接、展开、控制中心与更新对话框冒烟验证。
 
-详细分层和目录职责见 [ARCHITECTURE.md](ARCHITECTURE.md)，维护提案见 [ROADMAP.md](ROADMAP.md)，长期协作与发布历史见 [PROJECT-MEMO.md](PROJECT-MEMO.md)，最新发布证据见 [RELEASE-0.3.5.md](RELEASE-0.3.5.md)。
+详细分层和目录职责见 [ARCHITECTURE.md](ARCHITECTURE.md)，维护提案见 [ROADMAP.md](ROADMAP.md)，长期协作与发布历史见 [PROJECT-MEMO.md](PROJECT-MEMO.md)，最新完整公开发布证据见 [RELEASE-0.3.8.md](RELEASE-0.3.8.md)。
 
 ## 关键文件
 
@@ -73,7 +74,7 @@ npm run tauri dev
 
 提交交付前必须执行 [桌面开发 SOP](DESKTOP-DEVELOPMENT-SOP.md) 的完整 fast handoff gate。浏览器模式不能验证真实额度或系统窗口行为；Windows 多屏/缩放和 macOS 透明窗口仍需真实桌面环境按 [TEST-MATRIX.md](TEST-MATRIX.md) 验收。
 
-最近一次已验证公开版本为 `v0.3.7`。产物清单、提交、工作流和验证结果记录在 [RELEASE-0.3.7.md](RELEASE-0.3.7.md)；下一版本发布后应新增对应 release record，不覆盖历史证据。
+当前仓库源码版本为 `0.3.9`；具有完整仓库发布、构建和升级证据的最新公开版本为 `v0.3.8`，记录在 [RELEASE-0.3.8.md](RELEASE-0.3.8.md)。`0.3.9` 源码及其后的本地改动不能在缺少新 release record 和实机结果时表述为已公开发布或已完成平台实测。
 
 ## 当前维护重点
 

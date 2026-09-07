@@ -29,6 +29,7 @@ import {
   OPENAI_PRICING_UPDATED_AT,
   OPENAI_PRICING_VERSION,
   relativeChange,
+  summarizeCurrentMonthTokenUsage,
   summarizeTokenReport,
   usageCoverageStart,
   type TokenUsageFilters,
@@ -36,7 +37,7 @@ import {
 } from "../lib/tokenUsage";
 import { buildCodexBillingPlanComparison } from "../lib/billingPlan";
 import { buildPricingCatalogJson, buildUsageCsv, buildUsageJson, buildUsageShareSvg } from "../lib/usageExport";
-import { buildUsageCalendar, observedTrendUse, recentQuotaTrend, usageSummary } from "../lib/usageInsights";
+import { buildUsageCalendar, MAX_RETAINED_DAILY_SUMMARIES, MAX_RETAINED_QUOTA_SAMPLES, observedTrendUse, recentQuotaTrend, retainedQuotaCoverageStart, usageSummary } from "../lib/usageInsights";
 import type {
   CodexTokenUsageReport,
   DailyPaceBaseline,
@@ -154,13 +155,11 @@ export function UsageInsightsPanel({
   const pace = primaryWindow
     ? calculateQuotaPace(primaryWindow.window, now, paceBaselines[paceBaselineKey(snapshot.provider, primaryWindow.period)] ?? null)
     : null;
-  const providerHistoryStart = history
-    .filter((point) => point.provider === snapshot.provider)
-    .reduce<number | null>((earliest, point) => {
-      const timestamp = Date.parse(point.capturedAt);
-      if (!Number.isFinite(timestamp)) return earliest;
-      return earliest === null ? timestamp : Math.min(earliest, timestamp);
-    }, null);
+  const retainedQuotaStart = useMemo(
+    () => retainedQuotaCoverageStart(history, dailyUsage, snapshot.provider),
+    [dailyUsage, history, snapshot.provider],
+  );
+  const providerHistoryStart = retainedQuotaStart?.getTime() ?? null;
   const allQuotaDays = providerHistoryStart === null ? 1 : Math.max(1, Math.ceil((now.getTime() - providerHistoryStart) / 86_400_000) + 1);
   const calendar = useMemo(
     () => buildUsageCalendar(dailyUsage, history, snapshot.provider, now, rangeDayCount(range, allQuotaDays)),
@@ -214,6 +213,10 @@ export function UsageInsightsPanel({
     [filters, range, snapshot.provider, tokenReport],
   );
   const tokenSummary = tokenComparison?.current ?? null;
+  const currentMonthSummary = useMemo(
+    () => snapshot.provider === "codex" && tokenReport ? summarizeCurrentMonthTokenUsage(tokenReport, now, filters) : null,
+    [filters, snapshot.provider, tokenReport],
+  );
   const tokenSeries = useMemo(
     () => snapshot.provider === "codex" && tokenReport ? buildTokenSeries(tokenReport, range, now, filters) : [],
     [filters, range, snapshot.provider, tokenReport],
@@ -233,8 +236,9 @@ export function UsageInsightsPanel({
       preferences.monthlyApiBudgetUsd,
       now,
       tokenReport ? usageCoverageStart(tokenReport, now) : now,
+      currentMonthSummary?.cost.totalUsd ?? 0,
     ) : null,
-    [preferences.monthlyApiBudgetUsd, range, tokenReport, tokenSummary],
+    [currentMonthSummary, preferences.monthlyApiBudgetUsd, range, tokenReport, tokenSummary],
   );
   const planComparison = useMemo(
     () => snapshot.provider === "codex" && tokenReport && preferences.codexPlanUpgradeDate
@@ -253,7 +257,7 @@ export function UsageInsightsPanel({
       () => window.localStorage.setItem(key, new Date().toISOString()),
       () => sendDesktopNotification(
         english ? "API-equivalent budget outlook" : "API 等价预算展望",
-        english ? `Projected ${money(budget.projectedMonthlyUsd)} this month against a ${money(budget.budgetUsd)} plan.` : `本月预计 ${money(budget.projectedMonthlyUsd)}，已超过 ${money(budget.budgetUsd)} 的预算。`,
+        english ? `The ${rangeLabel(range, true)} pace projects ${money(budget.projectedMonthlyUsd)} against a ${money(budget.budgetUsd)} plan; retained month-to-date usage is ${money(budget.currentMonthUsd)}.` : `按${rangeLabel(range, false)}区间节奏外推为 ${money(budget.projectedMonthlyUsd)}，超过 ${money(budget.budgetUsd)} 的预算；本月已保留记录合计 ${money(budget.currentMonthUsd)}。`,
       ),
     );
   }, [budget, english, preferences.apiBudgetAlertsEnabled, snapshot.provider]);
@@ -271,6 +275,9 @@ export function UsageInsightsPanel({
   const tokenCoverageStart = tokenReport ? usageCoverageStart(tokenReport, now) : null;
   const coverageDate = tokenCoverageStart && tokenReport?.buckets.length
     ? new Intl.DateTimeFormat(english ? "en-US" : "zh-CN", { year: "numeric", month: "short", day: "numeric" }).format(tokenCoverageStart)
+    : null;
+  const retainedQuotaDate = retainedQuotaStart
+    ? new Intl.DateTimeFormat(english ? "en-US" : "zh-CN", { year: "numeric", month: "short", day: "numeric" }).format(retainedQuotaStart)
     : null;
   const quotaStartDate = quotaTrend[0]
     ? new Intl.DateTimeFormat(english ? "en-US" : "zh-CN", { year: "numeric", month: "short", day: "numeric" }).format(new Date(quotaTrend[0].capturedAt))
@@ -373,7 +380,7 @@ export function UsageInsightsPanel({
         <article className="usage-stat-card"><span>{english ? "Remaining" : "剩余额度"}</span><strong>{percent(remaining, 0)}</strong><small>{primaryWindow ? formatResetTime(primaryWindow.window.resetsAt, now, language) : (english ? "Quota unavailable" : "暂无额度")}</small></article>
         <article className="usage-stat-card"><span>{english ? "Used this cycle" : "本周期已用"}</span><strong>{percent(cycleUsed, 0)}</strong><small>{english ? "provider-reported quota" : "平台额度"}</small></article>
         <article className="usage-stat-card"><span>{english ? "Range observed" : "区间观测"}</span><strong>{percent(rangeObserved)}</strong><small>{rangeText} · {english ? "quota decrease" : "额度下降"}</small></article>
-        <article className="usage-stat-card usage-stat-card--forecast"><span>{english ? "Monthly outlook" : "月度费用预测"}</span><strong>{budget ? money(budget.projectedMonthlyUsd) : "—"}</strong><small>{budget ? `${money(budget.dailyAverageUsd)} ${english ? "daily avg" : "日均"}` : "—"}</small></article>
+        <article className="usage-stat-card usage-stat-card--forecast"><span>{english ? "Monthly outlook" : "月度费用预测"}</span><strong>{budget ? money(budget.projectedMonthlyUsd) : "—"}</strong><small>{budget ? `${rangeText} ${english ? "selected-range pace" : "所选区间节奏"} · ${money(budget.dailyAverageUsd)} ${english ? "daily avg" : "日均"}` : "—"}</small></article>
         <article className={`usage-stat-card usage-stat-card--budget usage-stat-card--${budget?.status ?? "disabled"}`}><span>{english ? "Budget status" : "预算状态"}</span><strong>{budget ? percent(budget.utilization * 100, 0) : "—"}</strong><small>{budget ? `${money(budget.budgetUsd)} ${english ? "monthly plan" : "月度预算"}` : "—"}</small></article>
       </div>
 
@@ -410,10 +417,10 @@ export function UsageInsightsPanel({
       </section> : null}
 
       {knownTokenData && budget ? <section className={`usage-budget-panel usage-budget-panel--${budget.status}`} aria-label={english ? "API-equivalent budget" : "API 等价预算"}>
-        <div><CurrencyDollar weight="bold" /><span>{english ? "Monthly API-equivalent plan" : "月度 API 等价预算"}</span><strong>{money(budget.projectedMonthlyUsd)} / {money(budget.budgetUsd)}</strong></div>
+        <div><CurrencyDollar weight="bold" /><span>{english ? `Projected from ${rangeText} · MTD ${money(budget.currentMonthUsd)}` : `按${rangeText}区间外推 · 本月累计 ${money(budget.currentMonthUsd)}`}</span><strong>{money(budget.projectedMonthlyUsd)} / {money(budget.budgetUsd)}</strong></div>
         <div className="usage-budget-track"><span style={{ width: `${Math.min(100, budget.utilization * 100)}%` }} /></div>
         <label><span>{english ? "Budget USD" : "预算 USD"}</span><input type="number" min="0" max="1000000" step="10" value={budgetDraft} onChange={(event) => setBudgetDraft(event.target.value)} onBlur={commitBudget} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} /></label>
-        <button type="button" className={preferences.apiBudgetAlertsEnabled ? "is-active" : ""} aria-pressed={preferences.apiBudgetAlertsEnabled} onClick={() => onPreferences?.({ ...preferences, apiBudgetAlertsEnabled: !preferences.apiBudgetAlertsEnabled })}>{preferences.apiBudgetAlertsEnabled ? <Bell /> : <BellSlash />}{english ? "Alert" : "提醒"}</button>
+        <button type="button" className={preferences.apiBudgetAlertsEnabled ? "is-active" : ""} aria-pressed={preferences.apiBudgetAlertsEnabled} title={english ? "Checked only while Codex Insights is open" : "仅在打开 Codex 洞察时检查"} onClick={() => onPreferences?.({ ...preferences, apiBudgetAlertsEnabled: !preferences.apiBudgetAlertsEnabled })}>{preferences.apiBudgetAlertsEnabled ? <Bell /> : <BellSlash />}{english ? "Alert while open" : "仅打开时提醒"}</button>
       </section> : null}
 
       <article className="usage-quota-trend-card">
@@ -471,13 +478,13 @@ export function UsageInsightsPanel({
       </section> : null}
 
       {snapshot.provider === "codex" ? <section className="usage-maintenance-panel" aria-label={english ? "Local index and pricing maintenance" : "本地索引与价格维护"}>
-        <div><Wrench weight="duotone" /><span>{english ? "LOCAL INDEX" : "本地索引"}</span><strong>{tokenReport ? `${tokenReport.cacheStatus.toUpperCase()} · ${tokenReport.scanDurationMs}ms` : "—"}</strong><small>{tokenReport ? `${tokenReport.indexedFiles} ${english ? "files indexed" : "个索引文件"} · ${tokenReport.reusedFiles} ${english ? "reused" : "复用"} · ${bytes(tokenReport.scannedBytes)} ${english ? "read" : "读取"}${coverageDate ? ` · ${english ? "since" : "自"} ${coverageDate}` : ""}` : (english ? "Waiting for metadata" : "等待元数据")}</small></div>
+        <div><Wrench weight="duotone" /><span>{english ? "LOCAL INDEX" : "本地索引"}</span><strong>{tokenReport ? `${tokenReport.cacheStatus.toUpperCase()} · ${tokenReport.scanDurationMs}ms` : "—"}</strong><small>{tokenReport ? `${tokenReport.indexedFiles} ${english ? "files indexed" : "个索引文件"} · ${tokenReport.reusedFiles} ${english ? "reused" : "复用"} · ${bytes(tokenReport.scannedBytes)} ${english ? "read" : "读取"}${coverageDate ? ` · ${english ? "Token since" : "Token 自"} ${coverageDate}` : ""}${retainedQuotaDate ? ` · ${english ? "quota since" : "额度自"} ${retainedQuotaDate}` : ""}` : (english ? "Waiting for metadata" : "等待元数据")}</small></div>
         <div><CurrencyDollar weight="duotone" /><span>{english ? "PRICE CATALOG" : "价格目录"}</span><strong>v{OPENAI_PRICING_VERSION}</strong><small>{OPENAI_PRICING_CATALOG.models.length} {english ? "models · standard API rates · reprices history" : "个模型 · 标准 API 单价 · 历史统一重估"}</small></div>
         <div className="usage-maintenance-actions"><button type="button" disabled={tokenLoading} onClick={() => loadTokenUsage(true, true)}><ArrowClockwise />{english ? "Rebuild index" : "重建索引"}</button><button type="button" disabled={!knownTokenData} onClick={() => void handleExport("json")}><DownloadSimple />JSON</button><button type="button" disabled={!knownTokenData} onClick={() => void handleExport("pricing")}><DownloadSimple />{english ? "Prices" : "价格表"}</button></div>
       </section> : null}
 
       {operationMessage ? <div className="usage-operation-message" role="status">{operationMessage}</div> : null}
-      <footer className="usage-insights-footnote"><CurrencyDollar weight="bold" /><span>{english ? "Token history covers every retained local Codex session metadata file. Recorded quota history starts when Quota Float began sampling. Prompt and response content is not parsed or stored." : "Token 历史覆盖本机仍保留的全部 Codex 会话元数据；剩余额度历史从 Quota Float 开始采样时起计算；提示词和回复正文不会被解析或保存。"}</span><button type="button" onClick={() => onOpenResetForecast?.(OPENAI_PRICING_SOURCE)}>{english ? `Pricing · ${OPENAI_PRICING_UPDATED_AT}` : `定价来源 · ${OPENAI_PRICING_UPDATED_AT}`}</button>{tokenReport?.truncated ? <em>{english ? `Partial index · ${tokenReport.skippedFiles} files skipped` : `部分索引 · 跳过 ${tokenReport.skippedFiles} 个文件`}</em> : null}</footer>
+      <footer className="usage-insights-footnote"><CurrencyDollar weight="bold" /><span>{english ? `Quota retention: 90-day full samples, then daily compaction; capacity ${MAX_RETAINED_QUOTA_SAMPLES.toLocaleString("en-US")} samples / ${MAX_RETAINED_DAILY_SUMMARIES.toLocaleString("en-US")} daily summaries. Actual retained coverage ${retainedQuotaDate ? `starts ${retainedQuotaDate}` : "has no sample yet"}. Token metadata follows files still retained by Codex. No prompt or response content is stored.` : `额度记录近 90 天保留全采样，之后按日压缩；容量上限为 ${MAX_RETAINED_QUOTA_SAMPLES.toLocaleString("zh-CN")} 条采样 / ${MAX_RETAINED_DAILY_SUMMARIES.toLocaleString("zh-CN")} 条日汇总。当前实际保留范围${retainedQuotaDate ? `自 ${retainedQuotaDate} 起` : "尚无样本"}。Token 元数据范围取决于 Codex 仍保留的文件；不保存提示词或回复正文。`}</span><button type="button" onClick={() => onOpenResetForecast?.(OPENAI_PRICING_SOURCE)}>{english ? `Pricing · ${OPENAI_PRICING_UPDATED_AT}` : `定价来源 · ${OPENAI_PRICING_UPDATED_AT}`}</button>{tokenReport?.truncated ? <em>{english ? `Partial index · ${tokenReport.skippedFiles} files skipped` : `部分索引 · 跳过 ${tokenReport.skippedFiles} 个文件`}</em> : null}</footer>
     </section>
   );
 }

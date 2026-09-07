@@ -37,17 +37,17 @@ Quota Float 是一款适用于 Windows 和 macOS 的轻量、置顶、**本地�
 
 ## 支持的平台
 
-| 平台 | 数据来源 | 使用条件 |
-| --- | --- | --- |
-| OpenAI Codex | 本机已有 Codex 登录状态 | Codex Desktop 或 Codex CLI 已登录 |
-| Anthropic Claude | 本机已有 Claude Code OAuth 登录状态 | Claude Code 已登录 |
-| Qoder | 本地账号缓存 | Qoder 已安装并登录 |
-| TRAE | 本机已有 TRAE 登录状态 | TRAE 已安装并登录 |
-| WorkBuddy | 本机已有 WorkBuddy 登录状态 | WorkBuddy 已安装并登录 |
-| Google Antigravity | 本机受 CSRF 保护的语言服务器额度状态 | Antigravity 已安装、打开并登录 |
-| 火山方舟 Coding Plan | 已认证的 `arkcli usage plan` 输出 | Ark CLI 已安装并登录 |
+| 平台 | Windows 源码支持 | macOS 源码支持 | 只读来源与使用条件 |
+| --- | --- | --- | --- |
+| OpenAI Codex | 支持 | 支持 | 本机已有 Codex 登录状态；Codex Desktop 或 CLI 已登录 |
+| Anthropic Claude | 支持 | 支持 | Claude Code OAuth 文件或 macOS 钥匙串登录状态；Claude Code 已登录 |
+| Qoder | 支持 | 未实现 | Windows DPAPI 保护的本地账号缓存；Qoder 已登录 |
+| TRAE | 支持 | 未实现 | Windows 本地登录状态与 entitlement 服务；TRAE 已登录 |
+| WorkBuddy | 支持 | 未实现 | Windows 本地登录状态与额度服务；WorkBuddy 已登录 |
+| 火山方舟 Coding Plan | 支持 | 支持 | 已认证的 `arkcli usage plan` 输出；Ark CLI 已安装并登录 |
+| Google Antigravity | 支持 | 支持 | 本机受 CSRF 保护的语言服务器额度状态；Antigravity 已打开并登录 |
 
-所有数据源都以只读方式使用。如果平台响应结构变化或登录过期，应用会显示“不可用”或“数据已过期”，不会猜测额度。
+此矩阵描述当前源码会编译的适配器，不代表每个平台都刚在两个系统上使用真实账号验证。所有数据源都以只读方式使用；如果响应结构变化或登录过期，应用会显示“不可用”或“数据已过期”，不会猜测额度。
 
 ## 下载与安装
 
@@ -64,9 +64,9 @@ Quota Float 是一款适用于 Windows 和 macOS 的轻量、置顶、**本地�
 - 每日额度节奏建议、阈值提醒、免打扰时段和通知冷却时间。
 - 按平台独立调度的自适应刷新、低干扰的“项目专注模式”，以及可暂停不需要平台的监控开关。
 - 悬浮球、保持展开、窗口置顶、平台轮播、拖拽排序和本地化托盘菜单。
-- 本地额度时间线记录重置、低额度、平台异常、恢复和更新事件；近 90 天保留完整采样，更早记录按日保留端点与极值。
+- 本地额度时间线记录重置、低额度、平台异常、恢复和更新事件；近 90 天保留完整采样，更早记录按日保留端点与极值，总容量上限为 120,000 条额度采样和 100,000 条日汇总。
 - Vibe Usage 洞察页会增量索引本机仍保留的全部 Codex 会话元数据，支持模型/项目/终端筛选、默认 24 小时或完整历史趋势、会话与活跃度指标、分时热力图和分模型 API 等价费用预估。
-- 可配置月度 API 等价预算与本地提醒，并可导出匿名化 CSV/JSON、SVG 分享卡片和带版本的价格目录。
+- 可配置 API 等价月度展望：按当前所选区间外推，并与本月截至目前的已保留费用分开显示；本地提醒只在打开 Codex 洞察时检查。另可导出匿名化 CSV/JSON、SVG 分享卡片和带版本的价格目录。
 - 自定义主题色、平台隐藏/精简显示、布局方案和开机自启。
 - Float/Ring/Bar/Bottleneck 四种紧凑布局与 Dashboard/Cockpit/Provider bar/Stacked 四种展开布局；瓶颈栏按风险排列每个平台最紧张的额度周期。驾驶舱把额度环、近期趋势、节奏计划与 90 天热力图聚合到一屏，每个区块都可原位放大或拆成独立置顶窗口。
 - 紧凑 Bar 的平台 Logo 区只负责切换 Agent，指标区停留后才向内展开；任一展开布局只保留一套平台导航。
@@ -131,7 +131,9 @@ npm run tauri dev
 
 浏览器模式使用模拟数据；真实额度只能在 Tauri 桌面应用中读取。构建安装包请运行 `npm run tauri build`。
 
-维护者可从最新的 [v0.3.7 发布记录](docs/RELEASE-0.3.7.md)、[项目简介](docs/PROJECT-SUMMARY.md)、[架构与目录职责](docs/ARCHITECTURE.md)、[路线图](docs/ROADMAP.md)和[桌面开发 SOP](docs/DESKTOP-DEVELOPMENT-SOP.md)开始。
+当前仓库源码版本为 `0.3.9`。具有完整仓库发布证据的最新公开版本是 [v0.3.8](docs/RELEASE-0.3.8.md)；其后的源码修改在形成新证据前，不应表述为已发布或已完成实机验证。
+
+维护者可从最新的 [v0.3.8 发布记录](docs/RELEASE-0.3.8.md)、[项目简介](docs/PROJECT-SUMMARY.md)、[架构与目录职责](docs/ARCHITECTURE.md)、[路线图](docs/ROADMAP.md)和[桌面开发 SOP](docs/DESKTOP-DEVELOPMENT-SOP.md)开始。
 
 ## 参与贡献
 

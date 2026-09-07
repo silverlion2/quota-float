@@ -94,6 +94,7 @@ describe("ControlCenter provider health", () => {
     expect(screen.getByText("Sign-in required")).toBeInTheDocument();
     expect(screen.getByText("Codex local session")).toBeInTheDocument();
     expect(screen.getByText("Volcengine login expired.")).toBeInTheDocument();
+    expect(screen.getByText(/Sign in through Ark CLI/)).toBeInTheDocument();
     expect(screen.getByText("1 samples")).toBeInTheDocument();
     expect(screen.getAllByText(/Not checked yet/)).toHaveLength(5);
   });
@@ -112,7 +113,7 @@ describe("ControlCenter provider health", () => {
     fireEvent.click(screen.getByRole("button", { name: "Activity" }));
 
     expect(screen.getByText("Local usage memory")).toBeInTheDocument();
-    expect(screen.getByText("Lifetime · 90-day full detail · older samples compacted daily")).toBeInTheDocument();
+    expect(screen.getByText("Capacity-limited retention · 90-day full detail · older samples compacted daily")).toBeInTheDocument();
     expect(screen.getByText("Lifetime samples")).toBeInTheDocument();
   });
 

@@ -21,11 +21,29 @@ export interface QuotaTrendGeometry {
   points: Array<{ x: number; y: number }>;
 }
 
+export const MAX_RETAINED_QUOTA_SAMPLES = 120_000;
+export const MAX_RETAINED_DAILY_SUMMARIES = 100_000;
+
 function dateKey(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function localDateTimestamp(value: string): number {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return Number.NaN;
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12).getTime();
+}
+
+export function retainedQuotaCoverageStart(history: QuotaHistoryPoint[], summaries: DailyUsageSummary[], provider: ProviderId): Date | null {
+  const timestamps = [
+    ...history.filter((point) => point.provider === provider).map((point) => Date.parse(point.capturedAt)),
+    ...summaries.filter((item) => item.provider === provider).map((item) => localDateTimestamp(item.localDate)),
+  ].filter(Number.isFinite);
+  const earliest = timestamps.reduce<number | null>((current, timestamp) => current === null ? timestamp : Math.min(current, timestamp), null);
+  return earliest === null ? null : new Date(earliest);
 }
 
 export function mondayWeekdayIndex(date: Date): number {

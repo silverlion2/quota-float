@@ -326,7 +326,9 @@ describe("QuotaCard platform ledger", () => {
     expect(screen.getByText("Unofficial outlook")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reset outlook 92% · 48h" })).toBeInTheDocument();
     expect(screen.getByText("WEEKDAY × HOUR")).toBeInTheDocument();
-    expect(screen.getByText(/prompt and response content is not parsed or stored/i)).toBeInTheDocument();
+    expect(screen.getByText(/quota retention: 90-day full samples, then daily compaction; capacity 120,000 samples \/ 100,000 daily summaries/i)).toBeInTheDocument();
+    expect(screen.getByText(/actual retained coverage starts Jul 15, 2026/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Alert while open" })).toHaveAttribute("title", "Checked only while Codex Insights is open");
 
     fireEvent.click(quotaTab);
     expect(quotaTab).toHaveAttribute("aria-selected", "true");

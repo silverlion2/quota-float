@@ -37,17 +37,17 @@ Quota Float is an always-on-top **Codex quota monitor and coding-assistant usage
 
 ## Supported Providers
 
-| Provider | Quota source | Requirement |
-| --- | --- | --- |
-| OpenAI Codex | Existing Codex local sign-in state | Codex Desktop or Codex CLI signed in |
-| Anthropic Claude | Existing Claude Code OAuth sign-in state | Claude Code signed in |
-| Qoder | Local account cache | Qoder installed and signed in |
-| TRAE | Existing TRAE local sign-in state | TRAE installed and signed in |
-| WorkBuddy | Existing WorkBuddy local sign-in state | WorkBuddy installed and signed in |
-| Volcengine Ark Coding Plan | Authenticated `arkcli usage plan` output | Ark CLI installed and signed in |
-| Google Antigravity | Local CSRF-protected language-server quota status | Antigravity installed, open, and signed in |
+| Provider | Windows source support | macOS source support | Read-only source and prerequisite |
+| --- | --- | --- | --- |
+| OpenAI Codex | Supported | Supported | Existing Codex local sign-in state; Codex Desktop or CLI signed in |
+| Anthropic Claude | Supported | Supported | Existing Claude Code OAuth file or macOS Keychain state; Claude Code signed in |
+| Qoder | Supported | Not implemented | Windows DPAPI-protected local account cache; Qoder signed in |
+| TRAE | Supported | Not implemented | Windows local sign-in state and entitlement service; TRAE signed in |
+| WorkBuddy | Supported | Not implemented | Windows local sign-in state and quota service; WorkBuddy signed in |
+| Volcengine Ark Coding Plan | Supported | Supported | Authenticated `arkcli usage plan` output; Ark CLI installed and signed in |
+| Google Antigravity | Supported | Supported | Local CSRF-protected language-server quota status; Antigravity open and signed in |
 
-Quota Float uses these sources in read-only mode. If a provider changes its response format or a session expires, the app reports an unavailable or stale state instead of inventing a value.
+This matrix describes the adapters compiled from the current source, not proof of a recent real-account test on every OS. Quota Float uses these sources in read-only mode. If a provider changes its response format or a session expires, the app reports an unavailable or stale state instead of inventing a value.
 
 ## Download and Install
 
@@ -64,9 +64,9 @@ Updater artifacts are signed with the project's Tauri update key. Windows Authen
 - Daily quota pace guidance and alerts, configurable thresholds, quiet hours, and notification cooldowns.
 - Per-provider adaptive refresh scheduling, a low-impact Project Focus mode, and monitoring pause controls for sources you do not need during active work.
 - Floating orb, persistent expansion, always-on-top control, provider rotation, drag-to-reorder, and localized tray actions.
-- Local quota timeline for resets, low-quota crossings, provider failures, recoveries, and updates, backed by lifetime local memory: full samples for the latest 90 days and daily-compacted older quota history.
+- Local quota timeline for resets, low-quota crossings, provider failures, recoveries, and updates: full samples for the latest 90 days, then daily endpoint/extrema compaction, bounded to 120,000 quota samples and 100,000 daily summaries.
 - A Vibe Usage dashboard with incremental indexing across every retained local Codex session metadata file, model/project/terminal filters, session and activity metrics, 24-hour-by-default or complete-history trends, an hourly heatmap, and per-model API-equivalent cost estimates.
-- A configurable monthly API-equivalent budget outlook with local alerts, plus anonymized CSV/JSON exports, an SVG share card, and an exportable versioned price catalog.
+- A configurable API-equivalent monthly outlook extrapolated from the selected range, shown separately from retained month-to-date cost. Its local alert is checked only while Codex Insights is open. Anonymized CSV/JSON exports, an SVG share card, and an exportable versioned price catalog are also available.
 - Custom accent colors, hidden or condensed providers, reusable layout profiles, and system-login autostart.
 - Independent Float/Ring/Bar/Bottleneck compact layouts and Dashboard/Cockpit/Provider-bar/Stacked expanded layouts. Bottleneck shows every provider's tightest window in risk order. Cockpit combines the active quota ring, local trend, pace plan, and 90-day heatmap; each region can expand in place or detach into its own always-on-top window.
 - The compact Bar keeps provider-logo interaction in switch-only mode; dwelling on the metric area expands inward. Expanded layouts expose only one provider-navigation surface.
@@ -136,7 +136,9 @@ npm run tauri build
 
 After a Codex Desktop update, run `npm run check:codex`. See the [provider compatibility contract](docs/PROVIDER-COMPATIBILITY.md), [Codex update compatibility guide](docs/CODEX-UPDATE-CHECK.md), and [release checklist](docs/GITHUB-RELEASE-CHECKLIST.md) for maintainer workflows.
 
-Maintainers can start with the latest [v0.3.7 release record](docs/RELEASE-0.3.7.md), [project summary](docs/PROJECT-SUMMARY.md), [architecture and repository structure](docs/ARCHITECTURE.md), [distribution/signing guide](docs/DISTRIBUTION.md), and [desktop development SOP](docs/DESKTOP-DEVELOPMENT-SOP.md).
+The repository source currently identifies as `0.3.9`. The latest public version with a complete repository release record is [v0.3.8](docs/RELEASE-0.3.8.md); source changes after that record must not be described as published or manually validated without new evidence.
+
+Maintainers can start with the latest [v0.3.8 release record](docs/RELEASE-0.3.8.md), [project summary](docs/PROJECT-SUMMARY.md), [architecture and repository structure](docs/ARCHITECTURE.md), [distribution/signing guide](docs/DISTRIBUTION.md), and [desktop development SOP](docs/DESKTOP-DEVELOPMENT-SOP.md).
 
 ## Contributing
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CodexTokenUsageBucket, CodexTokenUsageReport } from "../types";
-import { buildApiBudgetForecast, buildModelBreakdown, buildTokenFilterOptions, buildTokenHeatmap, buildTokenSeries, estimateBucketCost, relativeChange, summarizeTokenBuckets, summarizeTokenReport, usageCoverageStart } from "./tokenUsage";
+import { buildApiBudgetForecast, buildModelBreakdown, buildTokenFilterOptions, buildTokenHeatmap, buildTokenSeries, estimateBucketCost, relativeChange, summarizeCurrentMonthTokenUsage, summarizeTokenBuckets, summarizeTokenReport, usageCoverageStart } from "./tokenUsage";
 
 const bucket = (overrides: Partial<CodexTokenUsageBucket> = {}): CodexTokenUsageBucket => ({
   bucketStart: "2026-08-16T02:00:00Z",
@@ -82,6 +82,24 @@ describe("token usage", () => {
     expect(filtered.models).toBe(1);
     expect(filtered.sessions).toBe(1);
     expect(buildApiBudgetForecast(filtered, "7d", .1, now).status).toBe("over");
+  });
+
+  it("keeps selected-range projection separate from retained month-to-date cost", () => {
+    const now = new Date("2026-09-08T12:00:00Z");
+    const report: CodexTokenUsageReport = {
+      generatedAt: now.toISOString(), rangeDays: 90, scannedFiles: 2, indexedFiles: 2, reusedFiles: 0, incrementalFiles: 0, skippedFiles: 0, scannedBytes: 100, matchedEvents: 2, scanDurationMs: 10, cacheStatus: "incremental", truncated: false,
+      buckets: [
+        bucket({ bucketStart: "2026-08-31T02:00:00Z", sessionKey: "s-august" }),
+        bucket({ bucketStart: "2026-09-03T02:00:00Z", sessionKey: "s-september" }),
+      ],
+    };
+    const selected = summarizeTokenReport(report, "7d", now).current;
+    const monthToDate = summarizeCurrentMonthTokenUsage(report, now);
+    const budget = buildApiBudgetForecast(selected, "7d", 100, now, usageCoverageStart(report, now), monthToDate.cost.totalUsd);
+
+    expect(monthToDate.totalTokens).toBe(1_100_000);
+    expect(budget.selectedRangeUsd).toBeCloseTo(selected.cost.totalUsd);
+    expect(budget.currentMonthUsd).toBeCloseTo(monthToDate.cost.totalUsd);
   });
 
   it("covers all retained Codex metadata and groups the full history by month", () => {

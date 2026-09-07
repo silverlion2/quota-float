@@ -4,19 +4,25 @@ Quota Float treats every provider as an isolated, read-only adapter behind `src-
 
 ## Supported sources
 
-| Provider | Read-only source | Local prerequisite |
-| --- | --- | --- |
-| Codex | Official quota endpoint using existing local Codex sign-in state | Codex signed in |
-| Claude | Anthropic OAuth usage endpoint using existing Claude credentials | Claude Code signed in |
-| Qoder | Existing local Qoder sign-in state and quota service | Qoder signed in |
-| TRAE | Existing local TRAE sign-in state and entitlement service | TRAE signed in |
-| WorkBuddy | Existing local WorkBuddy sign-in state and quota service | WorkBuddy signed in |
-| Volcengine Ark Coding Plan | Authenticated Ark CLI read-only usage command | Ark CLI installed and signed in |
-| Google Antigravity | CSRF-protected loopback language-server quota service | Antigravity running and signed in |
+| Provider | Windows source support | macOS source support | Read-only source and local prerequisite |
+| --- | --- | --- | --- |
+| Codex | Supported | Supported | Official quota endpoint using existing local Codex sign-in state; Codex signed in |
+| Claude | Supported | Supported | Anthropic OAuth usage endpoint using existing Claude credentials; Claude Code signed in |
+| Qoder | Supported | Not implemented | Existing Windows account cache and quota service; Qoder signed in |
+| TRAE | Supported | Not implemented | Existing Windows sign-in state and entitlement service; TRAE signed in |
+| WorkBuddy | Supported | Not implemented | Existing Windows sign-in state and quota service; WorkBuddy signed in |
+| Volcengine Ark Coding Plan | Supported | Supported | Authenticated Ark CLI read-only usage command; Ark CLI installed and signed in |
+| Google Antigravity | Supported | Supported | CSRF-protected loopback language-server quota service; Antigravity running and signed in |
+
+This matrix describes the adapters compiled by the current source tree. It is not a claim that every source has recently been exercised with a real account on every supported operating system. In particular, the non-Windows Qoder, TRAE, and WorkBuddy branches intentionally return no detected provider.
+
+The package manifests currently identify the source tree as `0.3.9`. The latest complete public release record in this repository is [`v0.3.8`](RELEASE-0.3.8.md); later source changes are not represented as published until matching release evidence exists.
 
 ## Automated contract
 
-The weekly `Provider compatibility` workflow runs frontend normalization fixtures plus every Rust provider parser test on Windows and macOS. Fixtures cover healthy, missing, malformed, signed-out, oversized, and provider-specific quota/reset shapes without using real credentials or network access.
+The weekly `Provider compatibility` workflow runs frontend normalization fixtures and the Rust tests available to each Windows and macOS build. Windows-only adapter paths are exercised on Windows; cross-platform adapters compile and run their applicable tests on both systems. Fixtures cover healthy, missing, malformed, signed-out, oversized, and provider-specific quota/reset shapes without using real credentials or network access.
+
+The `v0.3.8` record includes Windows and macOS artifacts plus updater signatures, but it does not establish a complete real-account provider matrix. Real macOS runtime, visual, and update-path validation remains separate from synthetic CI coverage.
 
 When a provider changes:
 

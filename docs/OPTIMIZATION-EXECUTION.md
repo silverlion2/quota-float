@@ -34,6 +34,12 @@ All workers start from `7a3db22`; retain old work via stash before switching. Do
 
 ## Remaining review coverage
 
+### Batch 2 partial acceptance — usage and recovery
+
+Integrated `usage-docs.patch` (SHA-256 `0B73D2879D021FE96A49723A897E5F4CFCCBFC1F65DC6CE707C62F76C0B38870`) and coordinator provider recovery guidance. Retention and actual coverage are explicit; selected-range projections and current-month accumulated API-equivalent cost are separate; platform/source and published-version documentation match repository evidence. Health guidance uses trusted provider/status/platform values only.
+
+Validation: full frontend run exercised 232 tests; the sole stale retention-label assertion was updated and the affected 13 tests then passed. Production build, bundle budgets, 82 Rust tests, fmt, check, strict clippy, version and diff checks passed. The usage/docs task has no remaining assigned work and can be archived after this commit. Other batch 2 patches remain under review.
+
 | Review item | State | Completion criterion |
 |---|---|---|
 | Windows multi-DPI/multi-monitor visual acceptance | Device validation pending | Real supported display configurations and recorded results |

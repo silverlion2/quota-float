@@ -78,7 +78,8 @@ export interface TokenHeatCell {
 
 export interface ApiBudgetForecast {
   budgetUsd: number;
-  spentUsd: number;
+  selectedRangeUsd: number;
+  currentMonthUsd: number;
   projectedMonthlyUsd: number;
   dailyAverageUsd: number;
   utilization: number;
@@ -259,7 +260,12 @@ export function buildTokenFilterOptions(report: CodexTokenUsageReport, range: Us
   };
 }
 
-export function buildApiBudgetForecast(summary: TokenUsageSummary, range: UsageRange, budgetUsd: number, now = new Date(), coverageStart = now): ApiBudgetForecast {
+export function summarizeCurrentMonthTokenUsage(report: CodexTokenUsageReport, now = new Date(), filters: TokenUsageFilters = {}): TokenUsageSummary {
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  return summarizeTokenBuckets(bucketsInWindow(report.buckets, start, now, filters));
+}
+
+export function buildApiBudgetForecast(summary: TokenUsageSummary, range: UsageRange, budgetUsd: number, now = new Date(), coverageStart = now, currentMonthUsd = summary.cost.totalUsd): ApiBudgetForecast {
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   const elapsedToday = Math.max(1 / 24, (now.getTime() - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) / 86_400_000);
   const observedDays = range === "today" ? elapsedToday
@@ -271,9 +277,10 @@ export function buildApiBudgetForecast(summary: TokenUsageSummary, range: UsageR
   const dailyAverageUsd = summary.cost.totalUsd / observedDays;
   const projectedMonthlyUsd = dailyAverageUsd * daysInMonth;
   const safeBudget = Number.isFinite(budgetUsd) ? Math.max(0, budgetUsd) : 0;
+  const safeCurrentMonthUsd = Number.isFinite(currentMonthUsd) ? Math.max(0, currentMonthUsd) : 0;
   const utilization = safeBudget > 0 ? projectedMonthlyUsd / safeBudget : 0;
   const status = safeBudget <= 0 ? "disabled" : utilization > 1 ? "over" : utilization >= .8 ? "warning" : "on_track";
-  return { budgetUsd: safeBudget, spentUsd: summary.cost.totalUsd, projectedMonthlyUsd, dailyAverageUsd, utilization, status, daysInMonth };
+  return { budgetUsd: safeBudget, selectedRangeUsd: summary.cost.totalUsd, currentMonthUsd: safeCurrentMonthUsd, projectedMonthlyUsd, dailyAverageUsd, utilization, status, daysInMonth };
 }
 
 export function relativeChange(current: number, previous: number): number | null {

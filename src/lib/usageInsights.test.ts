@@ -5,6 +5,7 @@ import {
   mondayWeekdayIndex,
   observedTrendUse,
   recentQuotaTrend,
+  retainedQuotaCoverageStart,
   usageSummary,
 } from "./usageInsights";
 import type { QuotaHistoryPoint } from "../types";
@@ -29,6 +30,19 @@ describe("usage insights", () => {
       provider: "codex", localDate: "2026-08-08", observedUsedPercent: 11, sampleCount: 8, updatedAt: "2026-08-08T08:00:00Z",
     }], history, "codex", new Date("2026-08-08T08:00:00Z"));
     expect(days.at(-1)).toEqual(expect.objectContaining({ observedUsedPercent: 11, sampleCount: 8, level: 3 }));
+  });
+
+  it("reports the earliest actually retained quota sample or daily summary", () => {
+    const start = retainedQuotaCoverageStart(history, [{
+      provider: "codex", localDate: "2026-07-01", observedUsedPercent: 12, sampleCount: 4, updatedAt: "2026-07-01T12:00:00Z",
+    }, {
+      provider: "claude", localDate: "2025-01-01", observedUsedPercent: 3, sampleCount: 2, updatedAt: "2025-01-01T12:00:00Z",
+    }], "codex");
+
+    expect(start?.getFullYear()).toBe(2026);
+    expect(start?.getMonth()).toBe(6);
+    expect(start?.getDate()).toBe(1);
+    expect(retainedQuotaCoverageStart([], [], "codex")).toBeNull();
   });
 
   it("returns recent remaining-quota points for the trajectory", () => {
