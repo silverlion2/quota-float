@@ -26,13 +26,38 @@ describe("Quota Float desktop widget", () => {
       timeout: 15_000,
       timeoutMsg: "Quota Float did not create its root view",
     });
+    // Reset the separate E2E app's persisted presentation settings, then reload so
+    // React observes them. Keep the widget expanded while the native pointer is elsewhere.
+    await browser.tauri.execute(async (tauri) => {
+      const preferences = await tauri.core.invoke("get_preferences") as Record<string, unknown>;
+      await tauri.core.invoke("set_preferences", { preferences: {
+        ...preferences, stayExpanded: true, pinnedProvider: "codex", resourceMode: "focus",
+        expandedLayout: "dashboard", compactLayout: "float", language: "en",
+        pausedProviders: [], hiddenProviders: [], automaticUpdates: false,
+      } });
+      (window as unknown as Record<string, unknown>).__e2eReloadPending = true;
+      setTimeout(() => window.location.reload(), 50);
+    });
+    await browser.waitUntil(async () => browser.tauri.execute(() =>
+      !(window as unknown as Record<string, unknown>).__e2eReloadPending
+        && Boolean(document.querySelector(".quota-card")),
+    ), { timeoutMsg: "The isolated E2E preferences were not loaded" });
   });
 
   beforeEach(async () => {
     await expandWidget();
   });
 
-  afterEach(async () => {
+  afterEach(async function () {
+    if (this.currentTest?.state === "failed") {
+      console.log("Synthetic E2E failure state", await browser.tauri.execute(() => ({
+        activeTab: document.querySelector(".control-tabs .is-active")?.textContent,
+        hasManagement: Boolean(document.querySelector(".provider-settings--management")),
+        provider: document.querySelector(".eyebrow")?.textContent,
+        errors: Array.from(document.querySelectorAll('[role="alert"]')).map((node) => node.textContent),
+      })));
+      await browser.saveScreenshot("output/handoff/native-e2e-failure.png");
+    }
     await browser.tauri.execute(() => {
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     });
@@ -81,7 +106,7 @@ describe("Quota Float desktop widget", () => {
     await browser.$('.control-center[role="dialog"]').waitForDisplayed({ reverse: true });
     await openControlCenter();
     expect(await selectProviderManagement()).toBeGreaterThanOrEqual(2);
-    await management.waitForDisplayed();
+    await browser.$(".provider-settings--management").waitForDisplayed();
     expect(await browser.tauri.execute(() => document.querySelectorAll(".provider-settings--management > div")[0]?.querySelectorAll("button")[2]?.classList.contains("is-active") === true)).toBe(true);
 
     await browser.tauri.execute(() => {

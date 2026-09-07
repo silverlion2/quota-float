@@ -40,7 +40,7 @@
 | 预算与提醒 | 关闭、正常、预警、超支 | 按选定区间外推当月；预算归一化；超支提醒本地限频且可关闭 | TypeScript 预算/偏好测试与组件路径 |
 | 用量导出 | CSV、JSON、SVG、价格目录 | 项目匿名化、会话键与正文排除；价格版本可追溯；原生写入限制格式和大小 | TypeScript 导出测试、Rust 命令审查 |
 | 隐私 | 浏览器与诊断 | 浏览器只用合成数据；诊断不含 token、账号、auth 路径或原始响应 | 桥接测试、静态审查 |
-| 原生 E2E | 编译桌面进程、Tauri bridge、展开、控制中心、更新弹窗 | 真实 WebView 启动；原生命令可调用；主要 overlay 可访问且独立关闭 | `npm run test:e2e` WebdriverIO smoke |
+| 原生 E2E | 编译桌面进程、Tauri bridge、暂停恢复持久化、分离窗口、控制中心、更新弹窗 | 合成数据真实 WebView 启动；原生命令可调用；窗口可创建、渲染和关闭 | [2026-09-08 Windows 原生实测：5 项通过](NATIVE-E2E-2026-09-08.md) |
 | 性能预算 | 入口与懒加载 chunk | 入口 JS ≤ 430 KiB、总 JS ≤ 600 KiB、gzip JS ≤ 180 KiB、CSS ≤ 150 KiB | `npm run build` + `npm run check:bundle`、CI gate |
 | 供应链 | npm/Rust advisories | 高风险 npm advisory 为零；RustSec vulnerability 为零 | `npm audit --audit-level=high`、`cargo audit`、Dependabot/security workflow |
 

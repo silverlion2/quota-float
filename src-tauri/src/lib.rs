@@ -584,7 +584,7 @@ fn valid_provider_id(value: &str) -> bool {
 }
 
 #[tauri::command]
-fn open_focus_panel(
+async fn open_focus_panel(
     region: String,
     provider: String,
     app: AppHandle,
