@@ -39,7 +39,9 @@ export function needsFastRefresh(snapshot: ProviderSnapshot, now = new Date()): 
 export function formatResetDate(value: string | null, language: Language = "zh-CN"): string {
   const t = copy[normalizeLanguage(language)];
   if (!value) return t.dateUnknown;
-  const isoDate = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  // Calendar-only values have no timezone; timestamps must be rendered in the
+  // same local timezone as the detailed reset time and countdown.
+  const isoDate = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (isoDate) {
     return `${Number(isoDate[2])}/${Number(isoDate[3])}`;
   }

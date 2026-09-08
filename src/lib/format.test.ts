@@ -39,10 +39,21 @@ describe("quota formatting", () => {
   });
 
   it("formats the weekly reset as a compact date", () => {
-    expect(formatResetDate("2026-07-10T00:00:00+08:00")).toBe("7/10");
-    expect(formatResetDate("2026-07-10T00:00:00+08:00", "en")).toBe("7/10");
+    const localReset = new Date(2026, 6, 10, 0, 0).toISOString();
+    expect(formatResetDate(localReset)).toBe("7/10");
+    expect(formatResetDate(localReset, "en")).toBe("7/10");
+    expect(formatResetDate("2026-07-10")).toBe("7/10");
     expect(formatResetDate(null)).toBe("日期未知");
     expect(formatResetDate(null, "zh-CN")).toBe("日期未知");
     expect(formatResetDate(null, "en")).toBe("Date unknown");
+  });
+
+  it("renders equal reset instants consistently across source timezone offsets", () => {
+    const instant = "2026-07-10T00:30:00Z";
+    const previousCalendarDay = "2026-07-09T17:30:00-07:00";
+    const expected = new Intl.DateTimeFormat("en-US", { month: "numeric", day: "numeric" }).format(new Date(instant));
+    expect(formatResetDate(instant, "en")).toBe(expected);
+    expect(formatResetDate(previousCalendarDay, "en")).toBe(expected);
+    expect(formatResetDate("2026-07-10Tinvalid", "en")).toBe("Date unknown");
   });
 });

@@ -12,6 +12,9 @@ if (-not $IsWindows -and $PSVersionTable.PSEdition -eq "Core") {
 if ([string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) {
   throw "RUNNER_TEMP is required so installers are isolated to the ephemeral CI runner."
 }
+if ($env:GITHUB_ACTIONS -ne "true" -or $env:RUNNER_ENVIRONMENT -ne "github-hosted") {
+  throw "Install, rollback, and uninstall smoke tests require an ephemeral GitHub-hosted runner."
+}
 if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN)) {
   throw "GH_TOKEN is required to read the draft release candidate without exposing credentials."
 }
@@ -46,6 +49,22 @@ function Save-ReleaseAsset($Asset, [string]$Destination) {
 function Write-CiOutput([string]$Name, [string]$Value) {
   if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_OUTPUT)) {
     "$Name=$Value" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+  }
+}
+
+function Assert-AppLaunch([string]$Executable, [string]$Label) {
+  $smokeProcess = Start-Process -FilePath $Executable -PassThru -WindowStyle Hidden
+  try {
+    if ($smokeProcess.WaitForExit(8000)) {
+      throw "$Label exited during the startup smoke check (exit $($smokeProcess.ExitCode))."
+    }
+    Write-Output "$Label stayed running through the startup smoke check."
+  } finally {
+    if (-not $smokeProcess.HasExited) {
+      Stop-Process -Id $smokeProcess.Id -Force
+      $smokeProcess.WaitForExit()
+    }
+    $smokeProcess.Dispose()
   }
 }
 
@@ -109,6 +128,32 @@ if (-not (Test-Path -LiteralPath $installedExe)) { throw "Installed Quota Float 
 $expectedVersion = $CurrentTag.TrimStart("v")
 $installedVersion = (Get-Item -LiteralPath $installedExe).VersionInfo.ProductVersion
 if ($installedVersion -notlike "$expectedVersion*") { throw "Expected $expectedVersion but installed $installedVersion." }
+Assert-AppLaunch $installedExe "Candidate $CurrentTag"
+
+# Exercise recovery on the disposable CI account, then leave the exact candidate
+# installed for a final launch check before testing the candidate uninstaller.
+$rollbackProcess = Start-Process -FilePath $previousInstaller.FullName -ArgumentList "/S" -Wait -PassThru -WindowStyle Hidden
+if ($rollbackProcess.ExitCode -ne 0) { throw "Rollback installer failed with exit code $($rollbackProcess.ExitCode)." }
+$rollbackVersion = (Get-Item -LiteralPath $installedExe).VersionInfo.ProductVersion
+if ($rollbackVersion -notlike "$previousExpectedVersion*") { throw "Rollback did not restore $previousExpectedVersion." }
+Assert-AppLaunch $installedExe "Rollback $($previous.tag_name)"
+
+$reinstallProcess = Start-Process -FilePath $currentInstaller.FullName -ArgumentList "/S" -Wait -PassThru -WindowStyle Hidden
+if ($reinstallProcess.ExitCode -ne 0) { throw "Candidate reinstall failed with exit code $($reinstallProcess.ExitCode)." }
+$reinstalledVersion = (Get-Item -LiteralPath $installedExe).VersionInfo.ProductVersion
+if ($reinstalledVersion -notlike "$expectedVersion*") { throw "Reinstall did not restore $expectedVersion." }
+Assert-AppLaunch $installedExe "Reinstalled candidate $CurrentTag"
+
+$uninstaller = Join-Path (Split-Path -Parent $installedExe) "uninstall.exe"
+if (-not (Test-Path -LiteralPath $uninstaller)) { throw "Candidate uninstaller was not found." }
+$uninstallProcess = Start-Process -FilePath $uninstaller -ArgumentList "/S" -Wait -PassThru -WindowStyle Hidden
+if ($uninstallProcess.ExitCode -ne 0) { throw "Candidate uninstall failed with exit code $($uninstallProcess.ExitCode)." }
+# NSIS may finish in its temporary child process after its launcher exits.
+$uninstallDeadline = (Get-Date).AddSeconds(30)
+while ((Test-Path -LiteralPath $installedExe) -and (Get-Date) -lt $uninstallDeadline) {
+  Start-Sleep -Milliseconds 250
+}
+if (Test-Path -LiteralPath $installedExe) { throw "Candidate executable remains after uninstall." }
 
 $candidateAfterSmoke = Invoke-GitHubJson "repos/$Repository/releases/$($candidate.id)"
 $candidateAssetAfterSmoke = Get-InstallerAsset $candidateAfterSmoke "Draft candidate $CurrentTag"
@@ -120,4 +165,4 @@ Write-CiOutput "candidate_release_id" ([string]$candidate.id)
 Write-CiOutput "candidate_asset_id" ([string]$candidateAsset.id)
 Write-CiOutput "candidate_asset_name" ([string]$candidateAsset.name)
 Write-CiOutput "candidate_sha256" $candidateSha256
-Write-Output "Upgrade smoke test passed on draft asset $($candidateAsset.id): $($previous.tag_name) -> $CurrentTag ($installedVersion, sha256:$candidateSha256)."
+Write-Output "Install, launch, upgrade, rollback, reinstall, and uninstall smoke passed on draft asset $($candidateAsset.id): $($previous.tag_name) -> $CurrentTag ($installedVersion, sha256:$candidateSha256)."
