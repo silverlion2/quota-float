@@ -87,6 +87,8 @@ export const copy = {
     resetInHours: (hours: number, minutes: number) => minutes ? `${hours} 小时 ${minutes} 分钟后重置` : `${hours} 小时后重置`,
     resetInMinutes: (minutes: number) => `${minutes} 分钟后重置`,
     resetTimeUnknown: "重置时间未知",
+    personalReset: "个人周期",
+    publicResetSignal: "公开重置信号",
     resetUpdating: "正在更新额度",
     recentlyReset: "最近已重置",
     resetDetectedAt: (date: string) => `检测到 Codex 在 ${date} 完成额度重置`,
@@ -202,6 +204,8 @@ export const copy = {
     resetInHours: (hours: number, minutes: number) => minutes ? `resets in ${hours}h ${minutes}m` : `resets in ${hours}h`,
     resetInMinutes: (minutes: number) => `resets in ${minutes}m`,
     resetTimeUnknown: "Reset time unknown",
+    personalReset: "Personal cycle",
+    publicResetSignal: "Public reset signal",
     resetUpdating: "Updating quota",
     recentlyReset: "Recently reset",
     resetDetectedAt: (date: string) => `Codex quota reset detected at ${date}`,
@@ -243,9 +247,9 @@ export function nextLanguage(language: Language): Language {
   return language === "en" ? "zh-CN" : "en";
 }
 
-export function resetForecastLabel(language: Language, score: number, hours: number, announced: boolean): string {
-  if (language === "en") return announced ? "Reset announced" : `${hours}h chance · ${score}%`;
-  return announced ? "已宣布重置" : `${hours}小时概率 · ${score}%`;
+export function resetForecastLabel(language: Language, score: number, hours: number, _announced: boolean): string {
+  if (language === "en") return `${hours}h signal · ${score}/100`;
+  return `${hours}小时信号 · ${score}/100`;
 }
 
 export function resetForecastTitle(language: Language, forecast: ResetForecast): string {
@@ -253,8 +257,8 @@ export function resetForecastTitle(language: Language, forecast: ResetForecast):
   const confidence = forecast.confidence ?? "low";
   const sourceNames = forecast.sources?.map((source) => source.name).join(", ");
   if (language === "en") {
-    return `Unofficial reset likelihood: ${count}-source consensus, ${confidence} confidence.${sourceNames ? ` Sources: ${sourceNames}.` : ""} Open the primary source.`;
+    return `Uncalibrated public reset signal: ${count} source${count === 1 ? "" : "s"}, ${confidence} forecast confidence. Your provider-reported personal reset schedule remains authoritative; this signal is reference only.${sourceNames ? ` Sources: ${sourceNames}.` : ""} Open the primary source.`;
   }
-  const confidenceLabel = confidence === "high" ? "高" : confidence === "medium" ? "中" : "低";
-  return `非官方重置概率：综合 ${count} 个公开来源，置信度${confidenceLabel}。${sourceNames ? `来源：${sourceNames}。` : ""}打开主要来源。`;
+  const confidenceLabel = confidence === "high" ? "高" : confidence === "medium" ? "中" : "低/未校准";
+  return `未校准的公开重置信号：${count} 个来源，预测可信度${confidenceLabel}。平台返回的个人重置周期始终为准，本信号仅供参考。${sourceNames ? `来源：${sourceNames}。` : ""}打开主要来源。`;
 }

@@ -2536,3 +2536,124 @@ button.usage-stat-card:hover { border-color: color-mix(in srgb, var(--accent-col
   .update-body,
   .diagnostics-body { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* 2026-09 UI clarity pass: keep the desktop geometry while strengthening hierarchy and focus. */
+.quota-card {
+  --ui-muted: rgba(23,33,49,.66);
+  --ui-faint: rgba(23,33,49,.46);
+}
+.quota-card--style-paper.quota-card--theme-light {
+  --ui-muted: rgba(59,45,34,.69);
+  --ui-faint: rgba(59,45,34,.49);
+}
+.quota-card--theme-dark {
+  --ui-muted: rgba(233,240,244,.7);
+  --ui-faint: rgba(233,240,244,.49);
+}
+.quota-card--style-paper.quota-card--theme-dark {
+  --ui-muted: rgba(243,238,232,.72);
+  --ui-faint: rgba(243,238,232,.5);
+}
+
+.quota-card :is(.updated, .reset-time, .quota-pace-hint, .quota-meta span, .ledger-header > p, .provider-identity small, .provider-value small) {
+  color: var(--ui-muted);
+  text-shadow: none;
+}
+.updated--stale {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 2px 6px;
+  border: 1px solid color-mix(in srgb, var(--ui-warning) 24%, transparent);
+  border-radius: 999px;
+  color: var(--ui-warning) !important;
+  background: color-mix(in srgb, var(--ui-warning) 8%, transparent);
+  font-weight: 720;
+  letter-spacing: .035em;
+}
+
+.reset-forecast {
+  border-color: color-mix(in srgb, var(--ui-muted) 34%, transparent);
+  border-style: dashed;
+  color: var(--ui-muted);
+  background: color-mix(in srgb, var(--ui-surface-strong) 58%, transparent);
+  box-shadow: none;
+}
+.reset-forecast:hover {
+  border-color: color-mix(in srgb, var(--accent-color, #397ae0) 48%, transparent);
+  color: var(--ui-text);
+  background: var(--ui-surface-hover);
+}
+.reset-forecast--announced {
+  border-color: color-mix(in srgb, var(--ui-muted) 34%, transparent);
+  border-style: dashed;
+  color: var(--ui-muted);
+  background: color-mix(in srgb, var(--ui-surface-strong) 58%, transparent);
+}
+.reset-time--personal {
+  width: fit-content;
+  min-height: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 3px 7px 3px 5px;
+  border-left: 2px solid var(--accent-color, #397ae0);
+  border-radius: 3px 7px 7px 3px;
+  background: color-mix(in srgb, var(--ui-surface-strong) 55%, transparent);
+  letter-spacing: 0;
+}
+.reset-time--personal span {
+  color: var(--ui-faint);
+  font-size: 6px;
+  font-weight: 780;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.reset-time--personal strong {
+  color: var(--ui-text);
+  font-size: 8px;
+  font-weight: 720;
+  font-variant-numeric: tabular-nums;
+}
+
+.error-state {
+  align-items: start;
+  margin-top: 13px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--ui-danger) 17%, var(--ui-border));
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--ui-surface) 84%, var(--ui-danger));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--ui-inverse) 20%, transparent);
+}
+.error-state strong { color: var(--ui-text); }
+.error-state p { color: var(--ui-muted) !important; }
+.error-actions { margin-top: 2px; }
+
+.quota-card :where(button, select, input):focus-visible,
+.quota-bar :where(button):focus-visible,
+.focus-panel-window :where(button):focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent-color, #397ae0) 78%, white 18%);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-color, #397ae0) 16%, transparent);
+}
+.provider-row:focus-visible,
+.provider-logo-slider button:focus-visible,
+.bottleneck-provider-list button:focus-visible {
+  position: relative;
+  z-index: 2;
+}
+.provider-row.is-selected {
+  border-color: color-mix(in srgb, var(--accent-color, #397ae0) 24%, var(--ui-border));
+  box-shadow: inset 3px 0 0 var(--accent-color, #397ae0);
+}
+
+.quota-bar--top {
+  grid-template-columns: 132px 1px minmax(74px, 1fr) 40px 51px 24px;
+  gap: 6px;
+  padding-inline: 9px;
+}
+.quota-bar--top .bar-reset,
+.quota-bar--top .bar-status { font-size: 7px; }
+.quota-bar--top .bar-freshness { font-size: 6.5px; }
+.bottleneck-provider-list button:focus-visible { outline-offset: -1px; }

@@ -292,14 +292,12 @@ export function UsageInsightsPanel({
   const forecastWindow = resetForecast?.windowHours ?? 48;
   const forecastSourceMeta = resetForecast?.sourceCount && resetForecast.confidence
     ? (english
-      ? ` · ${resetForecast.sourceCount} sources · ${resetForecast.confidence} confidence`
-      : ` · ${resetForecast.sourceCount} 个来源 · ${resetForecast.confidence === "high" ? "高" : resetForecast.confidence === "medium" ? "中" : "低"}置信度`)
+      ? ` · ${resetForecast.sourceCount} public sources · ${resetForecast.confidence === "low" ? "low / uncalibrated" : resetForecast.confidence} forecast confidence`
+      : ` · ${resetForecast.sourceCount} 个公开来源 · ${resetForecast.confidence === "high" ? "高" : resetForecast.confidence === "medium" ? "中" : "低/未校准"}预测可信度`)
     : "";
-  const forecastMeta = resetForecast?.resetAnnounced
-    ? (english ? "Provider reset announced" : "平台已宣布重置")
-    : (english
-      ? `Reset outlook ${Math.round(resetForecast?.score ?? 0)}% · ${forecastWindow}h${forecastSourceMeta}`
-      : `重置展望 ${Math.round(resetForecast?.score ?? 0)}% · ${forecastWindow} 小时${forecastSourceMeta}`);
+  const forecastMeta = english
+    ? `Public reset signal ${Math.round(resetForecast?.score ?? 0)}/100 · ${forecastWindow}h${forecastSourceMeta} · reference only`
+    : `公开重置信号 ${Math.round(resetForecast?.score ?? 0)}/100 · ${forecastWindow} 小时${forecastSourceMeta} · 仅供参考`;
   const tokenValue = (value: number): string => tokenLoading && !tokenReport ? "…" : knownTokenData ? compactNumber(value, language) : "—";
   const activeDays = knownTokenData ? tokenSummary.activeDays : quotaSummary.activeDays;
   const averageActiveDay = knownTokenData && tokenSummary.activeDays > 0 ? `${compactNumber(tokenSummary.totalTokens / tokenSummary.activeDays, language)} Token` : percent(quotaSummary.averageActiveDayPercent);
@@ -364,7 +362,7 @@ export function UsageInsightsPanel({
             <button type="button" className="usage-icon-action" onClick={() => void handleExport("csv")} aria-label={english ? "Export anonymized CSV" : "导出脱敏 CSV"} title={english ? "Export anonymized CSV" : "导出脱敏 CSV"}><DownloadSimple /></button>
             <button type="button" className="usage-icon-action" onClick={() => void handleExport("svg")} aria-label={english ? "Share SVG summary" : "生成分享卡片"} title={english ? "Share SVG summary" : "生成分享卡片"}><ShareNetwork /></button>
           </> : null}
-          {resetForecast && snapshot.provider === "codex" ? <button type="button" className="usage-reset-badge" onClick={() => onOpenResetForecast?.(resetForecast.sourceUrl)} aria-label={forecastMeta} title={forecastMeta}><Gauge weight="bold" />{resetForecast.resetAnnounced ? (english ? "Announced" : "已宣布") : `${Math.round(resetForecast.score)}%`}</button> : null}
+          {resetForecast && snapshot.provider === "codex" ? <button type="button" className="usage-reset-badge" onClick={() => onOpenResetForecast?.(resetForecast.sourceUrl)} aria-label={forecastMeta} title={forecastMeta}><Gauge weight="bold" />{`${Math.round(resetForecast.score)}/100`}</button> : null}
           {onClose ? <button type="button" className="usage-close" onClick={onClose} aria-label={english ? "Close usage insights" : "关闭用量洞察"}><X /></button> : null}
         </div>
       </header>

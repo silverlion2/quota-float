@@ -130,7 +130,7 @@ describe("QuotaCard platform ledger", () => {
         resetForecast={{
           score: 92,
           windowHours: 48,
-          fetchedAt: "2026-07-20T18:14:26.948Z",
+          fetchedAt: new Date().toISOString(),
           resetAnnounced: false,
           sourceUrl: "https://codexresetradar.com/",
         }}
@@ -138,10 +138,63 @@ describe("QuotaCard platform ledger", () => {
       />,
     );
 
-    expect(screen.getByText("48h chance · 92%")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Unofficial reset likelihood/i }));
+    expect(screen.getByText("Public reset signal")).toBeInTheDocument();
+    expect(screen.getByText("48h signal · 92\/100")).toBeInTheDocument();
+    expect(screen.getByText("Personal cycle")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Uncalibrated public reset signal/i }));
     expect(onOpenResetForecast).toHaveBeenCalledWith("https://codexresetradar.com/");
   }, 15_000);
+
+  it("removes an expired public reset signal while keeping the provider schedule", () => {
+    render(
+      <QuotaCard
+        snapshot={codex}
+        snapshots={[codex]}
+        preferences={preferences}
+        onSelectProvider={noop}
+        onLock={noop}
+        onLanguage={noop}
+        onDrag={noop}
+        onHover={noop}
+        consumingProviders={new Set()}
+        resetForecast={{
+          score: 92,
+          windowHours: 48,
+          fetchedAt: new Date(Date.now() - 6 * 60 * 60_000 - 1).toISOString(),
+          resetAnnounced: false,
+          sourceUrl: "https://codexresetradar.com/",
+        }}
+      />,
+    );
+
+    expect(screen.queryByText("Public reset signal")).not.toBeInTheDocument();
+    expect(screen.getByText("Personal cycle")).toBeInTheDocument();
+  });
+
+  it("hides public reset signals while the provider snapshot is stale", () => {
+    render(
+      <QuotaCard
+        snapshot={{ ...codex, status: "stale" }}
+        snapshots={[codex]}
+        preferences={preferences}
+        onSelectProvider={noop}
+        onLock={noop}
+        onLanguage={noop}
+        onDrag={noop}
+        onHover={noop}
+        consumingProviders={new Set()}
+        resetForecast={{
+          score: 92,
+          windowHours: 48,
+          fetchedAt: new Date().toISOString(),
+          resetAnnounced: false,
+          sourceUrl: "https://codexresetradar.com/",
+        }}
+      />,
+    );
+
+    expect(screen.queryByText("Public reset signal")).not.toBeInTheDocument();
+  });
 
   it("lists real platform values and selects a connected platform", () => {
     const onSelectProvider = vi.fn();
@@ -289,7 +342,7 @@ describe("QuotaCard platform ledger", () => {
         resetForecast={{
           score: 92,
           windowHours: 48,
-          fetchedAt: "2026-07-20T18:14:26.948Z",
+          fetchedAt: new Date().toISOString(),
           resetAnnounced: false,
           sourceUrl: "https://codexresetradar.com/",
         }}
@@ -323,8 +376,8 @@ describe("QuotaCard platform ledger", () => {
     expect(screen.getByText("Used this cycle")).toBeInTheDocument();
     expect(screen.getByText("Range observed")).toBeInTheDocument();
     expect(screen.getByText("Daily guide")).toBeInTheDocument();
-    expect(screen.getByText("Unofficial outlook")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Reset outlook 92% · 48h" })).toBeInTheDocument();
+    expect(screen.getByText("Public reset signal")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Public reset signal 92/100 · 48h · reference only" })).toBeInTheDocument();
     expect(screen.getByText("WEEKDAY × HOUR")).toBeInTheDocument();
     expect(screen.getByText(/quota retention: 90-day full samples, then daily compaction; capacity 120,000 samples \/ 100,000 daily summaries/i)).toBeInTheDocument();
     expect(screen.getByText(/actual retained coverage starts Jul 15, 2026/i)).toBeInTheDocument();
@@ -544,6 +597,28 @@ describe("QuotaCard platform ledger", () => {
     fireEvent.mouseOver(screen.getByRole("button", { name: "Expand bottleneck details" }));
     act(() => vi.advanceTimersByTime(650));
     expect(onHover).toHaveBeenCalledWith(true);
+  });
+
+  it("uses roving focus and directional keys in the bottleneck provider list", () => {
+    const onSelectProvider = vi.fn();
+    render(
+      <QuotaBottleneckBar
+        snapshot={codex}
+        snapshots={[codex, volcengine, antigravity]}
+        edge="top"
+        language="en"
+        onSelectProvider={onSelectProvider}
+        onDrag={noop}
+        onHover={noop}
+      />,
+    );
+
+    const codexButton = screen.getByRole("radio", { name: "CODEX · Week · 74%" });
+    const antigravityButton = screen.getByRole("radio", { name: "ANTIGRAVITY · 5 hours · 68%" });
+    expect(codexButton).toHaveAttribute("tabindex", "0");
+    expect(antigravityButton).toHaveAttribute("tabindex", "-1");
+    fireEvent.keyDown(codexButton, { key: "ArrowLeft" });
+    expect(onSelectProvider).toHaveBeenCalledWith("antigravity");
   });
 
   it("returns the collapsed orb to idle after a hover ends", () => {
@@ -789,6 +864,7 @@ describe("QuotaCard platform ledger", () => {
   });
 
   it("shows when the current Codex window recently reset", () => {
+    const resetAt = new Date(Date.now() - 60_000).toISOString();
     render(
       <QuotaCard
         snapshot={codex}
@@ -800,11 +876,31 @@ describe("QuotaCard platform ledger", () => {
         onDrag={noop}
         onHover={noop}
         consumingProviders={new Set()}
-        recentCodexReset={{ detectedAt: "2026-07-18T01:00:00Z", resetAt: "2026-07-18T01:00:00Z", source: "window" }}
+        recentCodexReset={{ detectedAt: resetAt, resetAt, source: "window" }}
       />,
     );
 
     expect(screen.getByText("Recently reset")).toBeInTheDocument();
+  });
+
+  it("removes the recent reset marker after its six-hour window", () => {
+    const resetAt = new Date(Date.now() - 6 * 60 * 60_000 - 1).toISOString();
+    render(
+      <QuotaCard
+        snapshot={codex}
+        snapshots={[codex]}
+        preferences={preferences}
+        onSelectProvider={noop}
+        onLock={noop}
+        onLanguage={noop}
+        onDrag={noop}
+        onHover={noop}
+        consumingProviders={new Set()}
+        recentCodexReset={{ detectedAt: resetAt, resetAt, source: "window" }}
+      />,
+    );
+
+    expect(screen.queryByText("Recently reset")).not.toBeInTheDocument();
   });
 
   it("reorders quota rows by dragging the grip and preserves the resulting order", () => {

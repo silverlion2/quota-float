@@ -1,12 +1,12 @@
 import { ArrowClockwise, ArrowSquareOut, ArrowsInSimple, ArrowsOutSimple, CheckCircle, ClockCounterClockwise, CloudArrowDown, CloudSlash, DotsSixVertical, Gauge, GearSix, Pulse, PushPin, PushPinSlash, SignIn, SpinnerGap, WarningCircle, X } from "@phosphor-icons/react";
-import { lazy, memo, Suspense, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
+import { lazy, memo, Suspense, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { clampPercent, formatDateTime, formatResetDate, formatResetTime, quotaTier } from "../lib/format";
 import { copy, normalizeLanguage, resetForecastLabel, resetForecastTitle } from "../lib/i18n";
 import { useModalDialog } from "../lib/modalDialog";
 import { normalizeProviderOrder, PROVIDER_CATALOG, type ProviderDefinition } from "../lib/providers";
 import { snapshotRemainingPercent, sortProviderIdsByRisk } from "../lib/providerPresentation";
 import { calculateQuotaPace, localDateKey, paceBaselineKey, trackedQuotaWindows, type NamedQuotaWindow, type QuotaPace, type QuotaPeriod } from "../lib/quotaPace";
-import type { RecentCodexReset } from "../lib/resetDetection";
+import { isRecentCodexReset, type RecentCodexReset } from "../lib/resetDetection";
 import { recentQuotaTrend, type QuotaTrendPoint } from "../lib/usageInsights";
 import type { BarEdge, CockpitRegion, ColorTheme, CompactLayout, DailyPaceBaseline, DailyUsageSummary, Language, ProviderId, ProviderSnapshot, QuotaHistoryPoint, ResetForecast, ResolvedAppearance, VolcengineDiagnostics, WidgetPreferences } from "../types";
 import { ProviderMark } from "./ProviderMark";
@@ -16,6 +16,25 @@ import { EMPTY_UPDATE_STATE, UpdatePanel, type UpdateViewState } from "./UpdateP
 import { ErrorBoundary } from "./ErrorBoundary";
 
 const UsageInsightsPanel = lazy(() => import("./UsageInsightsPanel").then((module) => ({ default: module.UsageInsightsPanel })));
+const RESET_FORECAST_MAX_AGE_MS = 6 * 60 * 60_000;
+const CLOCK_FUTURE_TOLERANCE_MS = 5 * 60_000;
+
+function useMinuteClock(): Date {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  return now;
+}
+
+function freshResetForecast(forecast: ResetForecast | null | undefined, now: Date): ResetForecast | null {
+  if (!forecast) return null;
+  const fetchedAt = new Date(forecast.fetchedAt).getTime();
+  if (!Number.isFinite(fetchedAt)) return null;
+  const age = now.getTime() - fetchedAt;
+  return age >= -CLOCK_FUTURE_TOLERANCE_MS && age <= RESET_FORECAST_MAX_AGE_MS ? forecast : null;
+}
 
 interface Props {
   snapshot: ProviderSnapshot;
@@ -550,6 +569,7 @@ export const QuotaCard = memo(function QuotaCard({
   initialInsightsOpen = false,
   collapsing = false,
 }: Props) {
+  const now = useMinuteClock();
   const [showCreditTip, setShowCreditTip] = useState(initialShowCreditTip);
   const [insightsOpen, setInsightsOpen] = useState(initialInsightsOpen);
   const [cockpitFocus, setCockpitFocus] = useState<CockpitRegion | null>(null);
@@ -574,7 +594,7 @@ export const QuotaCard = memo(function QuotaCard({
     ? clampPercent(singleQuotaWindow.window.remainingPercent)
     : null;
   const singleWindowPace = quotaWindows.length === 1
-    ? calculateQuotaPace(quotaWindows[0].window, new Date(), paceBaselines[paceBaselineKey(snapshot.provider, quotaWindows[0].period)] ?? null)
+    ? calculateQuotaPace(quotaWindows[0].window, now, paceBaselines[paceBaselineKey(snapshot.provider, quotaWindows[0].period)] ?? null)
     : null;
   const balance = snapshot.balanceRemaining ?? null;
   const unlimited = snapshot.balanceUnit === "unlimited";
@@ -601,7 +621,7 @@ export const QuotaCard = memo(function QuotaCard({
     : balance !== null
       ? `${formattedBalance} ${snapshot.balanceUnit ?? ""}`.trim()
       : null;
-  const staleAge = Date.now() - new Date(snapshot.updatedAt).getTime();
+  const staleAge = now.getTime() - new Date(snapshot.updatedAt).getTime();
   const staleExpired = snapshot.status === "stale" && staleAge > 30 * 60_000;
   const available = snapshot.status === "ok" || (snapshot.status === "stale" && !staleExpired);
   const tier = quotaTier(quotaWindows.length > 0 ? Math.min(...quotaWindows.map(({ window }) => clampPercent(window.remainingPercent))) : null);
@@ -625,20 +645,19 @@ export const QuotaCard = memo(function QuotaCard({
   }), [language, snapshot.resetCreditExpiresAt, t]);
   const snapshotsByProvider = useMemo(() => new Map(snapshots.map((item) => [item.provider, item])), [snapshots]);
   const percentageHistoryByProvider = useMemo(() => {
-    const historyNow = new Date();
     return new Map(PROVIDER_CATALOG.map((definition) => [
       definition.id,
-      recentQuotaTrend(history, definition.id, null, historyNow, 24),
+      recentQuotaTrend(history, definition.id, null, now, 24),
     ]));
-  }, [history]);
+  }, [history, now]);
   const providerDefinitions = useMemo(() => {
     const byProvider = new Map(PROVIDER_CATALOG.map((definition) => [definition.id, definition]));
     const visibleOrder = normalizeProviderOrder(preferences.providerOrder).filter((provider) => !preferences.hiddenProviders.includes(provider));
     const displayedOrder = preferences.riskFirst ? sortProviderIdsByRisk(visibleOrder, snapshots) : visibleOrder;
     return displayedOrder.map((provider) => byProvider.get(provider)!);
   }, [preferences.hiddenProviders, preferences.providerOrder, preferences.riskFirst, snapshots]);
-  const resetMarker = snapshot.provider === "codex" && snapshot.status === "ok" ? recentCodexReset : null;
-  const visibleResetForecast = snapshot.provider === "codex" ? resetForecast : null;
+  const resetMarker = snapshot.provider === "codex" && snapshot.status === "ok" && isRecentCodexReset(recentCodexReset, now) ? recentCodexReset : null;
+  const visibleResetForecast = snapshot.provider === "codex" && snapshot.status === "ok" ? freshResetForecast(resetForecast, now) : null;
 
   useEffect(() => setCockpitFocus(null), [preferences.expandedLayout, snapshot.provider]);
 
@@ -839,7 +858,7 @@ export const QuotaCard = memo(function QuotaCard({
           <div>
             <p className="eyebrow">{snapshot.displayName} · {snapshot.plan ?? t.accountFallback}</p>
             <div className="metric-context">
-              {snapshot.status !== "stale" ? <p className="updated">{metricTitle}</p> : null}
+              <p className={`updated${snapshot.status === "stale" ? " updated--stale" : ""}`}>{snapshot.status === "stale" ? t.dataStale : metricTitle}</p>
               {resetMarker ? <span className="recent-reset" title={t.resetDetectedAt(formatDateTime(resetMarker.resetAt, language))}><ClockCounterClockwise weight="bold" />{t.recentlyReset}</span> : null}
               {visibleResetForecast ? (
                 <button
@@ -852,7 +871,7 @@ export const QuotaCard = memo(function QuotaCard({
                 >
                   <Gauge weight="bold" />
                   <span className="reset-forecast-copy">
-                    <small>{language === "en" ? "Unofficial outlook" : "非官方重置展望"}</small>
+                    <small>{t.publicResetSignal}</small>
                     <strong>{resetForecastLabel(language, visibleResetForecast.score, visibleResetForecast.windowHours, visibleResetForecast.resetAnnounced)}</strong>
                   </span>
                 </button>
@@ -873,7 +892,11 @@ export const QuotaCard = memo(function QuotaCard({
                 {singleRemaining !== null && singleQuotaWindow ? <div className="progress" role="progressbar" aria-label={quotaAvailableLabel(singleQuotaWindow.period, singleRemaining, language)} aria-valuemin={0} aria-valuemax={100} aria-valuenow={singleRemaining}>
                   <span style={{ width: `${singleRemaining}%` }} />
                 </div> : null}
-                <p className="reset-time">{singleQuotaWindow ? formatResetTime(singleQuotaWindow.window.resetsAt, new Date(), language) : unlimited ? unlimitedLabel : snapshot.balanceUnit ?? ""}</p>
+                {singleQuotaWindow ? (
+                  <p className="reset-time reset-time--personal"><span>{t.personalReset}</span><strong>{formatResetTime(singleQuotaWindow.window.resetsAt, now, language)}</strong></p>
+                ) : (
+                  <p className="reset-time">{unlimited ? unlimitedLabel : snapshot.balanceUnit ?? ""}</p>
+                )}
                 {singleWindowPace ? <QuotaPaceHint pace={singleWindowPace} language={language} provider={snapshot.provider} /> : balance !== null && !unlimited ? (
                   <div className="quota-pace-hint quota-pace-hint--unknown" role="status"><span><ClockCounterClockwise />{t.paceNeedsPeriod}</span></div>
                 ) : null}
@@ -1004,6 +1027,7 @@ export const QuotaCard = memo(function QuotaCard({
 });
 
 export const QuotaOrb = memo(function QuotaOrb({ snapshot, onDrag, onHover, language = "zh-CN", compactLayout = "float", colorTheme = "aurora", accentColor = "#397ae0", resolvedAppearance = "light" }: Pick<Props, "snapshot" | "onDrag" | "onHover"> & { language?: Language; compactLayout?: CompactLayout; colorTheme?: ColorTheme; accentColor?: string; resolvedAppearance?: ResolvedAppearance }) {
+  const now = useMinuteClock();
   const [idle, setIdle] = useState(false);
   const idleTimer = useRef<number | null>(null);
   const activeLanguage = normalizeLanguage(language);
@@ -1019,7 +1043,7 @@ export const QuotaOrb = memo(function QuotaOrb({ snapshot, onDrag, onHover, lang
     ? new Intl.NumberFormat(activeLanguage === "en" ? "en-US" : "zh-CN", { notation: "compact", maximumFractionDigits: 1 }).format(balance)
     : null;
   const tier = quotaTier(remaining);
-  const staleAge = Date.now() - new Date(snapshot.updatedAt).getTime();
+  const staleAge = now.getTime() - new Date(snapshot.updatedAt).getTime();
   const staleUsable = snapshot.status === "stale" && Number.isFinite(staleAge) && staleAge <= 30 * 60_000;
   const available = (snapshot.status === "ok" || staleUsable) && (remaining !== null || balance !== null);
   const compactProgress = remaining ?? (available ? 100 : 0);
@@ -1116,6 +1140,7 @@ export const QuotaBar = memo(function QuotaBar({
   onDrag,
   onHover,
 }: QuotaBarProps) {
+  const now = useMinuteClock();
   const hoverTimer = useRef<number | null>(null);
   const activeLanguage = normalizeLanguage(language);
   const quotaWindows = trackedQuotaWindows(snapshot);
@@ -1140,6 +1165,8 @@ export const QuotaBar = memo(function QuotaBar({
       : activeLanguage === "en" ? "Attention" : "需处理";
   const providers = snapshots.map((item) => ({ id: item.provider, label: item.displayName }));
   const progress = remaining ?? (unlimited ? 100 : 0);
+  const reset = quota ? compactResetTime(quota.window.resetsAt, now) : snapshot.balanceUnit ?? "—";
+  const freshness = compactFreshness(snapshot.updatedAt, now);
 
   const cancelHover = () => {
     if (hoverTimer.current !== null) {
@@ -1172,7 +1199,7 @@ export const QuotaBar = memo(function QuotaBar({
         onHover(false);
       }}
       onMouseDown={(event) => { if (event.button === 0) void onDrag(); }}
-      aria-label={`${snapshot.displayName} ${value} ${suffix} ${status}`.trim()}
+      aria-label={`${snapshot.displayName} ${value} ${suffix} ${status}. ${activeLanguage === "en" ? "Personal reset" : "个人周期"}: ${reset}. ${activeLanguage === "en" ? "Updated" : "更新于"}: ${freshness}`.trim()}
     >
       <ProviderLogoSlider
         providers={providers}
@@ -1191,9 +1218,9 @@ export const QuotaBar = memo(function QuotaBar({
         <b>{value}</b>
         {suffix ? <small>{suffix}</small> : null}
       </section>
-      <span className="bar-reset">{quota ? compactResetTime(quota.window.resetsAt) : snapshot.balanceUnit ?? "—"}</span>
+      <span className="bar-reset" title={activeLanguage === "en" ? `Personal reset ${reset}` : `个人周期 ${reset}`}>{reset}</span>
       <span className={`bar-status bar-status--${healthy ? "ok" : "attention"}`}><i />{status}</span>
-      <span className="bar-freshness">{compactFreshness(snapshot.updatedAt)}</span>
+      <span className="bar-freshness" title={activeLanguage === "en" ? `Updated ${freshness}` : `更新于 ${freshness}`}>{freshness}</span>
       <span className="bar-progress" aria-hidden="true"><i /></span>
     </main>
   );
@@ -1234,6 +1261,7 @@ export const QuotaBottleneckBar = memo(function QuotaBottleneckBar({
   onHover,
 }: QuotaBarProps) {
   const hoverTimer = useRef<number | null>(null);
+  const providerListRef = useRef<HTMLElement>(null);
   const activeLanguage = normalizeLanguage(language);
   const sortedIds = sortProviderIdsByRisk(snapshots.map((item) => item.provider), snapshots);
   const snapshotsByProvider = new Map(snapshots.map((item) => [item.provider, item]));
@@ -1252,6 +1280,21 @@ export const QuotaBottleneckBar = memo(function QuotaBottleneckBar({
   const scheduleHover = () => {
     if (hoverTimer.current !== null) return;
     hoverTimer.current = window.setTimeout(() => onHover(true), 650);
+  };
+  const selectByKeyboard = (event: ReactKeyboardEvent<HTMLButtonElement>, provider: ProviderId) => {
+    const currentIndex = Math.max(0, orderedSnapshots.findIndex((item) => item.provider === provider));
+    const previousKey = edge === "top" ? "ArrowLeft" : "ArrowUp";
+    const nextKey = edge === "top" ? "ArrowRight" : "ArrowDown";
+    let nextIndex: number | null = null;
+    if (event.key === previousKey) nextIndex = (currentIndex - 1 + orderedSnapshots.length) % orderedSnapshots.length;
+    if (event.key === nextKey) nextIndex = (currentIndex + 1) % orderedSnapshots.length;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = orderedSnapshots.length - 1;
+    if (nextIndex === null || orderedSnapshots.length === 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onSelectProvider(orderedSnapshots[nextIndex].provider);
+    requestAnimationFrame(() => providerListRef.current?.querySelectorAll<HTMLButtonElement>("button")[nextIndex!]?.focus());
   };
   useEffect(() => () => cancelHover(), []);
 
@@ -1274,7 +1317,7 @@ export const QuotaBottleneckBar = memo(function QuotaBottleneckBar({
       onMouseDown={(event) => { if (event.button === 0) void onDrag(); }}
       aria-label={`${activeLanguage === "en" ? "Most constrained" : "最紧张额度"}: ${lead.displayName} ${leadMetric.value} ${leadMetric.detail}`}
     >
-      <section className="bottleneck-provider-list" role="radiogroup" aria-label={activeLanguage === "en" ? "Providers by quota risk" : "按额度风险排列的平台"}>
+      <section ref={providerListRef} className="bottleneck-provider-list" role="radiogroup" aria-label={activeLanguage === "en" ? "Providers by quota risk" : "按额度风险排列的平台"} aria-orientation={edge === "top" ? "horizontal" : "vertical"}>
         {orderedSnapshots.map((item, index) => {
           const metric = bottleneckMetric(item, activeLanguage);
           const selected = item.provider === snapshot.provider;
@@ -1283,11 +1326,13 @@ export const QuotaBottleneckBar = memo(function QuotaBottleneckBar({
               type="button"
               role="radio"
               aria-checked={selected}
+              tabIndex={selected ? 0 : -1}
               className={`${selected ? "is-active" : ""}${index === 0 ? " is-bottleneck" : ""}`}
               key={item.provider}
               title={`${item.displayName} · ${metric.detail} · ${metric.value}`}
               aria-label={`${item.displayName} · ${metric.detail} · ${metric.value}`}
               onMouseDown={(event) => event.stopPropagation()}
+              onKeyDown={(event) => selectByKeyboard(event, item.provider)}
               onClick={() => {
                 cancelHover();
                 onSelectProvider(item.provider);
