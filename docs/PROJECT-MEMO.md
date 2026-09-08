@@ -10,6 +10,8 @@ The 2026-09-09 request authorized three GPT-5.6 Sol specialist tasks for reset a
 
 For this review, “clean up tasks” means save their substantive handoffs and archive completed specialist conversations. It does not mean delete conversation history, remove unrelated tasks, or destroy worktrees. Keep the coordinating task as the retrievable summary. This one-time publication authorization does not authorize future releases.
 
+Completed outcome: all three specialist tasks were archived after their findings were saved; the coordinator remains open. v0.3.11 is public with [verified release evidence](RELEASE-0.3.11.md). v0.3.10 remains an unpublished failed candidate. Preserve both tags and distinguish published application source from later documentation/workflow maintenance commits.
+
 ## Release collaboration default
 
 The preferred release request is:

@@ -375,6 +375,7 @@ jobs:
         env:
           RELEASE_TAG: ${{ needs.verify.outputs.tag }}
           CANDIDATE_RELEASE_ID: ${{ needs.upgrade-smoke.outputs.candidate_release_id }}
+          RELEASE_SHA: ${{ github.event_name == 'push' && github.sha || needs.create-release-ref.outputs.release_sha }}
           CANDIDATE_ASSET_ID: ${{ needs.upgrade-smoke.outputs.candidate_asset_id }}
           CANDIDATE_ASSET_NAME: ${{ needs.upgrade-smoke.outputs.candidate_asset_name }}
           CANDIDATE_SHA256: ${{ needs.upgrade-smoke.outputs.candidate_sha256 }}
@@ -463,6 +464,7 @@ jobs:
               repo: context.repo.repo,
               release_id: release.id,
               draft: false,
+              target_commitish: process.env.RELEASE_SHA,
               prerelease: tag.includes("-"),
             });
             core.setOutput("release_url", published.html_url);

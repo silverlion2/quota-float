@@ -14,7 +14,7 @@
 - 月度展望按当前所选区间的日均 API 等价费用外推，与“本月截至目前”已保留记录的累计费用是两个不同口径；仅在打开 Codex 洞察并检测到超支状态时发送每月一次的本地提醒，不能替代真实账单预算或持续后台监控。
 - CSV/JSON 会匿名化项目并移除会话键，SVG 仅包含摘要；这些文件仍可能包含敏感的用量模式，应由用户自行选择安全位置与分享范围。
 - 火山方舟需要可用且已登录的 Ark CLI；Antigravity 需要本机应用/语言服务器正在运行；其他平台也依赖对应本地登录态。
-- `v0.3.8` 公开构建缺少 Windows Authenticode、macOS Developer ID 签名和 notarization，因而可能触发 SmartScreen/Gatekeeper；其 Tauri updater 签名只覆盖更新完整性，是另一条独立校验链。
+- `v0.3.11` 公开构建缺少 Windows Authenticode、macOS Developer ID 签名和 notarization，因而可能触发 SmartScreen/Gatekeeper；其 Tauri updater 签名只覆盖更新完整性，是另一条独立校验链。
 - Windows WebView2/macOS WebKit 对透明窗口和毛玻璃的桌面合成不同，Aurora 效果不会在所有壁纸或系统版本上完全一致。
 - 浏览器 `npm run dev` 只使用合成数据，不能验证真实 provider、原生窗口、托盘、通知、置顶或鼠标穿透。
 - 显示器在应用运行时被移除、任务栏位置动态变化等生命周期场景仍以平台实机测试为最终证据。
