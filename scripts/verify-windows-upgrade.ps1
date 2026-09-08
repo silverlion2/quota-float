@@ -25,7 +25,10 @@ if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
 function Invoke-GitHubJson([string]$Endpoint) {
   $raw = gh api $Endpoint
   if ($LASTEXITCODE -ne 0) { throw "GitHub API request failed for $Endpoint." }
-  return $raw | ConvertFrom-Json
+  # Windows PowerShell 5.1 emits a parsed JSON array as one pipeline object.
+  # Enumerate explicitly so Where-Object sees each release, not the whole list.
+  $decoded = $raw | ConvertFrom-Json
+  foreach ($item in $decoded) { $item }
 }
 
 function Get-InstallerAsset($Release, [string]$Label) {
