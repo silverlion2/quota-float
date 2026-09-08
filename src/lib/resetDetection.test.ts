@@ -58,6 +58,12 @@ describe("recent Codex reset detection", () => {
     expect(detectRecentCodexReset(codex(100, resetsAt), codex(100, resetsAt), now)).toBeNull();
   });
 
+  it("keeps window identity across stale recovery without repeating the reset", () => {
+    const resetsAt = "2026-07-25T01:00:00Z";
+    const previous = { ...codex(95, resetsAt), status: "stale" as const, updatedAt: "2026-07-18T01:30:00Z" };
+    expect(detectRecentCodexReset(codex(94, resetsAt), previous, now)).toBeNull();
+  });
+
   it("rejects an old snapshot even if its window appears to have just started", () => {
     const stale = { ...codex(100, "2026-07-25T01:00:00Z"), updatedAt: "2026-07-18T01:30:00Z" };
     expect(detectRecentCodexReset(stale, null, now)).toBeNull();

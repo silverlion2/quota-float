@@ -79,7 +79,8 @@ export function refreshDailyPaceBaselines(
       const existing = current[key];
       const quotaRestored = existing && window.remainingPercent > existing.remainingPercent + SCHEDULE_TOLERANCE_PERCENT;
       const sameCycle = existing?.resetsAt === window.resetsAt;
-      const cycleReset = resetProviders.has(snapshot.provider) || Boolean(quotaRestored);
+      const cycleReset = resetProviders.has(snapshot.provider)
+        || (snapshot.provider !== "codex" && Boolean(quotaRestored));
       const canReuse = existing
         && !resetProviders.has(snapshot.provider)
         && !quotaRestored

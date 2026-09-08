@@ -42,8 +42,10 @@ export function detectRecentCodexReset(
   const previousRemaining = previousIsFresh ? previous.weeklyWindow?.remainingPercent : undefined;
   const recovered = Number.isFinite(currentRemaining) && previousRemaining !== undefined && Number.isFinite(previousRemaining)
     && currentRemaining - previousRemaining > RESET_RECOVERY_TOLERANCE_PERCENT;
-  const previousStart = previousIsFresh ? windowStartedAt(previous) : null;
-  const windowAdvanced = currentStart !== null && previousStart !== null
+  // An old sample cannot prove a recovery, but its cycle identity still
+  // prevents the same window being announced again after a transient failure.
+  const previousStart = previous?.provider === "codex" ? windowStartedAt(previous) : null;
+  const windowAdvanced = previousIsFresh && currentStart !== null && previousStart !== null
     && currentStart > previousStart + CLOCK_TOLERANCE_MS;
   const creditConsumed = previousIsFresh
     && previous.resetCredits !== null && current.resetCredits !== null

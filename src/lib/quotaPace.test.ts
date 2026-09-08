@@ -267,6 +267,16 @@ describe("quota pace", () => {
     expect(pace.recommendedUsedPercent).toBeGreaterThan(0);
   });
 
+  it("does not restart the Codex pace cycle for an unconfirmed quota correction", () => {
+    const now = new Date(2026, 6, 22, 8);
+    const resetsAt = new Date(2026, 6, 26, 8).toISOString();
+    const first = refreshDailyPaceBaselines({}, [codexSnapshot(50, resetsAt)], now);
+    const key = paceBaselineKey("codex", "weekly");
+    const corrected = refreshDailyPaceBaselines(first, [codexSnapshot(52, resetsAt)], new Date(2026, 6, 22, 9));
+    expect(corrected[key].cycleStartedAt).toBe(first[key].cycleStartedAt);
+    expect(corrected[key].cycleStartRemainingPercent).toBe(first[key].cycleStartRemainingPercent);
+  });
+
   it("reanchors immediately when the projected weekly reset timestamp changes", () => {
     const now = new Date(2026, 6, 22, 8, 0, 0);
     const oldReset = new Date(2026, 6, 26, 8, 0, 0).toISOString();
