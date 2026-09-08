@@ -1,8 +1,14 @@
 # Quota Float Project Memo
 
-Last updated: 2026-08-23
+Last updated: 2026-09-09
 
 This memo records durable collaboration preferences and operational defaults for future maintenance tasks. It does not replace the desktop development SOP, release checks, or an explicit authorization for the current release.
+
+## Systematic review and task preservation
+
+The 2026-09-09 request authorized three GPT-5.6 Sol specialist tasks for reset accuracy, stability/debugging, and UI/UX, with the coordinating task responsible for integration and GitHub publication. Keep the detailed findings, source/integration commits, test evidence, limitations, and task IDs in [REVIEW-2026-09-09.md](REVIEW-2026-09-09.md). The project description and architecture are maintained in [PROJECT-SUMMARY.md](PROJECT-SUMMARY.md) and [ARCHITECTURE.md](ARCHITECTURE.md).
+
+For this review, “clean up tasks” means save their substantive handoffs and archive completed specialist conversations. It does not mean delete conversation history, remove unrelated tasks, or destroy worktrees. Keep the coordinating task as the retrievable summary. This one-time publication authorization does not authorize future releases.
 
 ## Release collaboration default
 

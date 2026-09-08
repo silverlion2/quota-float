@@ -32,6 +32,24 @@ Quota Float is a local-first Tauri desktop application. React renders the widget
 
 ## Data flow
 
+```mermaid
+flowchart LR
+  Local[Existing local sign-in] --> Rust[Read-only Rust adapters]
+  Rust --> Registry[Conformance and isolated retries]
+  Registry --> Cache[Native snapshot cache]
+  Registry --> Bridge[Progressive and final bridge results]
+  Bridge --> Personal[Personal quota and pace]
+  Bridge --> History[Bounded local history]
+  Cache --> Detached[Read-only detached panels]
+  Public[Fixed public tracker endpoints] --> Filter[Independent deadlines and freshness checks]
+  Filter --> Signal[Uncalibrated reference signal]
+  Personal --> UI[React desktop views]
+  Signal --> UI
+  History --> UI
+```
+
+The public-signal path has no connection to personal pace calculation. Credentials terminate within the native adapter boundary and are not present in either bridge payloads or public requests.
+
 1. React computes which unpaused providers are due from independent attempt clocks, health state, and the selected resource mode, then requests only that subset through `bridge.ts`.
 2. A Tauri command asks the provider registry to refresh the selected isolated Rust adapters concurrently under a shared refresh lock and bounded cache. Transiently failed network/file adapters receive bounded same-cycle retries; Qoder, Volcengine and Antigravity do not, because blocking work or external probes may outlive a timeout. Qoder's read-only SQLite/decryption work runs on a blocking worker with bounded input size and lock wait.
 3. The provider registry normalizes every outbound `ProviderSnapshot`: descriptor-owned identity, allowlisted status, finite/clamped quota values, bounded text/list payloads, parseable timestamps, empty failure payloads and redacted diagnostics. Rust returns only those conformed values without exposing credentials or raw provider payloads.
@@ -39,6 +57,8 @@ Quota Float is a local-first Tauri desktop application. React renders the widget
 5. Rendering selects Float, Ring, Bar, or Bottleneck for compact mode and one of four expanded layouts.
 
 Balanced mode refreshes healthy providers on a five-minute cadence, fast-reset or critical providers every minute, and unavailable providers with a thirty-minute cooldown. Project Focus mode stretches those intervals to fifteen, five, and sixty minutes, disables provider auto-rotation and ambient infinite animation, while manual refresh remains available.
+
+Refresh requests remain single-flight. A manual forced refresh arriving during an automatic refresh queues one follow-up forced pass instead of being swallowed by the automatic pass. Repeated manual requests share that queued pass; an active forced pass remains shareable. Last-known-good merging includes snapshots whose only available metric is a reset-credit balance.
 
 The Insights tab lazily requests a separate Codex Token report covering every retained local session metadata file. Rust streams those files under explicit file, byte, line, and index-size safety caps, ignores message content, and persists a sanitized, versioned per-file cursor index in the application config directory. Index entries use full SHA-256 file identities rather than relative paths or raw filenames. Unchanged files reuse indexed aggregates; append-only files resume from the saved byte cursor; truncation, metadata changes, or a manual rebuild reparses the affected scope. If a safety cap is reached, the report is explicitly marked partial. The UI receives only hourly numeric aggregates grouped by model, context tier, project basename, normalized terminal category, and a one-way hashed session key.
 
@@ -54,11 +74,19 @@ The global reset outlook is informational and remains separate from the personal
 
 1. When Codex is included in a refresh, `App.tsx` requests quota snapshots and the public reset outlook in parallel.
 2. `reset_forecast.rs` concurrently reads three fixed unauthenticated JSON endpoints—Codex Reset, Codex Reset Radar, and Will Codex Reset Today—under a five-second overall boundary. Each response is capped at 128 KiB; the shared native HTTP client disables redirects and sends no provider credential, account identifier, quota value, or local Token count.
-3. Each source must expose a 48-hour forecast and a timestamp no older than six hours. Fresh scores are normalized to `0…100`; the displayed score is their median so one lagging or extreme tracker cannot dominate.
-4. Confidence is derived from source count and score spread. A fresh explicitly timed announcement takes priority and contributes its published time-window midpoint as `expectedAt`; otherwise materially disagreeing or single-source results remain low-confidence.
-5. React exposes the source list/count and confidence. Quota planning retains the provider-reported personal `resetsAt` when the outlook is low-confidence or uncorroborated. A corroborated medium/high-confidence probability may produce a bounded probability-weighted planning horizon, while a fresh exact announcement supersedes that estimate only when it precedes the personal reset.
+3. Each source must expose a 48-hour forecast and a timestamp no older than six hours. Accepted scores are aggregated as a median; source-specific timeouts preserve successful peers. The aggregate freshness must not hide the oldest participating observation.
+4. Source count and individual scores expose third-party inputs, not calibrated predictive confidence. Shared underlying data can make trackers correlated; the native result conservatively retains low confidence for these public signals even when scores agree. A tracker reporting an announcement does not verify an official or account-specific reset and cannot set an actionable announcement or expected reset timestamp.
+5. React exposes source information separately from the personal reset. Personal pace always uses the provider-reported `resetsAt`, including when previously persisted baselines contain an earlier speculative horizon. Public probabilities and reported announcements never increase the daily quota budget.
 
 Failure is fail-closed: stale, malformed, oversized, redirected, timed-out, or unexpected-window responses are discarded independently. If no valid source remains, no public outlook is shown and provider quota collection continues unaffected.
+
+### Accuracy and observability boundaries
+
+There are three distinct pieces of evidence: a provider-reported future cycle boundary, a local observation of quota recovery/cycle transition, and an unauthenticated public prediction. None should silently overwrite another. Compact timestamp dates use the same local timezone as detailed reset timestamps; explicit calendar-only dates retain their calendar meaning.
+
+Predictive accuracy is not established by unit tests or source agreement. A future calibration study needs timestamped predictions frozen before the outcome, a defined global-reset event label, time-separated evaluation, source availability/coverage, and proper probability metrics such as Brier score and reliability bins. Personal credit redemption and rolling quota recovery must not be mislabeled as global reset events. No additional private account collection or background telemetry is introduced by this review.
+
+Review ownership, root causes, verification evidence, and archived specialist-task references are recorded in [REVIEW-2026-09-09.md](REVIEW-2026-09-09.md).
 
 ## Preferences and recovery
 
@@ -93,6 +121,7 @@ The bridge waits for native drag position stability, asks Rust to resolve the ed
 - Credentials go only to the corresponding official provider endpoint or a documented loopback-only local service.
 - Provider credentials, account identifiers, auth paths, prompts, chats, raw session records, and raw provider responses are neither persisted nor included in diagnostics. Only the documented sanitized Token cursor/index is persisted locally.
 - Provider snapshot diagnostics are bounded and reject raw JSON, credential markers and user-directory paths at the shared registry boundary.
+- Clipboard diagnostic exports are constructed from an explicit allowlist of operational fields. They exclude configuration directories and free-form event titles/details; native diagnostic objects are not serialized wholesale.
 - Provider reads are non-mutating: no reset redemption, account updates, or provider configuration writes.
 - Public reset-outlook requests are unauthenticated reads to three fixed HTTPS origins and never receive provider credentials, account data, quota values, or local Token counts.
 - Import/export file selection is native-owned; the webview never supplies arbitrary filesystem paths.

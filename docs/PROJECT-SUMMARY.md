@@ -19,7 +19,7 @@ Quota Float 是一款 Windows/macOS Tauri 桌面悬浮窗：它只读复用本�
 - API 等价月度展望按当前所选区间的日均费用外推，并与当前月已保留记录的累计费用分开显示；预算提醒只在 Codex 洞察打开时检查，不是持续后台账单监控。
 - 各平台按健康状态独立安排刷新与失败冷却；“项目专注模式”会降低刷新频率、停止自动轮播与无限环境动画，也可单独暂停不需要的平台监控，手动刷新仍然可用。
 - 网络或平台读取失败时保留最后一次成功数据并标记为过期；浏览器预览始终使用合成数据。
-- Codex 全局重置展望并发读取三个固定公开来源，对 48 小时概率做新鲜度校验、中位数聚合和分歧置信度判断；个人重置时间仍以 Codex 返回值为准。
+- Codex 全局重置展望并发读取三个固定公开来源，对 48 小时信号做时效校验、中位数聚合和来源信息判断。来源一致不等于经过校准的准确率，第三方的官宣标记也不构成独立官方核验；个人重置时间和每日额度规划始终以 Codex 返回的个人周期为准。
 
 ## 技术栈与职责
 
@@ -29,7 +29,7 @@ Quota Float 是一款 Windows/macOS Tauri 桌面悬浮窗：它只读复用本�
 - Rust 单元测试、`fmt`、`check` 与 `clippy`：平台解析、registry、偏好迁移和物理像素窗口几何验证。
 - WebdriverIO + Tauri WebDriver：编译后的真实桌面进程、原生桥接、展开、控制中心与更新对话框冒烟验证。
 
-详细分层和目录职责见 [ARCHITECTURE.md](ARCHITECTURE.md)，维护提案见 [ROADMAP.md](ROADMAP.md)，长期协作与发布历史见 [PROJECT-MEMO.md](PROJECT-MEMO.md)，最新完整公开发布证据见 [RELEASE-0.3.8.md](RELEASE-0.3.8.md)。
+详细分层和目录职责见 [ARCHITECTURE.md](ARCHITECTURE.md)，维护提案见 [ROADMAP.md](ROADMAP.md)，长期协作与发布历史见 [PROJECT-MEMO.md](PROJECT-MEMO.md)，当前审查、发布验证和专项任务归档见 [REVIEW-2026-09-09.md](REVIEW-2026-09-09.md)。
 
 ## 关键文件
 
@@ -76,7 +76,7 @@ npm run tauri dev
 
 提交交付前必须执行 [桌面开发 SOP](DESKTOP-DEVELOPMENT-SOP.md) 的完整 fast handoff gate。浏览器模式不能验证真实额度或系统窗口行为；Windows 多屏/缩放和 macOS 透明窗口仍需真实桌面环境按 [TEST-MATRIX.md](TEST-MATRIX.md) 验收。
 
-当前仓库源码版本为 `0.3.9`；具有完整仓库发布、构建和升级证据的最新公开版本为 `v0.3.8`，记录在 [RELEASE-0.3.8.md](RELEASE-0.3.8.md)。`0.3.9` 源码及其后的本地改动不能在缺少新 release record 和实机结果时表述为已公开发布或已完成平台实测。
+源码版本以 `package.json` 及原生元数据的一致性检查为准。2026-09-09 审查开始时已通过 GitHub API 核验 v0.3.9 为公开版本；本轮后续发布及验证结果统一保存在 [系统审查记录](REVIEW-2026-09-09.md)。任何版本的 CI 成功都不能代替尚未执行的多显示器或真实 Mac 视觉验收。
 
 ## 当前维护重点
 

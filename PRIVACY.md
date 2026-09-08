@@ -66,6 +66,6 @@ Logs are intentionally generic. They must not include tokens, account IDs, raw b
 
 Quota Float displays quota returned by provider services, local account caches, or Ark CLI. It does not estimate quota from local Token usage and does not fabricate values when the response shape is unknown.
 
-The public Codex global-reset outlook is separate from the personal reset time reported by Codex. It is labeled unofficial, uses a freshness-gated median across available public trackers, reports confidence and source count, and does not change quota planning when only one source is available or sources materially disagree. A fresh, explicitly timed announcement may be used as the temporary planning horizon until the account-level quota response confirms the reset.
+The public Codex global-reset outlook is separate from the personal reset time reported by Codex. It uses a freshness-gated median across available public trackers and reports source details and count. These signals are neither calibrated probabilities nor independently verified official announcements. They never change personal quota planning; only the provider-reported personal cycle determines that horizon.
 
 Token counts are available only when Codex exposes supported numeric metadata. The displayed cost is an API-equivalent estimate, not a Codex subscription bill or proof of actual API charges. Unknown models remain unpriced and reduce the displayed pricing coverage instead of inheriting a guessed rate.

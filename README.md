@@ -87,7 +87,7 @@ Updater artifacts are signed with the project's Tauri update key. Windows Authen
 
 Quota Float sends each provider's existing token only to that provider's official quota service; Claude credentials remain read-only, Volcengine access stays inside Ark CLI, and Antigravity is queried through its loopback-only local quota service. The app stores only its own preferences, bounded quota samples, event summaries, layout profiles, recovery points, and a sanitized incremental Codex usage index.
 
-The optional Codex global reset outlook reads three public, unauthenticated tracker endpoints without sending provider credentials, account data, quota values, or local Token counts. It rejects stale data, uses the median of fresh forecasts, exposes source count/confidence, and lets only a fresh timed announcement or corroborated outlook affect planning. Your provider-reported personal reset time remains authoritative.
+The optional Codex global reset outlook reads three public, unauthenticated tracker endpoints without sending provider credentials, account data, quota values, or local Token counts. It rejects stale data and displays public signals and their source details separately from your personal reset. These third-party signals are not calibrated probabilities or verified official announcements. Daily quota planning always uses your provider-reported personal reset time.
 
 It does **not** store provider tokens, account IDs, prompts, chat history, raw quota responses, or local auth paths. It does not redeem reset credits or change provider account settings. See [Privacy](PRIVACY.md) and [Security](SECURITY.md) for the complete boundary.
 
@@ -136,9 +136,9 @@ npm run tauri build
 
 After a Codex Desktop update, run `npm run check:codex`. See the [provider compatibility contract](docs/PROVIDER-COMPATIBILITY.md), [Codex update compatibility guide](docs/CODEX-UPDATE-CHECK.md), and [release checklist](docs/GITHUB-RELEASE-CHECKLIST.md) for maintainer workflows.
 
-The repository source currently identifies as `0.3.9`. The latest public version with a complete repository release record is [v0.3.8](docs/RELEASE-0.3.8.md); source changes after that record must not be described as published or manually validated without new evidence.
+The source version is declared in `package.json` and checked against the native package metadata. Current review, validation, and publication status are recorded in the [2026-09-09 systematic review](docs/REVIEW-2026-09-09.md). Source support and automated tests do not imply manual validation on every platform.
 
-Maintainers can start with the latest [v0.3.8 release record](docs/RELEASE-0.3.8.md), [project summary](docs/PROJECT-SUMMARY.md), [architecture and repository structure](docs/ARCHITECTURE.md), [distribution/signing guide](docs/DISTRIBUTION.md), and [desktop development SOP](docs/DESKTOP-DEVELOPMENT-SOP.md).
+Maintainers can start with the [systematic review and task archive](docs/REVIEW-2026-09-09.md), [project summary](docs/PROJECT-SUMMARY.md), [architecture and repository structure](docs/ARCHITECTURE.md), [distribution/signing guide](docs/DISTRIBUTION.md), and [desktop development SOP](docs/DESKTOP-DEVELOPMENT-SOP.md).
 
 ## Contributing
 

@@ -2,6 +2,8 @@
 
 ## 自动化与代码级验证
 
+2026-09-09 系统审查：270 项前端测试、93 项 Rust 测试、生产构建、fmt/check/严格 Clippy 和版本检查通过。CSS 清理后 72 项组件/样式回归及包预算通过。原生与发布证据、专项任务归档统一记录在 [REVIEW-2026-09-09.md](REVIEW-2026-09-09.md)。
+
 2026-09-08 整合：256 项前端测试、89 项 Rust 测试、生产构建、fmt/check/严格 clippy、版本和包体积检查通过。覆盖新增的平台渐进结果去重与最终副作用、同名项目不透明身份及旧索引重建、周/月边界和匿名导出范围。原生窗口实测详见 [NATIVE-E2E-2026-09-08.md](NATIVE-E2E-2026-09-08.md)；不替代下方真实多显示器或 Mac 矩阵。
 
 | 范围 | 场景 | 预期 | 当前证据 |
@@ -24,7 +26,7 @@
 | Float/Ring | 原有吸附行为 | 不使用 Bar 磁吸结果，保持原窗口吸附路径 | Rust 几何回归、组件测试 |
 | 数据 | TRAE credits | 各 entitlement pack 独立计算后汇总，不相互抵扣 | Rust 解析器回归测试 |
 | 数据 | 正常/过期/登出/缺字段 | 不崩溃、不猜测额度、保留 last-known-good 并安全标记 | Provider/快照单元测试 |
-| Codex 全局重置展望 | 三源正常、部分失败、过期、异常窗口、分歧、定时官宣 | 仅纳入 6 小时内的 48h 数据；中位数抗离群；展示来源数/置信度；低置信度或单源不改变规划；定时官宣优先于概率中点 | Rust `reset_forecast`、TypeScript `quotaPace` 与组件测试 |
+| Codex 全局重置展望 | 三源正常、部分失败、过期、异常窗口、分歧、第三方公告 | 仅纳入有效的 48h 数据；慢源不抹掉快源；展示来源信息；公开信号和公告均不改变个人规划，旧预测基线也不再放宽预算 | Rust `reset_forecast`、TypeScript `quotaPace` 与组件测试；本轮实际结果见系统审查记录 |
 | Provider registry | 并发、超时、临时失败与定向重试 | 固定顺序返回；慢平台被限制；只重试临时失败组；健康平台不重复请求 | Rust registry 单元测试、每周 Windows/macOS compatibility workflow |
 | Provider 出口契约 | 错误身份/状态、NaN/越界额度、超长文本/列表、无额度 `ok`、含 token/路径/原始 JSON 的诊断 | registry 覆盖身份；状态 allowlist；数值有限且比例限制到 `0…100`；载荷限界；失败清空额度；敏感诊断替换为固定安全提示 | 所有 provider descriptor 的 Rust 共享 conformance 测试 |
 | 自适应刷新 | 健康、临界、异常平台与 Balanced/Project Focus 模式 | 各平台使用独立时钟和分级间隔；只查询到期且未暂停的平台；Volcengine/Antigravity 不做同轮进程级重试 | TypeScript refresh policy、bridge/merge 与 Rust registry 单元测试 |
