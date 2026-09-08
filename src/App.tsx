@@ -21,6 +21,7 @@ import { loadStartupState } from "./lib/startup";
 import { runSingleFlight, type SingleFlightState } from "./lib/singleFlight";
 import { requestLatest, type LatestRequestState } from "./lib/latestRequest";
 import { monitoredProviderIds, nextProviderRefreshDelay, providersDueForRefresh, type ProviderAttemptTimes } from "./lib/refreshPolicy";
+import { buildDiagnosticReport } from "./lib/diagnosticReport";
 import type { AppDiagnostics, CockpitRegion, ProviderId, ProviderSnapshot, ResetForecast, RuntimeState, VolcengineDiagnostics, WidgetPreferences } from "./types";
 
 const DEFAULT_PREFS = DEFAULT_WIDGET_PREFERENCES;
@@ -260,7 +261,7 @@ export default function App() {
     } finally {
       if (activeSnapshotRequest.current === requestId) activeSnapshotRequest.current = null;
     }
-  }), [commitRuntimeState]);
+  }, force), [commitRuntimeState]);
 
   const loadVolcengineDiagnostics = useCallback(async () => {
     setDiagnosticsLoading(true);
@@ -513,13 +514,7 @@ export default function App() {
   }, [applyBackupBundle]);
 
   const handleCopyDiagnostics = useCallback(() => {
-    const report = {
-      generatedAt: new Date().toISOString(),
-      app: appDiagnostics,
-      providers: snapshots.map(({ provider, status, updatedAt }) => ({ provider, status, updatedAt })),
-      historySamples: runtimeState.history.length,
-      recentEvents: runtimeState.events.slice(0, 10),
-    };
+    const report = buildDiagnosticReport(appDiagnostics, snapshots, runtimeState);
     void navigator.clipboard.writeText(JSON.stringify(report, null, 2))
       .then(() => setOperationError(language === "en" ? "Diagnostic report copied." : "诊断报告已复制。"))
       .catch(() => setOperationError(language === "en" ? "Could not copy the diagnostic report." : "无法复制诊断报告。"));

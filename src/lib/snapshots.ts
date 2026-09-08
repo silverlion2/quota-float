@@ -17,7 +17,11 @@ export function mergeSnapshots(
     if (next.status === "signed_out") return next;
     const previous = current.find((item) => (
       item.provider === next.provider
-      && (item.shortWindow || item.weeklyWindow || item.monthlyWindow || item.balanceRemaining !== null && item.balanceRemaining !== undefined)
+      && (item.shortWindow
+        || item.weeklyWindow
+        || item.monthlyWindow
+        || item.resetCredits !== null && item.resetCredits !== undefined
+        || item.balanceRemaining !== null && item.balanceRemaining !== undefined)
     ));
     return previous
       ? { ...previous, status: "stale", message: next.message, updatedAt: previous.updatedAt }

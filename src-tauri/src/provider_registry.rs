@@ -199,20 +199,41 @@ fn safe_diagnostic_message(value: Option<String>) -> Option<String> {
     }
     let normalized = value.to_ascii_lowercase();
     let sensitive = [
+        "token",
+        "credential",
+        "password",
+        "passwd",
         "access_token",
         "refresh_token",
         "id_token",
         "api_key",
-        "authorization:",
+        "authorization",
         "bearer ",
+        "cookie",
         "secret://",
+        "account_id",
+        "account id",
+        "account=",
+        "account:",
+        ":\\",
+        ":/",
         ":\\users\\",
         "/users/",
         "/home/",
+        "/root/",
+        "/var/",
+        "/tmp/",
+        "/etc/",
+        "/library/",
+        "/.config/",
+        "/.local/",
     ]
     .iter()
     .any(|marker| normalized.contains(marker));
-    if sensitive || normalized.starts_with('{') || normalized.starts_with('[') {
+    let structured_or_identifier = value
+        .chars()
+        .any(|character| matches!(character, '{' | '}' | '[' | ']' | '@' | '='));
+    if sensitive || structured_or_identifier {
         return None;
     }
     Some(value)
@@ -553,6 +574,18 @@ mod tests {
             assert!(!message.contains("secret"));
             assert!(!message.contains("Users"));
             assert!(message.chars().count() <= MAX_MESSAGE_CHARS);
+        }
+    }
+
+    #[test]
+    fn diagnostic_filter_rejects_inline_secrets_identifiers_and_paths() {
+        for message in [
+            "request failed with token=secret-value",
+            "account jane@example.com is unavailable",
+            r"failed to read C:\\Temp\\auth.json",
+            "provider error: {\"credential\":\"secret-value\"}",
+        ] {
+            assert_eq!(safe_diagnostic_message(Some(message.into())), None);
         }
     }
 

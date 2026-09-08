@@ -20,6 +20,17 @@ describe("snapshot failure handling", () => {
     expect(mergeSnapshots([success], [failure])[0]).toEqual({ ...success, status: "stale", message: "Network unavailable" });
   });
 
+  it("retains reset-credit-only last-known-good data during a transient failure", () => {
+    const creditOnly: ProviderSnapshot = { ...success, shortWindow: null, weeklyWindow: null, resetCredits: 1 };
+    const failure: ProviderSnapshot = { ...creditOnly, resetCredits: null, status: "unavailable", message: "Network unavailable", updatedAt: "2026-07-07T01:00:00Z" };
+
+    expect(mergeSnapshots([creditOnly], [failure])[0]).toEqual({
+      ...creditOnly,
+      status: "stale",
+      message: "Network unavailable",
+    });
+  });
+
   it("shows a failure when no successful snapshot exists", () => {
     const signedOut: ProviderSnapshot = { ...success, shortWindow: null, weeklyWindow: null, status: "signed_out", message: "Please sign in" };
     expect(mergeSnapshots([], [signedOut])[0].status).toBe("signed_out");
