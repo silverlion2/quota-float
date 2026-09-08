@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.11 - 2026-09-08
+
+- fix: enumerate release candidates in Windows PowerShell
+
 ## 0.3.10 - 2026-09-08
 
 - refactor: remove superseded styles and document systematic review
