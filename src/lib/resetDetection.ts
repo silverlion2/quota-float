@@ -2,6 +2,8 @@ import type { ProviderSnapshot } from "../types";
 
 export const RECENT_CODEX_RESET_MS = 6 * 60 * 60_000;
 const RESET_RECOVERY_TOLERANCE_PERCENT = 0.5;
+const SNAPSHOT_FRESHNESS_MS = 20 * 60_000;
+const CLOCK_TOLERANCE_MS = 2 * 60_000;
 
 export interface RecentCodexReset {
   detectedAt: string;
@@ -17,6 +19,12 @@ function windowStartedAt(snapshot: ProviderSnapshot): number | null {
   return resetsAt - window.windowSeconds * 1000;
 }
 
+function freshSnapshot(snapshot: ProviderSnapshot, nowMs: number): boolean {
+  const updatedAt = Date.parse(snapshot.updatedAt);
+  const age = nowMs - updatedAt;
+  return Number.isFinite(updatedAt) && age >= -CLOCK_TOLERANCE_MS && age <= SNAPSHOT_FRESHNESS_MS;
+}
+
 export function detectRecentCodexReset(
   current: ProviderSnapshot,
   previous: ProviderSnapshot | null,
@@ -24,17 +32,27 @@ export function detectRecentCodexReset(
 ): RecentCodexReset | null {
   if (current.provider !== "codex" || current.status !== "ok" || !current.weeklyWindow) return null;
   const nowMs = now.getTime();
-  if (!Number.isFinite(nowMs)) return null;
+  if (!Number.isFinite(nowMs) || !freshSnapshot(current, nowMs)) return null;
 
   const currentStart = windowStartedAt(current);
   const currentRemaining = current.weeklyWindow.remainingPercent;
-  const previousRemaining = previous?.provider === "codex" ? previous.weeklyWindow?.remainingPercent : undefined;
-  const recovered = previousRemaining !== undefined
+  const previousIsFresh = previous?.provider === "codex"
+    && previous.status === "ok"
+    && freshSnapshot(previous, nowMs);
+  const previousRemaining = previousIsFresh ? previous.weeklyWindow?.remainingPercent : undefined;
+  const recovered = Number.isFinite(currentRemaining) && previousRemaining !== undefined && Number.isFinite(previousRemaining)
     && currentRemaining - previousRemaining > RESET_RECOVERY_TOLERANCE_PERCENT;
+  const previousStart = previousIsFresh ? windowStartedAt(previous) : null;
+  const windowAdvanced = currentStart !== null && previousStart !== null
+    && currentStart > previousStart + CLOCK_TOLERANCE_MS;
+  const creditConsumed = previousIsFresh
+    && previous.resetCredits !== null && current.resetCredits !== null
+    && Number.isFinite(previous.resetCredits) && Number.isFinite(current.resetCredits)
+    && current.resetCredits < previous.resetCredits;
 
-  if (recovered) {
+  if (recovered && (windowAdvanced || creditConsumed)) {
     const currentStartAge = currentStart === null ? Number.POSITIVE_INFINITY : nowMs - currentStart;
-    const resetAt = currentStart !== null && currentStartAge >= -2 * 60_000 && currentStartAge <= RECENT_CODEX_RESET_MS
+    const resetAt = currentStart !== null && currentStartAge >= -CLOCK_TOLERANCE_MS && currentStartAge <= RECENT_CODEX_RESET_MS
       ? currentStart
       : nowMs;
     return { detectedAt: now.toISOString(), resetAt: new Date(resetAt).toISOString(), source: "observed" };
@@ -42,7 +60,8 @@ export function detectRecentCodexReset(
 
   if (currentStart !== null) {
     const age = nowMs - currentStart;
-    if (age >= -2 * 60_000 && age <= RECENT_CODEX_RESET_MS) {
+    const newlyObservedWindow = previousStart === null || Math.abs(previousStart - currentStart) > CLOCK_TOLERANCE_MS;
+    if (newlyObservedWindow && age >= -CLOCK_TOLERANCE_MS && age <= RECENT_CODEX_RESET_MS) {
       const resetAt = new Date(currentStart).toISOString();
       return { detectedAt: resetAt, resetAt, source: "window" };
     }
@@ -54,5 +73,5 @@ export function isRecentCodexReset(value: RecentCodexReset | null, now = new Dat
   if (!value) return false;
   const resetAt = Date.parse(value.resetAt);
   const age = now.getTime() - resetAt;
-  return Number.isFinite(resetAt) && age >= -2 * 60_000 && age <= RECENT_CODEX_RESET_MS;
+  return Number.isFinite(resetAt) && age >= -CLOCK_TOLERANCE_MS && age <= RECENT_CODEX_RESET_MS;
 }

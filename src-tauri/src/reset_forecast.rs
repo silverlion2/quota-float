@@ -1,5 +1,7 @@
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use std::collections::HashSet;
+use std::future::Future;
 use std::time::Duration;
 
 const RESET_RADAR_API_URL: &str = "https://codexresetradar.com/api/status";
@@ -11,12 +13,12 @@ const RESET_SIGNAL_SOURCE_URL: &str = "https://codexreset.app/";
 const MAX_SOURCE_AGE_HOURS: i64 = 6;
 const MAX_FUTURE_SKEW_MINUTES: i64 = 10;
 const MAX_RESPONSE_BYTES: usize = 128 * 1024;
+const SOURCE_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ForecastConfidence {
     Low,
-    Medium,
     High,
 }
 
@@ -131,8 +133,8 @@ fn raw_timestamp(value: &str) -> Option<DateTime<Utc>> {
         .map(|value| value.with_timezone(&Utc))
 }
 
-fn score(value: i16) -> u8 {
-    value.clamp(0, 100) as u8
+fn score(value: i16) -> Option<u8> {
+    (0..=100).contains(&value).then_some(value as u8)
 }
 
 fn normalize_reset_radar(
@@ -144,7 +146,7 @@ fn normalize_reset_radar(
     }
     Some(SourceForecast {
         name: "Codex Reset Radar",
-        score: score(response.forecast.probability),
+        score: score(response.forecast.probability)?,
         fetched_at: timestamp(&response.generated_at, now)?,
         reset_announced: false,
         expected_at: None,
@@ -158,20 +160,30 @@ fn normalize_codex_reset(
     now: DateTime<Utc>,
 ) -> Option<SourceForecast> {
     let fetched_at = timestamp(&response.updated_at, now)?;
-    let commitment = response.probabilities.commitment.unwrap_or_default();
-    let reset_announced =
-        response.mode == "announced" && commitment >= 0.75 && response.official_signal.is_some();
+    let commitment = response
+        .probabilities
+        .commitment
+        .filter(|value| value.is_finite() && (0.0..=1.0).contains(value));
     let expected_at = response
         .official_signal
         .and_then(|signal| signal.window)
         .and_then(|window| {
             let start = raw_timestamp(&window.start_at)?;
             let end = raw_timestamp(&window.end_at)?;
-            if end < start || end < now - chrono::Duration::minutes(2) {
+            if end <= start || end <= now {
                 return None;
             }
-            Some(start + chrono::Duration::milliseconds((end - start).num_milliseconds() / 2))
+            let midpoint =
+                start + chrono::Duration::milliseconds((end - start).num_milliseconds() / 2);
+            (midpoint > now).then_some(midpoint)
         });
+    // A third-party tracker's mode and commitment are not an official
+    // provider announcement. Keep the fields parsed for schema validation,
+    // but never turn them into an actionable personal reset signal.
+    let _tracker_claims_announcement = response.mode == "announced"
+        && commitment.is_some_and(|value| value >= 0.75)
+        && expected_at.is_some();
+    let reset_announced = false;
     let reported_score = response
         .probabilities
         .commitment_floor_percent
@@ -179,10 +191,10 @@ fn normalize_codex_reset(
         .unwrap_or(response.probabilities.rounded_48h);
     Some(SourceForecast {
         name: "Codex Reset",
-        score: score(reported_score),
+        score: score(reported_score)?,
         fetched_at,
         reset_announced,
-        expected_at,
+        expected_at: None,
         source_url: CODEX_RESET_SOURCE_URL,
         reliability: 3,
     })
@@ -194,7 +206,7 @@ fn normalize_reset_signal(
 ) -> Option<SourceForecast> {
     Some(SourceForecast {
         name: "Will Codex Reset Today",
-        score: score(response.forecast.probability_48h),
+        score: score(response.forecast.probability_48h)?,
         fetched_at: timestamp(&response.data_as_of, now)?,
         reset_announced: false,
         expected_at: None,
@@ -204,6 +216,8 @@ fn normalize_reset_signal(
 }
 
 fn aggregate(mut sources: Vec<SourceForecast>) -> Option<ResetForecast> {
+    let mut seen_sources = HashSet::new();
+    sources.retain(|source| seen_sources.insert(source.source_url));
     if sources.is_empty() {
         return None;
     }
@@ -218,16 +232,14 @@ fn aggregate(mut sources: Vec<SourceForecast>) -> Option<ResetForecast> {
         let right = scores.len() / 2;
         (u16::from(scores[right - 1]) + u16::from(scores[right])).div_ceil(2) as u8
     };
-    let spread =
-        scores.last().copied().unwrap_or_default() - scores.first().copied().unwrap_or_default();
     let announced = sources
         .iter()
         .filter(|source| source.reset_announced)
         .max_by_key(|source| source.reliability);
-    let confidence = if announced.is_some() || (sources.len() >= 3 && spread <= 20) {
+    // The trackers substantially reuse the same public posts and incidents.
+    // Agreement between heuristic scores is not independent corroboration.
+    let confidence = if announced.is_some() {
         ForecastConfidence::High
-    } else if sources.len() >= 2 && spread <= 35 {
-        ForecastConfidence::Medium
     } else {
         ForecastConfidence::Low
     };
@@ -240,7 +252,7 @@ fn aggregate(mut sources: Vec<SourceForecast>) -> Option<ResetForecast> {
     let fetched_at = sources
         .iter()
         .map(|source| source.fetched_at)
-        .max()
+        .min()
         .expect("non-empty forecast sources");
     let reset_announced = announced.is_some();
     let expected_at = announced.and_then(|source| source.expected_at);
@@ -294,19 +306,29 @@ async fn fetch_json<T: DeserializeOwned>(client: &reqwest::Client, url: &str) ->
     serde_json::from_slice::<T>(&body).ok()
 }
 
+async fn settle_source<T, F>(future: F, timeout: Duration) -> Option<T>
+where
+    F: Future<Output = Option<T>>,
+{
+    tokio::time::timeout(timeout, future).await.ok().flatten()
+}
+
 pub async fn fetch(client: &reqwest::Client) -> Option<ResetForecast> {
     let now = Utc::now();
-    let requests = async {
-        tokio::join!(
+    let (reset_radar, codex_reset, reset_signal) = tokio::join!(
+        settle_source(
             fetch_json::<ResetRadarResponse>(client, RESET_RADAR_API_URL),
+            SOURCE_TIMEOUT
+        ),
+        settle_source(
             fetch_json::<CodexResetResponse>(client, CODEX_RESET_API_URL),
+            SOURCE_TIMEOUT
+        ),
+        settle_source(
             fetch_json::<ResetSignalResponse>(client, RESET_SIGNAL_API_URL),
-        )
-    };
-    let (reset_radar, codex_reset, reset_signal) =
-        tokio::time::timeout(Duration::from_secs(5), requests)
-            .await
-            .ok()?;
+            SOURCE_TIMEOUT
+        ),
+    );
     let sources = [
         reset_radar.and_then(|value| normalize_reset_radar(value, now)),
         codex_reset.and_then(|value| normalize_codex_reset(value, now)),
@@ -322,9 +344,11 @@ pub async fn fetch(client: &reqwest::Client) -> Option<ResetForecast> {
 mod tests {
     use super::{
         aggregate, normalize_codex_reset, normalize_reset_radar, normalize_reset_signal,
-        CodexResetResponse, ForecastConfidence, ResetRadarResponse, ResetSignalResponse,
+        settle_source, CodexResetResponse, ForecastConfidence, ResetRadarResponse,
+        ResetSignalResponse,
     };
     use chrono::{TimeZone, Utc};
+    use std::time::Duration;
 
     fn now() -> chrono::DateTime<Utc> {
         Utc.with_ymd_and_hms(2026, 8, 23, 10, 30, 0)
@@ -357,13 +381,14 @@ mod tests {
         assert_eq!(forecast.score, 50);
         assert_eq!(forecast.source_count, 3);
         assert_eq!(forecast.confidence, ForecastConfidence::Low);
+        assert_eq!(forecast.fetched_at, "2026-08-23T10:11:40.277Z");
         assert_eq!(forecast.source_url, "https://codex-reset.com/");
         assert!(!forecast.reset_announced);
         assert_eq!(forecast.sources.len(), 3);
     }
 
     #[test]
-    fn explicit_timed_announcement_overrides_model_disagreement() {
+    fn third_party_timed_announcement_remains_non_actionable() {
         let response: CodexResetResponse = serde_json::from_str(
             r#"{"mode":"announced","updated_at":"2026-08-23T10:24:05.046Z","probabilities":{"rounded_48h":50,"commitment":0.85,"commitment_floor_percent":80},"official_signal":{"window":{"start_at":"2026-08-23T20:00:00Z","end_at":"2026-08-23T22:00:00Z"}}}"#,
         )
@@ -373,13 +398,10 @@ mod tests {
         ])
         .expect("announced forecast");
 
-        assert!(forecast.reset_announced);
-        assert_eq!(forecast.score, 80);
-        assert_eq!(forecast.confidence, ForecastConfidence::High);
-        assert_eq!(
-            forecast.expected_at.as_deref(),
-            Some("2026-08-23T21:00:00.000Z")
-        );
+        assert!(!forecast.reset_announced);
+        assert_eq!(forecast.score, 50);
+        assert_eq!(forecast.confidence, ForecastConfidence::Low);
+        assert_eq!(forecast.expected_at, None);
     }
 
     #[test]
@@ -400,5 +422,50 @@ mod tests {
         .expect("Reset Radar response should parse");
 
         assert!(normalize_reset_radar(response, now()).is_none());
+    }
+
+    #[test]
+    fn rejects_out_of_range_heuristic_scores_instead_of_clamping_them() {
+        let response: ResetSignalResponse = serde_json::from_str(
+            r#"{"dataAsOf":"2026-08-23T10:11:40.277Z","forecast":{"probability48h":140}}"#,
+        )
+        .expect("reset signal response should parse");
+
+        assert!(normalize_reset_signal(response, now()).is_none());
+    }
+
+    #[test]
+    fn duplicate_tracker_origins_do_not_inflate_the_source_count() {
+        let first: ResetRadarResponse = serde_json::from_str(
+            r#"{"generatedAt":"2026-08-23T10:15:21.295Z","forecast":{"probability":40,"windowHours":48}}"#,
+        )
+        .expect("first response should parse");
+        let second: ResetRadarResponse = serde_json::from_str(
+            r#"{"generatedAt":"2026-08-23T10:20:21.295Z","forecast":{"probability":42,"windowHours":48}}"#,
+        )
+        .expect("second response should parse");
+        let forecast = aggregate(vec![
+            normalize_reset_radar(first, now()).expect("first source"),
+            normalize_reset_radar(second, now()).expect("second source"),
+        ])
+        .expect("deduplicated forecast");
+
+        assert_eq!(forecast.source_count, 1);
+        assert_eq!(forecast.sources.len(), 1);
+        assert_eq!(forecast.confidence, ForecastConfidence::Low);
+    }
+
+    #[tokio::test]
+    async fn a_slow_source_does_not_discard_a_fast_source() {
+        let (slow, fast) = tokio::join!(
+            settle_source(
+                std::future::pending::<Option<u8>>(),
+                Duration::from_millis(5)
+            ),
+            settle_source(async { Some(42_u8) }, Duration::from_millis(5)),
+        );
+
+        assert_eq!(slow, None);
+        assert_eq!(fast, Some(42));
     }
 }

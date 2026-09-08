@@ -146,23 +146,13 @@ describe("quota pace", () => {
     expect(tracked.usedPercent).toBe(5);
   });
 
-  it("weights the Radar reset window against the guaranteed weekly reset", () => {
+  it("keeps the provider reset time authoritative over a public heuristic", () => {
     const now = new Date(2026, 6, 22, 0, 0, 0);
     const resetsAt = new Date(2026, 6, 27, 0, 0, 0).toISOString();
-    const adjusted = Date.parse(forecastAdjustedResetAt(resetsAt, now, resetForecast(80)));
-
-    // 80% × the 24h window midpoint + 20% × the guaranteed 120h reset = 43.2h.
-    expect((adjusted - now.getTime()) / 3_600_000).toBeCloseTo(43.2, 8);
+    expect(forecastAdjustedResetAt(resetsAt, now, resetForecast(80))).toBe(resetsAt);
   });
 
-  it("falls back to the weekly reset when the Radar forecast is invalid", () => {
-    const now = new Date(2026, 6, 22, 0, 0, 0);
-    const resetsAt = new Date(2026, 6, 27, 0, 0, 0).toISOString();
-
-    expect(forecastAdjustedResetAt(resetsAt, now, { ...resetForecast(80), score: Number.NaN })).toBe(resetsAt);
-  });
-
-  it("uses a fresh timed announcement instead of an uncertain midpoint", () => {
+  it("does not treat a third-party timed claim as the personal reset", () => {
     const now = new Date(2026, 6, 22, 0, 0, 0);
     const resetsAt = new Date(2026, 6, 27, 0, 0, 0).toISOString();
     const expectedAt = new Date(2026, 6, 22, 9, 30, 0).toISOString();
@@ -172,39 +162,52 @@ describe("quota pace", () => {
       resetAnnounced: true,
       expectedAt,
       confidence: "high",
-    })).toBe(expectedAt);
+    })).toBe(resetsAt);
   });
 
-  it("does not change quota planning for a low-confidence or single-source outlook", () => {
-    const now = new Date(2026, 6, 22, 0, 0, 0);
-    const resetsAt = new Date(2026, 6, 27, 0, 0, 0).toISOString();
-
-    expect(forecastAdjustedResetAt(resetsAt, now, { ...resetForecast(80), confidence: "low" })).toBe(resetsAt);
-    expect(forecastAdjustedResetAt(resetsAt, now, { ...resetForecast(80), sourceCount: 1 })).toBe(resetsAt);
-  });
-
-  it("captures Radar once per day and applies it to the daily suggestion", () => {
+  it("does not persist public forecast scores in a personal pace baseline", () => {
     const now = new Date(2026, 6, 22, 0, 0, 0);
     const resetsAt = new Date(2026, 6, 27, 0, 0, 0).toISOString();
     const first = refreshDailyPaceBaselines({}, [codexSnapshot(70, resetsAt)], now, new Set(), resetForecast(80));
     const baseline = first[paceBaselineKey("codex", "weekly")];
-    const pace = calculateQuotaPace(codexSnapshot(70, resetsAt).weeklyWindow!, now, baseline);
-    const sameDay = refreshDailyPaceBaselines(
-      first,
+
+    expect(baseline.planningResetsAt).toBe(resetsAt);
+    expect(baseline.resetForecastScore).toBeNull();
+    expect(baseline.resetForecastWindowHours).toBeNull();
+  });
+
+  it("clears a legacy probability-adjusted baseline on the next same-day refresh", () => {
+    const now = new Date(2026, 6, 22, 0, 0, 0);
+    const resetsAt = new Date(2026, 6, 27, 0, 0, 0).toISOString();
+    const first = refreshDailyPaceBaselines({}, [codexSnapshot(70, resetsAt)], now, new Set(), resetForecast(80));
+    const key = paceBaselineKey("codex", "weekly");
+    const legacy = {
+      ...first,
+      [key]: {
+        ...first[key],
+        planningResetsAt: new Date(now.getTime() + 43.2 * 3_600_000).toISOString(),
+        resetForecastScore: 80,
+        resetForecastWindowHours: 48,
+      },
+    };
+    const paceBeforeRefresh = calculateQuotaPace(codexSnapshot(70, resetsAt).weeklyWindow!, now, legacy[key]);
+    const refreshedAt = new Date(2026, 6, 22, 12, 0, 0);
+    const refreshed = refreshDailyPaceBaselines(
+      legacy,
       [codexSnapshot(65, resetsAt)],
-      new Date(2026, 6, 22, 12, 0, 0),
+      refreshedAt,
       new Set(),
       resetForecast(10),
     );
 
-    expect(baseline.resetForecastScore).toBe(80);
-    expect(baseline.resetForecastWindowHours).toBe(48);
-    expect((Date.parse(baseline.planningResetsAt) - now.getTime()) / 3_600_000).toBeCloseTo(43.2, 8);
-    expect(pace.averageRate).toBeCloseTo(70 / 1.8, 8);
-    expect(sameDay[paceBaselineKey("codex", "weekly")]).toEqual(baseline);
+    expect(paceBeforeRefresh.averageRate).toBeCloseTo(14, 8);
+    expect(refreshed[key].planningResetsAt).toBe(resetsAt);
+    expect(refreshed[key].resetForecastScore).toBeNull();
+    expect(refreshed[key].resetForecastWindowHours).toBeNull();
+    expect(refreshed[key].capturedAt).toBe(refreshedAt.toISOString());
   });
 
-  it("uses the latest Radar probability when the next local day begins", () => {
+  it("rebalances the next local day against the provider reset", () => {
     const resetsAt = new Date(2026, 6, 27, 0, 0, 0).toISOString();
     const first = refreshDailyPaceBaselines(
       {},
@@ -223,9 +226,8 @@ describe("quota pace", () => {
     const baseline = nextDay[paceBaselineKey("codex", "weekly")];
 
     expect(baseline.localDate).not.toBe(first[paceBaselineKey("codex", "weekly")].localDate);
-    expect(baseline.resetForecastScore).toBe(10);
-    // 10% × 24h + 90% × the remaining 96h = 88.8h.
-    expect((Date.parse(baseline.planningResetsAt) - Date.parse(baseline.capturedAt)) / 3_600_000).toBeCloseTo(88.8, 8);
+    expect(baseline.resetForecastScore).toBeNull();
+    expect(baseline.planningResetsAt).toBe(resetsAt);
   });
 
   it("recalculates next day from leftover quota and the exact projected reset time", () => {

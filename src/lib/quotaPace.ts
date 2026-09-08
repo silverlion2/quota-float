@@ -46,29 +46,10 @@ export function paceBaselineKey(provider: ProviderSnapshot["provider"], period: 
   return `${provider}:${period}`;
 }
 
-export function forecastAdjustedResetAt(resetsAt: string, now: Date, forecast: ResetForecast | null): string {
-  const guaranteedResetAt = Date.parse(resetsAt);
-  const nowMs = now.getTime();
-  if (!forecast || !Number.isFinite(guaranteedResetAt) || guaranteedResetAt <= nowMs
-    || !Number.isFinite(forecast.score) || !Number.isFinite(forecast.windowHours)) return resetsAt;
-  const announcedResetAt = forecast.resetAnnounced && forecast.expectedAt
-    ? Date.parse(forecast.expectedAt)
-    : Number.NaN;
-  if (Number.isFinite(announcedResetAt) && announcedResetAt > nowMs && announcedResetAt <= guaranteedResetAt) {
-    return new Date(announcedResetAt).toISOString();
-  }
-  if (forecast.resetAnnounced || (forecast.sourceCount ?? 0) < 2 || forecast.confidence === "low") return resetsAt;
-  const probability = clamp(forecast.score, 0, 100) / 100;
-  const forecastWindowMs = Math.max(0, forecast.windowHours) * HOUR_MS;
-  if (probability <= 0 || !Number.isFinite(forecastWindowMs) || forecastWindowMs <= 0) return resetsAt;
-
-  // Radar reports a chance within a window, not an exact time. Treat the
-  // midpoint as the conditional reset time, then retain the regular Codex
-  // reset as the probability-weighted fallback.
-  const guaranteedRemainingMs = guaranteedResetAt - nowMs;
-  const conditionalResetMs = Math.min(guaranteedRemainingMs, forecastWindowMs / 2);
-  const expectedRemainingMs = probability * conditionalResetMs + (1 - probability) * guaranteedRemainingMs;
-  return new Date(nowMs + expectedRemainingMs).toISOString();
+export function forecastAdjustedResetAt(resetsAt: string, _now: Date, _forecast: ResetForecast | null): string {
+  // Public reset trackers describe a global, unofficial possibility. They
+  // cannot replace the signed-in user's provider-reported reset timestamp.
+  return resetsAt;
 }
 
 export function refreshDailyPaceBaselines(
@@ -76,7 +57,7 @@ export function refreshDailyPaceBaselines(
   snapshots: ProviderSnapshot[],
   now = new Date(),
   resetProviders: ReadonlySet<string> = new Set(),
-  resetForecast: ResetForecast | null = null,
+  _resetForecast: ResetForecast | null = null,
 ): Record<string, DailyPaceBaseline> {
   const next: Record<string, DailyPaceBaseline> = {};
   const refreshedProviders = new Set(snapshots.map((snapshot) => snapshot.provider));
@@ -103,10 +84,9 @@ export function refreshDailyPaceBaselines(
         && !resetProviders.has(snapshot.provider)
         && !quotaRestored
         && existing.localDate === localDate
-        && existing.resetsAt === window.resetsAt;
-      const applicableForecast = snapshot.provider === "codex" && period === "weekly" && !resetProviders.has(snapshot.provider)
-        ? resetForecast
-        : null;
+        && existing.resetsAt === window.resetsAt
+        // Replace legacy probability-adjusted baselines on the next refresh.
+        && existing.planningResetsAt === window.resetsAt;
       const inferredCycleStartedAt = new Date(Date.parse(window.resetsAt) - Math.max(1, window.windowSeconds * 1000)).toISOString();
       const currentRemaining = clamp(window.remainingPercent, 0, 100);
       next[key] = canReuse ? existing : {
@@ -122,9 +102,9 @@ export function refreshDailyPaceBaselines(
         cycleStartRemainingPercent: cycleReset
           ? currentRemaining
           : sameCycle && existing ? existing.cycleStartRemainingPercent : 100,
-        planningResetsAt: forecastAdjustedResetAt(window.resetsAt, now, applicableForecast),
-        resetForecastScore: applicableForecast ? clamp(applicableForecast.score, 0, 100) : null,
-        resetForecastWindowHours: applicableForecast ? Math.max(0, applicableForecast.windowHours) : null,
+        planningResetsAt: window.resetsAt,
+        resetForecastScore: null,
+        resetForecastWindowHours: null,
       };
     }
   }
@@ -197,10 +177,9 @@ export function calculateQuotaPace(window: UsageWindow, now = new Date(), baseli
     0,
     100,
   );
-  const savedPlanningResetAt = matchingBaseline ? Date.parse(matchingBaseline.planningResetsAt) : Number.NaN;
-  const planningResetAt = Number.isFinite(savedPlanningResetAt) && savedPlanningResetAt >= baselineAt && savedPlanningResetAt <= resetAt
-    ? savedPlanningResetAt
-    : resetAt;
+  // Persisted baselines from older versions may contain a speculative global
+  // forecast. Pace calculations always use the user's provider reset instead.
+  const planningResetAt = resetAt;
   const baselineRemainingMs = Math.max(0, planningResetAt - baselineAt);
   const planningHorizon = Math.min(planningResetAt, endOfLocalDay(new Date(baselineAt)));
   const horizonMs = Math.max(0, planningHorizon - baselineAt);

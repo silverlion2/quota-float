@@ -43,12 +43,30 @@ describe("recent Codex reset detection", () => {
     });
   });
 
-  it("uses Codex's own recovered percentage even when reset metadata is unchanged", () => {
+  it("does not infer a reset from a small recovery with unchanged metadata", () => {
     const resetsAt = "2026-07-22T00:00:00Z";
-    expect(detectRecentCodexReset(codex(100, resetsAt, 0), codex(95, resetsAt, 0), now)).toMatchObject({
-      source: "observed",
-      resetAt: "2026-07-18T02:00:00.000Z",
-    });
+    expect(detectRecentCodexReset(codex(100, resetsAt, 0), codex(95, resetsAt, 0), now)).toBeNull();
+  });
+
+  it("does not infer a reset from a large recovery without corroborating metadata", () => {
+    const resetsAt = "2026-07-22T00:00:00Z";
+    expect(detectRecentCodexReset(codex(95, resetsAt, 0), codex(5, resetsAt, 0), now)).toBeNull();
+  });
+
+  it("does not repeatedly report the same recently started window", () => {
+    const resetsAt = "2026-07-25T01:00:00Z";
+    expect(detectRecentCodexReset(codex(100, resetsAt), codex(100, resetsAt), now)).toBeNull();
+  });
+
+  it("rejects an old snapshot even if its window appears to have just started", () => {
+    const stale = { ...codex(100, "2026-07-25T01:00:00Z"), updatedAt: "2026-07-18T01:30:00Z" };
+    expect(detectRecentCodexReset(stale, null, now)).toBeNull();
+  });
+
+  it("does not use an old previous snapshot as recovery or credit evidence", () => {
+    const resetsAt = "2026-07-22T00:00:00Z";
+    const oldPrevious = { ...codex(5, resetsAt, 1), updatedAt: "2026-07-18T01:30:00Z" };
+    expect(detectRecentCodexReset(codex(95, resetsAt, 0), oldPrevious, now)).toBeNull();
   });
 
   it("does not confuse normal consumption with a reset", () => {
