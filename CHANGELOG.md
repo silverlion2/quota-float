@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.3.10 - 2026-09-08
+
+- refactor: remove superseded styles and document systematic review
+- Improve quota status hierarchy and keyboard UX
+- fix: preserve reset cycle identity through recovery and corrections
+- fix: harden refresh recovery and diagnostics
+- Fix reset forecast planning accuracy
+- fix: align local reset dates and verify release recovery lifecycle
+- docs: record final integration and task archival
+- feat: stream provider results and add private local usage reports
+- fix: avoid Windows deadlock when opening detached panels
+- chore: add reproducible desktop performance measurements
+- feat: harden updates and bound desktop history IO
+- fix: clarify usage coverage budgets and provider recovery
+- docs: record synthetic history capacity baseline
+- docs: track full optimization execution and acceptance gaps
+- fix: stabilize quota cache pricing backups and release gates
+
 ## 0.3.9 - 2026-09-05
 
 - feat: automate guarded release publishing
