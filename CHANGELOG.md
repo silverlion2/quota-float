@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.13 - 2026-09-12
+
+- fix: preserve expanded native height on pointer re-entry
+- test: await native viewport resize and retain UI evidence
+- test: initialize native screenshot output and archive v0.3.12 evidence
+
 ## 0.3.12 - 2026-09-12
 
 - fix: polish desktop interactions and harden async workflows
