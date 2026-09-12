@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.12 - 2026-09-12
+
+- fix: polish desktop interactions and harden async workflows
+- docs: archive systematic review and verify v0.3.11 release
+
 ## 0.3.11 - 2026-09-08
 
 - fix: enumerate release candidates in Windows PowerShell
