@@ -1,4 +1,5 @@
 import { withExecuteOptions } from "@wdio/tauri-service";
+import { mkdir } from "node:fs/promises";
 
 async function expandWidget() {
   if (await browser.$(".quota-card").isDisplayed()) return;
@@ -22,6 +23,7 @@ async function openControlCenter() {
 
 describe("Quota Float desktop widget", () => {
   before(async () => {
+    await mkdir("output/handoff", { recursive: true });
     await browser.waitUntil(async () => (await browser.$("#root")).isExisting(), {
       timeout: 15_000,
       timeoutMsg: "Quota Float did not create its root view",
