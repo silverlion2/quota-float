@@ -282,13 +282,21 @@ describe("Quota Float desktop widget", () => {
       await browser.waitUntil(async () => browser.tauri.execute((_, selected) =>
         Boolean(document.querySelector(`.quota-card--theme-${selected}`)), appearance,
       ));
-      const bounds = await browser.tauri.execute(() => {
+      const readBounds = () => browser.tauri.execute(() => {
         const dialog = document.querySelector<HTMLElement>(".control-center")!;
         const body = document.querySelector<HTMLElement>(".control-body")!;
         body.scrollTop = 0;
         const rect = dialog.getBoundingClientRect();
         return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: innerWidth, height: innerHeight, overflow: body.scrollWidth - body.clientWidth };
       });
+      // React paints before the serialized Tauri resize IPC finishes. Check the
+      // actual native viewport after it catches up, with a bounded stall timeout.
+      await browser.waitUntil(async () => {
+        const value = await readBounds();
+        return value.left >= 0 && value.top >= 0
+          && value.right <= value.width && value.bottom <= value.height;
+      }, { timeout: 2000, interval: 50, timeoutMsg: "Native window did not fit the control center within 2 seconds" });
+      const bounds = await readBounds();
       expect(bounds.left).toBeGreaterThanOrEqual(0);
       expect(bounds.top).toBeGreaterThanOrEqual(0);
       expect(bounds.right).toBeLessThanOrEqual(bounds.width);

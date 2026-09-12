@@ -59,6 +59,14 @@ jobs:
       - name: Run native WebView critical-path smoke tests
         if: runner.os == 'Windows'
         run: npm run test:e2e
+      - name: Archive native UI screenshots
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: quota-float-native-ui
+          path: output/handoff/*.png
+          if-no-files-found: ignore
+          retention-days: 7
       - run: ${{ matrix.build-command }}
       - name: Verify Windows artifacts with Microsoft Defender
         if: runner.os == 'Windows'
