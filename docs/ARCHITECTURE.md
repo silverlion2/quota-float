@@ -115,6 +115,8 @@ The Bar stores a normalized along-edge offset rather than an absolute position. 
 
 The bridge waits for native drag position stability, asks Rust to resolve the edge and offset, then returns the placement to React for persistence through the normal preference-write queue.
 
+Pointer entry requests native expansion only while React is compact. Native resize/reposition can itself generate pointer entry; repeating `expand_widget` for an already expanded card would reset the measured height to the 260px baseline. Pinned-open compact-layout/placement changes explicitly resynchronize the visible card after native expansion. Content measurements use `offsetHeight`, so entrance transforms cannot distort the requested logical height. Native tests verify the viewport remains large enough during pointer re-entry, in addition to eventually reaching its expected bounds.
+
 ## Security invariants
 
 - Provider credential access remains inside `src-tauri`.

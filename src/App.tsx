@@ -679,6 +679,9 @@ export default function App() {
     if (value) void refresh();
     if (value) {
       const sequence = ++hoverSequence.current;
+      // A native resize can move an expanded card under the pointer. Re-entry
+      // must not send expand_widget again and reset its measured content height.
+      if (!compact) return;
       void setWidgetExpanded(true, preferences.compactLayout, { edge: preferences.barEdge, offset: preferences.barOffset })
         .then(() => { if (hoverSequence.current === sequence) setCompact(false); })
         .catch(() => {
@@ -699,7 +702,7 @@ export default function App() {
         void setWidgetExpanded(false, preferences.compactLayout, { edge: preferences.barEdge, offset: preferences.barOffset }).catch(() => setOperationError("Widget collapse failed."));
       }, reducedMotion ? 0 : 120);
     }, 180);
-  }, [preferences.barEdge, preferences.barOffset, preferences.compactLayout, preferences.stayExpanded, refresh]);
+  }, [compact, preferences.barEdge, preferences.barOffset, preferences.compactLayout, preferences.stayExpanded, refresh]);
 
   useEffect(() => {
     if (!preferences.stayExpanded) return;
@@ -707,7 +710,17 @@ export default function App() {
     if (collapseContentTimer.current !== null) window.clearTimeout(collapseContentTimer.current);
     setCollapsing(false);
     setCompact(false);
-    void setWidgetExpanded(true, preferences.compactLayout, { edge: preferences.barEdge, offset: preferences.barOffset }).catch(() => setOperationError("Widget expand failed."));
+    let cancelled = false;
+    void setWidgetExpanded(true, preferences.compactLayout, { edge: preferences.barEdge, offset: preferences.barOffset })
+      .then(async () => {
+        if (cancelled) return;
+        // Changing compact placement while pinned open also resets native
+        // geometry, even when the DOM's size did not change for ResizeObserver.
+        const height = document.querySelector<HTMLElement>(".quota-card")?.offsetHeight ?? 0;
+        if (height > 0) await resizeWidgetToContent(height);
+      })
+      .catch(() => { if (!cancelled) setOperationError("Widget expand failed."); });
+    return () => { cancelled = true; };
   }, [preferences.barEdge, preferences.barOffset, preferences.compactLayout, preferences.stayExpanded]);
 
   useEffect(() => {
@@ -723,7 +736,7 @@ export default function App() {
     let lastHeight = 0;
     const syncHeight = () => {
       animationFrame = null;
-      const contentHeight = Math.ceil(card.getBoundingClientRect().height);
+      const contentHeight = card.offsetHeight;
       if (contentHeight <= 0 || Math.abs(contentHeight - lastHeight) < 1) return;
       lastHeight = contentHeight;
       void resizeWidgetToContent(contentHeight).catch(() => setOperationError("Widget resize failed."));

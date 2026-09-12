@@ -302,6 +302,19 @@ describe("Quota Float desktop widget", () => {
       expect(bounds.right).toBeLessThanOrEqual(bounds.width);
       expect(bounds.bottom).toBeLessThanOrEqual(bounds.height);
       expect(bounds.overflow).toBeLessThanOrEqual(1);
+      const staysWithinWindow = await browser.tauri.execute(async () => {
+        const card = document.querySelector<HTMLElement>(".quota-card")!;
+        card.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+        const until = performance.now() + 350;
+        let fits = true;
+        while (performance.now() < until) {
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+          const rect = document.querySelector<HTMLElement>(".control-center")!.getBoundingClientRect();
+          fits &&= rect.bottom <= innerHeight && rect.right <= innerWidth;
+        }
+        return fits;
+      });
+      expect(staysWithinWindow).toBe(true);
       await browser.saveScreenshot(`output/handoff/control-center-${appearance}-2026-09-12.png`);
     }
     await browser.keys(["Escape"]);

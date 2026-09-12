@@ -32,6 +32,7 @@ Quota Float is an always-on-top **Codex quota monitor and coding-assistant usage
 - **Useful before a limit hits:** see healthy, caution, and critical states, quota pace guidance, reset timing, a freshness-gated multi-source global reset outlook, and configurable desktop alerts.
 - **Stays out of the way:** use a floating orb, Ring, magnetic Bar, or risk-sorted Bottleneck rail attached to the top, left, or right work-area edge; expand inward on hover and keep the placement across restarts and display changes.
 - **Resilient by design:** transient failures are retried, while last-known-good values remain visible and clearly marked as stale.
+- **Responsive controls:** dialogs share predictable focus and operation feedback; moving back into an expanded panel preserves its content height.
 - **Private by default:** no telemetry, analytics, account modification, prompt collection, or third-party tracking.
 - **Desktop-native:** built with Tauri, Rust, React, and TypeScript, with signed in-app update artifacts and Stable/Beta channels.
 
@@ -136,7 +137,7 @@ npm run tauri build
 
 After a Codex Desktop update, run `npm run check:codex`. See the [provider compatibility contract](docs/PROVIDER-COMPATIBILITY.md), [Codex update compatibility guide](docs/CODEX-UPDATE-CHECK.md), and [release checklist](docs/GITHUB-RELEASE-CHECKLIST.md) for maintainer workflows.
 
-The source version is declared in `package.json` and checked against the native package metadata. Current review, validation, and publication status are recorded in the [2026-09-09 systematic review](docs/REVIEW-2026-09-09.md). Source support and automated tests do not imply manual validation on every platform.
+The source version is declared in `package.json` and checked against the native package metadata. Current review, validation, and publication status are recorded in the [2026-09-12 interaction and native-window follow-up](docs/SESSION-2026-09-12.md). Source support and automated tests do not imply manual validation on every platform.
 
 Maintainers can start with the [systematic review and task archive](docs/REVIEW-2026-09-09.md), [project summary](docs/PROJECT-SUMMARY.md), [architecture and repository structure](docs/ARCHITECTURE.md), [distribution/signing guide](docs/DISTRIBUTION.md), and [desktop development SOP](docs/DESKTOP-DEVELOPMENT-SOP.md).
 

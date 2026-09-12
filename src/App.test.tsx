@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_WIDGET_PREFERENCES } from "./lib/preferences";
 import { EMPTY_RUNTIME_STATE } from "./lib/activity";
+import { resizeWidgetToContent, setWidgetExpanded } from "./lib/bridge";
 
 type Deferred<T> = { promise: Promise<T>; resolve: (value: T) => void; reject: (reason?: unknown) => void };
 
@@ -103,11 +104,12 @@ vi.mock("./components/ControlCenter", () => ({
 vi.mock("./components/QuotaCard", () => {
   const compact = ({ onHover }: { onHover: (value: boolean) => void }) => <button type="button" onClick={() => onHover(true)}>Expand widget</button>;
   const card = (props: any) => (
-    <main>
+    <main className="quota-card" onMouseEnter={() => props.onHover(true)}>
       <button type="button" aria-label="App update" onClick={props.onUpdateOpen}>Update</button>
       <button type="button" aria-label="Control center" onClick={props.onControlOpen}>Control</button>
       <button type="button" onClick={() => props.onPreferences({ ...props.preferences, accentColor: "#112233" })}>Save first</button>
       <button type="button" onClick={() => props.onPreferences({ ...props.preferences, accentColor: "#223344" })}>Save second</button>
+      <button type="button" onClick={() => props.onPreferences({ ...props.preferences, stayExpanded: true, compactLayout: "bar" })}>Pin as bar</button>
       <output>{props.preferences.accentColor}</output>
       {props.updateOpen ? <section role="dialog" aria-label="Update dialog">{props.updateState.phase}<button type="button" onClick={props.onUpdateClose}>Close update</button></section> : null}
       {props.controlOpen ? props.controlCenter : null}
@@ -134,6 +136,24 @@ async function renderExpandedApp() {
 }
 
 describe("App modal and preference lifecycle", () => {
+  it("does not reset native geometry when the pointer re-enters an expanded dialog", async () => {
+    await renderExpandedApp();
+    fireEvent.click(screen.getByRole("button", { name: "Control center" }));
+    await screen.findByRole("dialog", { name: "Control center" });
+    const calls = vi.mocked(setWidgetExpanded).mock.calls.length;
+    fireEvent.mouseEnter(screen.getByRole("main"));
+    fireEvent.mouseEnter(screen.getByRole("main"));
+    expect(setWidgetExpanded).toHaveBeenCalledTimes(calls);
+  });
+
+  it("restores measured content height when compact placement changes while pinned open", async () => {
+    await renderExpandedApp();
+    vi.spyOn(screen.getByRole("main"), "offsetHeight", "get").mockReturnValue(448);
+    vi.mocked(resizeWidgetToContent).mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "Pin as bar" }));
+    await waitFor(() => expect(resizeWidgetToContent).toHaveBeenLastCalledWith(448));
+  });
+
   it("does not let a canceled update check reopen over the control center", async () => {
     await renderExpandedApp();
 
