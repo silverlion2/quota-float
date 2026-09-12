@@ -3,6 +3,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { QuotaBar, QuotaBottleneckBar, QuotaCard, QuotaOrb } from "./components/QuotaCard";
 import { EMPTY_UPDATE_STATE } from "./components/UpdatePanel";
 import type { UpdateViewState } from "./components/UpdatePanel";
+import type { ControlOperation, ControlOperationKind } from "./components/ControlCenter";
 import { applyAppData, createAutomaticBackup, createSnapshotRefreshRequestId, exportAppData, fetchCodexResetForecast, fetchSnapshotsProgressively, getAppDiagnostics, getAutostartEnabled, getPreferences, getRuntimeState, getVolcengineDiagnostics, importAppData, listenDesktopEvents, notifyFocusPanels, openExternalUrl, openFocusPanel, reconnectVolcengine, resizeWidgetToContent, restoreLatestBackup, sendDesktopNotification, setAlwaysOnTop, setAutostartEnabled, setWidgetExpanded, startDragging, updatePreferences, updateRuntimeState } from "./lib/bridge";
 import { appUpdateErrorMessage, cancelAppUpdateCheck, checkForAppUpdate, discardAppUpdate, downloadAppUpdate, installAppUpdate, openReleasePage, shouldInvalidateUpdateCheckOnChannelChange } from "./lib/appUpdate";
 import type { AppUpdateInfo } from "./lib/appUpdate";
@@ -26,6 +27,7 @@ import type { AppDiagnostics, CockpitRegion, ProviderId, ProviderSnapshot, Reset
 
 const DEFAULT_PREFS = DEFAULT_WIDGET_PREFERENCES;
 const ControlCenter = lazy(() => import("./components/ControlCenter").then((module) => ({ default: module.ControlCenter })));
+type ActiveModal = "diagnostics" | "update" | "control";
 
 function errorMessage(error: unknown, fallback: string): string {
   if (typeof error === "string" && error.trim()) return error;
@@ -45,15 +47,14 @@ export default function App() {
   const [consumingProviders, setConsumingProviders] = useState<Set<string>>(() => new Set());
   const [operationError, setOperationError] = useState<string | null>(null);
   const [updateState, setUpdateState] = useState<UpdateViewState>(EMPTY_UPDATE_STATE);
-  const [updateOpen, setUpdateOpen] = useState(false);
-  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  const [activeModal, setActiveModal] = useState<ActiveModal | null>(null);
   const [diagnostics, setDiagnostics] = useState<VolcengineDiagnostics | null>(null);
   const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
-  const [controlOpen, setControlOpen] = useState(false);
   const [runtimeState, setRuntimeState] = useState<RuntimeState>(EMPTY_RUNTIME_STATE);
   const [appDiagnostics, setAppDiagnostics] = useState<AppDiagnostics | null>(null);
   const [autostartEnabled, setAutostartState] = useState(false);
+  const [controlOperation, setControlOperation] = useState<ControlOperation | null>(null);
   const [systemDark, setSystemDark] = useState(systemPrefersDark);
   const snapshotsRef = useRef<ProviderSnapshot[]>([]);
   const providerAttempts = useRef<ProviderAttemptTimes>({});
@@ -65,6 +66,10 @@ export default function App() {
   const collapseContentTimer = useRef<number | null>(null);
   const hoverSequence = useRef(0);
   const updateSequence = useRef(0);
+  const updateStateRef = useRef<UpdateViewState>(EMPTY_UPDATE_STATE);
+  const activeModalRef = useRef<ActiveModal | null>(null);
+  const diagnosticsSequence = useRef(0);
+  const focusPanelNotificationTimer = useRef<number | null>(null);
   const updateChannelRef = useRef(preferences.updateChannel);
   const refreshFlight = useRef<SingleFlightState<void>>({ current: null });
   const activeSnapshotRequest = useRef<string | null>(null);
@@ -72,9 +77,53 @@ export default function App() {
   const preferencesRef = useRef<WidgetPreferences>(DEFAULT_PREFS);
   const confirmedPreferencesRef = useRef<WidgetPreferences>(DEFAULT_PREFS);
   const preferenceSaveSequence = useRef(0);
+  const controlOperationRef = useRef<{ kind: ControlOperationKind; sequence: number } | null>(null);
+  const controlOperationSequence = useRef(0);
   const language = normalizeLanguage(preferences.language);
   const t = copy[language];
   const resolvedAppearance = resolveAppearanceMode(preferences.appearanceMode, systemDark);
+  const diagnosticsOpen = activeModal === "diagnostics";
+  const updateOpen = activeModal === "update";
+  const controlOpen = activeModal === "control";
+  updateStateRef.current = updateState;
+  activeModalRef.current = activeModal;
+
+  const openModal = useCallback((modal: ActiveModal) => {
+    if (modal !== "update" && activeModalRef.current === "update" && updateStateRef.current.phase === "checking") {
+      ++updateSequence.current;
+      cancelAppUpdateCheck();
+      setUpdateState(EMPTY_UPDATE_STATE);
+    }
+    setActiveModal(modal);
+  }, []);
+
+  const closeModal = useCallback((modal: ActiveModal) => {
+    setActiveModal((current) => current === modal ? null : current);
+  }, []);
+
+  const beginControlOperation = useCallback((kind: ControlOperationKind, message: string): number | null => {
+    if (controlOperationRef.current) return null;
+    const sequence = ++controlOperationSequence.current;
+    controlOperationRef.current = { kind, sequence };
+    setOperationError(null);
+    setControlOperation({ kind, pending: true, message });
+    return sequence;
+  }, []);
+
+  const isControlOperationCurrent = useCallback((kind: ControlOperationKind, sequence: number) => (
+    controlOperationRef.current?.kind === kind && controlOperationRef.current.sequence === sequence
+  ), []);
+
+  const finishControlOperation = useCallback((kind: ControlOperationKind, sequence: number, message: string, error = false) => {
+    if (!isControlOperationCurrent(kind, sequence)) return;
+    controlOperationRef.current = null;
+    setControlOperation({ kind, pending: false, message, error });
+  }, [isControlOperationCurrent]);
+
+  useEffect(() => () => {
+    controlOperationRef.current = null;
+    ++controlOperationSequence.current;
+  }, []);
 
   useEffect(() => {
     if (typeof window.matchMedia !== "function") return;
@@ -101,7 +150,7 @@ export default function App() {
 
   const startUpdateDownload = useCallback(async (info: AppUpdateInfo, reveal = false) => {
     const sequence = ++updateSequence.current;
-    if (reveal) setUpdateOpen(true);
+    if (reveal) openModal("update");
     setUpdateState({ phase: "downloading", info, progress: null, error: null });
     try {
       await downloadAppUpdate((progress) => {
@@ -116,22 +165,20 @@ export default function App() {
       if (updateSequence.current !== sequence) return;
       setUpdateState({ phase: "error", info, progress: null, error: errorMessage(error, t.updateFailed) });
       setOperationError(t.updateFailed);
-      if (reveal) setUpdateOpen(true);
+      if (reveal && activeModalRef.current === "update") openModal("update");
     }
-  }, [t.updateFailed]);
+  }, [openModal, t.updateFailed]);
 
   const checkUpdate = useCallback((manual = false) => {
     if (["available", "downloading", "ready", "installing"].includes(updateState.phase)) {
       if (manual) {
-        setDiagnosticsOpen(false);
-        setUpdateOpen(true);
+        openModal("update");
       }
       return;
     }
     const sequence = ++updateSequence.current;
     if (manual) {
-      setDiagnosticsOpen(false);
-      setUpdateOpen(true);
+      openModal("update");
       setUpdateState({ phase: "checking", info: null, progress: null, error: null });
     }
     setOperationError(null);
@@ -148,7 +195,7 @@ export default function App() {
       }
       if (!info.automaticInstall || manual || !preferences.automaticUpdates) {
         setUpdateState({ phase: "available", info, progress: null, error: null });
-        if (!manual) setUpdateOpen(true);
+        if (!manual && activeModalRef.current === null) openModal("update");
         return;
       }
       await startUpdateDownload(info, manual);
@@ -156,9 +203,9 @@ export default function App() {
       if (updateSequence.current !== sequence) return;
       setUpdateState({ phase: "error", info: null, progress: null, error: appUpdateErrorMessage(error, language) });
       setOperationError(t.updateFailed);
-      if (manual) setUpdateOpen(true);
+      if (manual && activeModalRef.current === "update") openModal("update");
     });
-  }, [language, preferences.automaticUpdates, preferences.skippedUpdateVersion, preferences.updateChannel, startUpdateDownload, t.updateFailed, updateState.phase]);
+  }, [language, openModal, preferences.automaticUpdates, preferences.skippedUpdateVersion, preferences.updateChannel, startUpdateDownload, t.updateFailed, updateState.phase]);
 
   useEffect(() => {
     if (updateChannelRef.current === preferences.updateChannel) return;
@@ -167,9 +214,9 @@ export default function App() {
     ++updateSequence.current;
     cancelAppUpdateCheck();
     setUpdateState(EMPTY_UPDATE_STATE);
-    setUpdateOpen(false);
+    closeModal("update");
     void discardAppUpdate();
-  }, [preferences.updateChannel, updateState.phase]);
+  }, [closeModal, preferences.updateChannel, updateState.phase]);
 
   const refresh = useCallback((force = false) => runSingleFlight(refreshFlight.current, async () => {
     const preferenceSnapshot = preferencesRef.current;
@@ -264,48 +311,64 @@ export default function App() {
   }, force), [commitRuntimeState]);
 
   const loadVolcengineDiagnostics = useCallback(async () => {
+    const sequence = ++diagnosticsSequence.current;
     setDiagnosticsLoading(true);
     try {
-      setDiagnostics(await getVolcengineDiagnostics());
+      const value = await getVolcengineDiagnostics();
+      if (diagnosticsSequence.current === sequence) setDiagnostics(value);
     } catch (error) {
-      setOperationError(errorMessage(error, t.errorUnavailable));
+      if (diagnosticsSequence.current === sequence) setOperationError(errorMessage(error, t.errorUnavailable));
     } finally {
-      setDiagnosticsLoading(false);
+      if (diagnosticsSequence.current === sequence) setDiagnosticsLoading(false);
     }
   }, [t.errorUnavailable]);
 
   const openVolcengineDiagnostics = useCallback(() => {
-    setUpdateOpen(false);
-    setControlOpen(false);
-    setDiagnosticsOpen(true);
+    openModal("diagnostics");
     void loadVolcengineDiagnostics();
-  }, [loadVolcengineDiagnostics]);
+  }, [loadVolcengineDiagnostics, openModal]);
+
+  const closeVolcengineDiagnostics = useCallback(() => {
+    ++diagnosticsSequence.current;
+    setDiagnosticsLoading(false);
+    setReconnecting(false);
+    closeModal("diagnostics");
+  }, [closeModal]);
 
   const handleVolcengineReconnect = useCallback(async () => {
-    setDiagnosticsOpen(true);
+    openModal("diagnostics");
+    const sequence = ++diagnosticsSequence.current;
     setDiagnosticsLoading(diagnostics === null);
     setReconnecting(true);
     setOperationError(t.reconnectStarted);
     try {
       const value = await reconnectVolcengine();
+      if (diagnosticsSequence.current !== sequence) return;
       setDiagnostics(value);
       await refresh(true);
+      if (diagnosticsSequence.current !== sequence) return;
       setOperationError(t.reconnectSuccess);
     } catch (error) {
+      if (diagnosticsSequence.current !== sequence) return;
       setOperationError(errorMessage(error, t.reconnectFailed));
       try {
-        setDiagnostics(await getVolcengineDiagnostics());
+        const value = await getVolcengineDiagnostics();
+        if (diagnosticsSequence.current === sequence) setDiagnostics(value);
       } catch {
         // Preserve the actionable reconnect error when diagnostics also fail.
       }
     } finally {
-      setDiagnosticsLoading(false);
-      setReconnecting(false);
+      if (diagnosticsSequence.current === sequence) {
+        setDiagnosticsLoading(false);
+        setReconnecting(false);
+      }
     }
-  }, [diagnostics, refresh, t.reconnectFailed, t.reconnectStarted, t.reconnectSuccess]);
+  }, [diagnostics, openModal, refresh, t.reconnectFailed, t.reconnectStarted, t.reconnectSuccess]);
 
   useEffect(() => {
+    let cancelled = false;
     void loadStartupState({ getPreferences, getRuntimeState, getDiagnostics: getAppDiagnostics, getAutostartEnabled }).then((startup) => {
+      if (cancelled) return;
       if (startup.preferences) {
         const normalized = normalizeWidgetPreferences(startup.preferences);
         preferencesRef.current = normalized;
@@ -322,6 +385,7 @@ export default function App() {
       void refresh(true);
     });
     return () => {
+      cancelled = true;
       for (const timer of consumptionTimers.current.values()) window.clearTimeout(timer);
       consumptionTimers.current.clear();
       if (collapseTimer.current !== null) window.clearTimeout(collapseTimer.current);
@@ -386,7 +450,19 @@ export default function App() {
     : orderedSnapshots[activeIndex % Math.max(1, orderedSnapshots.length)];
 
   useEffect(() => {
-    void notifyFocusPanels().catch(() => undefined);
+    if (focusPanelNotificationTimer.current !== null) {
+      window.clearTimeout(focusPanelNotificationTimer.current);
+    }
+    focusPanelNotificationTimer.current = window.setTimeout(() => {
+      focusPanelNotificationTimer.current = null;
+      void notifyFocusPanels().catch(() => undefined);
+    }, 100);
+    return () => {
+      if (focusPanelNotificationTimer.current !== null) {
+        window.clearTimeout(focusPanelNotificationTimer.current);
+        focusPanelNotificationTimer.current = null;
+      }
+    };
   }, [preferences.accentColor, preferences.appearanceMode, preferences.colorTheme, preferences.language, runtimeState, snapshots]);
 
   const handleDetachCockpitRegion = useCallback((region: CockpitRegion) => {
@@ -426,14 +502,12 @@ export default function App() {
   }, [savePreferences]);
 
   const handleUpdateOpen = useCallback(() => {
-    setDiagnosticsOpen(false);
-    setControlOpen(false);
     if (["idle", "current", "error"].includes(updateState.phase)) {
       checkUpdate(true);
       return;
     }
-    setUpdateOpen(true);
-  }, [checkUpdate, updateState.phase]);
+    openModal("update");
+  }, [checkUpdate, openModal, updateState.phase]);
 
   const handleUpdateClose = useCallback(() => {
     if (updateState.phase === "checking") {
@@ -441,8 +515,8 @@ export default function App() {
       cancelAppUpdateCheck();
       setUpdateState(EMPTY_UPDATE_STATE);
     }
-    setUpdateOpen(false);
-  }, [updateState.phase]);
+    closeModal("update");
+  }, [closeModal, updateState.phase]);
 
   const handleUpdateDownload = useCallback(() => {
     if (updateState.info) void startUpdateDownload(updateState.info, true);
@@ -451,16 +525,17 @@ export default function App() {
   const handleUpdateInstall = useCallback(() => {
     const info = updateState.info;
     if (!info) return;
-    ++updateSequence.current;
-    setUpdateOpen(true);
+    const sequence = ++updateSequence.current;
+    openModal("update");
     setUpdateState({ phase: "installing", info, progress: updateState.progress, error: null });
     void createAutomaticBackup({ schemaVersion: 1, createdAt: new Date().toISOString(), preferences, runtimeState: runtimeStateRef.current })
       .then(() => installAppUpdate())
       .catch((error) => {
+      if (updateSequence.current !== sequence) return;
       setUpdateState({ phase: "error", info, progress: null, error: errorMessage(error, t.updateFailed) });
       setOperationError(t.updateFailed);
     });
-  }, [preferences, t.updateFailed, updateState.info, updateState.progress]);
+  }, [openModal, preferences, t.updateFailed, updateState.info, updateState.progress]);
 
   const handleUpdateSkip = useCallback(() => {
     const version = updateState.info?.version;
@@ -468,10 +543,10 @@ export default function App() {
     ++updateSequence.current;
     savePreferences({ ...preferences, skippedUpdateVersion: version });
     setUpdateState(EMPTY_UPDATE_STATE);
-    setUpdateOpen(false);
+    closeModal("update");
     setOperationError(t.updateSkipped(version));
     void discardAppUpdate();
-  }, [preferences, savePreferences, t, updateState.info?.version]);
+  }, [closeModal, preferences, savePreferences, t, updateState.info?.version]);
 
   const handleUpdateRelease = useCallback(() => {
     void openReleasePage(updateState.info?.releaseUrl).catch(() => setOperationError(t.updateFailed));
@@ -496,29 +571,98 @@ export default function App() {
     runtimeStateRef.current = nextRuntime;
     setPreferences(nextPreferences);
     setRuntimeState(nextRuntime);
-    setOperationError(formatBackupRestoreNotice(layoutDiagnostics, language));
+    const notice = formatBackupRestoreNotice(layoutDiagnostics, language);
+    return notice;
   }, [language]);
 
   const handleExport = useCallback(() => {
+    const sequence = beginControlOperation("export", language === "en" ? "Exporting backup…" : "正在导出备份…");
+    if (sequence === null) return;
     void exportAppData(backupBundle()).then((path) => {
-      if (path) setOperationError(language === "en" ? `Backup exported: ${path}` : `备份已导出：${path}`);
-    }).catch((error) => setOperationError(errorMessage(error, "Backup export failed.")));
-  }, [backupBundle, language]);
+      if (!isControlOperationCurrent("export", sequence)) return;
+      const message = path
+        ? language === "en" ? `Backup exported: ${path}` : `备份已导出：${path}`
+        : language === "en" ? "Backup export canceled." : "已取消备份导出。";
+      finishControlOperation("export", sequence, message);
+    }).catch((error) => {
+      if (!isControlOperationCurrent("export", sequence)) return;
+      const message = errorMessage(error, language === "en" ? "Backup export failed." : "备份导出失败。");
+      setOperationError(message);
+      finishControlOperation("export", sequence, message, true);
+    });
+  }, [backupBundle, beginControlOperation, finishControlOperation, isControlOperationCurrent, language]);
 
   const handleImport = useCallback(() => {
-    void importAppData().then((value) => value ? applyBackupBundle(value) : undefined).catch((error) => setOperationError(errorMessage(error, "Backup import failed.")));
-  }, [applyBackupBundle]);
+    const sequence = beginControlOperation("import", language === "en" ? "Waiting for a backup to import…" : "等待选择要导入的备份…");
+    if (sequence === null) return;
+    void importAppData().then(async (value) => {
+      const message = value
+        ? await applyBackupBundle(value)
+        : language === "en" ? "Backup import canceled." : "已取消备份导入。";
+      if (!isControlOperationCurrent("import", sequence)) return;
+      finishControlOperation("import", sequence, message);
+    }).catch((error) => {
+      if (!isControlOperationCurrent("import", sequence)) return;
+      const message = errorMessage(error, language === "en" ? "Backup import failed." : "备份导入失败。");
+      setOperationError(message);
+      finishControlOperation("import", sequence, message, true);
+    });
+  }, [applyBackupBundle, beginControlOperation, finishControlOperation, isControlOperationCurrent, language]);
 
   const handleRestore = useCallback(() => {
-    void restoreLatestBackup().then((value) => value ? applyBackupBundle(value) : undefined).catch((error) => setOperationError(errorMessage(error, "No automatic backup is available.")));
-  }, [applyBackupBundle]);
+    const sequence = beginControlOperation("restore", language === "en" ? "Restoring the latest backup…" : "正在恢复最近的备份…");
+    if (sequence === null) return;
+    void restoreLatestBackup().then(async (value) => {
+      const message = value
+        ? await applyBackupBundle(value)
+        : language === "en" ? "No automatic backup is available." : "没有可用的自动备份。";
+      if (!isControlOperationCurrent("restore", sequence)) return;
+      finishControlOperation("restore", sequence, message, !value);
+    }).catch((error) => {
+      if (!isControlOperationCurrent("restore", sequence)) return;
+      const message = errorMessage(error, language === "en" ? "Backup restore failed." : "备份恢复失败。");
+      setOperationError(message);
+      finishControlOperation("restore", sequence, message, true);
+    });
+  }, [applyBackupBundle, beginControlOperation, finishControlOperation, isControlOperationCurrent, language]);
 
   const handleCopyDiagnostics = useCallback(() => {
+    const sequence = beginControlOperation("diagnostics", language === "en" ? "Copying diagnostic report…" : "正在复制诊断报告…");
+    if (sequence === null) return;
     const report = buildDiagnosticReport(appDiagnostics, snapshots, runtimeState);
     void navigator.clipboard.writeText(JSON.stringify(report, null, 2))
-      .then(() => setOperationError(language === "en" ? "Diagnostic report copied." : "诊断报告已复制。"))
-      .catch(() => setOperationError(language === "en" ? "Could not copy the diagnostic report." : "无法复制诊断报告。"));
-  }, [appDiagnostics, language, runtimeState.events, runtimeState.history.length, snapshots]);
+      .then(() => {
+        if (!isControlOperationCurrent("diagnostics", sequence)) return;
+        const message = language === "en" ? "Diagnostic report copied." : "诊断报告已复制。";
+        finishControlOperation("diagnostics", sequence, message);
+      })
+      .catch(() => {
+        if (!isControlOperationCurrent("diagnostics", sequence)) return;
+        const message = language === "en" ? "Could not copy the diagnostic report." : "无法复制诊断报告。";
+        setOperationError(message);
+        finishControlOperation("diagnostics", sequence, message, true);
+      });
+  }, [appDiagnostics, beginControlOperation, finishControlOperation, isControlOperationCurrent, language, runtimeState.events, runtimeState.history.length, snapshots]);
+
+  const handleAutostart = useCallback((enabled: boolean) => {
+    const sequence = beginControlOperation("autostart", language === "en" ? "Updating startup setting…" : "正在更新开机启动设置…");
+    if (sequence === null) return;
+    const previous = autostartEnabled;
+    setAutostartState(enabled);
+    void setAutostartEnabled(enabled)
+      .then((value) => {
+        if (!isControlOperationCurrent("autostart", sequence)) return;
+        setAutostartState(value);
+        finishControlOperation("autostart", sequence, language === "en" ? "Startup setting updated." : "开机启动设置已更新。");
+      })
+      .catch(() => {
+        if (!isControlOperationCurrent("autostart", sequence)) return;
+        setAutostartState(previous);
+        const message = language === "en" ? "Autostart could not be changed." : "无法修改开机启动设置。";
+        setOperationError(message);
+        finishControlOperation("autostart", sequence, message, true);
+      });
+  }, [autostartEnabled, beginControlOperation, finishControlOperation, isControlOperationCurrent, language]);
 
   const handleHover = useCallback((value: boolean) => {
     if (collapseTimer.current !== null) {
@@ -553,7 +697,7 @@ export default function App() {
         setCompact(true);
         setCollapsing(false);
         void setWidgetExpanded(false, preferences.compactLayout, { edge: preferences.barEdge, offset: preferences.barOffset }).catch(() => setOperationError("Widget collapse failed."));
-      }, reducedMotion ? 0 : 140);
+      }, reducedMotion ? 0 : 120);
     }, 180);
   }, [preferences.barEdge, preferences.barOffset, preferences.compactLayout, preferences.stayExpanded, refresh]);
 
@@ -670,7 +814,7 @@ export default function App() {
       onHover={handleHover}
       onRefresh={() => refresh(true)}
       onDiagnostics={openVolcengineDiagnostics}
-      onCloseDiagnostics={() => setDiagnosticsOpen(false)}
+      onCloseDiagnostics={closeVolcengineDiagnostics}
       onReconnect={() => void handleVolcengineReconnect()}
       diagnostics={diagnostics}
       diagnosticsOpen={diagnosticsOpen}
@@ -690,14 +834,12 @@ export default function App() {
       onUpdateDownload={handleUpdateDownload}
       onUpdateInstall={handleUpdateInstall}
       onUpdateRetry={() => checkUpdate(true)}
-      onUpdateLater={() => setUpdateOpen(false)}
+      onUpdateLater={() => closeModal("update")}
       onUpdateSkip={handleUpdateSkip}
       onUpdateRelease={handleUpdateRelease}
       controlOpen={controlOpen}
       onControlOpen={() => {
-        setDiagnosticsOpen(false);
-        setUpdateOpen(false);
-        setControlOpen(true);
+        openModal("control");
         void getAppDiagnostics().then(setAppDiagnostics).catch(() => undefined);
       }}
       controlCenter={(
@@ -709,7 +851,7 @@ export default function App() {
             snapshots={snapshots}
             diagnostics={appDiagnostics}
             language={language}
-            onClose={() => setControlOpen(false)}
+            onClose={() => closeModal("control")}
             onRefresh={() => refresh(true)}
             onPreferences={savePreferences}
             onRuntimeState={commitRuntimeState}
@@ -717,12 +859,9 @@ export default function App() {
             onImport={handleImport}
             onRestore={handleRestore}
             onCopyDiagnostics={handleCopyDiagnostics}
+            operation={controlOperation}
             autostartEnabled={autostartEnabled}
-            onAutostart={(enabled) => {
-              const previous = autostartEnabled;
-              setAutostartState(enabled);
-              void setAutostartEnabled(enabled).then(setAutostartState).catch(() => { setAutostartState(previous); setOperationError(language === "en" ? "Autostart could not be changed." : "无法修改开机启动设置。"); });
-            }}
+            onAutostart={handleAutostart}
             />
           </Suspense>
         </ErrorBoundary>

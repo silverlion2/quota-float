@@ -7,6 +7,13 @@ import type { AppDiagnostics, Language, ProviderId, ProviderSnapshot, RuntimeSta
 import { ProviderMark } from "./ProviderMark";
 
 type Tab = "display" | "providers" | "health" | "alerts" | "activity" | "system";
+export type ControlOperationKind = "export" | "import" | "restore" | "diagnostics" | "autostart";
+export interface ControlOperation {
+  kind: ControlOperationKind;
+  pending: boolean;
+  message: string;
+  error?: boolean;
+}
 
 interface Props {
   preferences: WidgetPreferences;
@@ -24,6 +31,7 @@ interface Props {
   onCopyDiagnostics: () => void;
   autostartEnabled: boolean;
   onAutostart: (enabled: boolean) => void;
+  operation?: ControlOperation | null;
 }
 
 function toggleProvider(values: ProviderId[], provider: ProviderId): ProviderId[] {
@@ -42,7 +50,7 @@ function formatCheckedAt(value: string | undefined, language: Language, fallback
   }).format(date);
 }
 
-export function ControlCenter({ preferences, runtimeState, snapshots, diagnostics, language, onClose, onRefresh, onPreferences, onRuntimeState, onExport, onImport, onRestore, onCopyDiagnostics, autostartEnabled, onAutostart }: Props) {
+export function ControlCenter({ preferences, runtimeState, snapshots, diagnostics, language, onClose, onRefresh, onPreferences, onRuntimeState, onExport, onImport, onRestore, onCopyDiagnostics, autostartEnabled, onAutostart, operation = null }: Props) {
   const dialogRef = useModalDialog<HTMLElement>(onClose);
   const [tab, setTab] = useState<Tab>("display");
   const [layoutName, setLayoutName] = useState("");
@@ -240,6 +248,7 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
   const memoryRange = runtimeState.usageMemory.firstCapturedAt && runtimeState.usageMemory.lastCapturedAt
     ? `${formatCheckedAt(runtimeState.usageMemory.firstCapturedAt, language, labels.memoryEmpty)} — ${formatCheckedAt(runtimeState.usageMemory.lastCapturedAt, language, labels.memoryEmpty)}`
     : labels.memoryEmpty;
+  const operationPending = Boolean(operation?.pending);
 
   const saveLayout = () => {
     const name = layoutName.trim() || `${zh ? "布局" : "Layout"} ${runtimeState.savedLayouts.length + 1}`;
@@ -257,7 +266,7 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
     <section ref={dialogRef} className="control-center" role="dialog" aria-modal="true" aria-labelledby="control-center-title" tabIndex={-1} onMouseDown={(event) => event.stopPropagation()}>
       <header className="control-header">
         <div><p>QUOTA FLOAT · LOCAL FIRST</p><h2 id="control-center-title">{labels.title}</h2><small>{labels.subtitle}</small></div>
-        <button type="button" onClick={onClose} aria-label="Close" data-dialog-initial-focus><X /></button>
+        <button type="button" onClick={onClose} aria-label={zh ? "关闭" : "Close"} title={zh ? "关闭" : "Close"} data-dialog-initial-focus><X /></button>
       </header>
       <nav className="control-tabs" aria-label={labels.title}>
         {([['display', Layout, labels.display], ['providers', Eye, labels.providerTab], ['health', Heartbeat, healthLabels.tab], ['alerts', Bell, labels.alerts], ['activity', ClockCounterClockwise, labels.activity], ['system', GearSix, labels.system]] as const).map(([id, Icon, label]) => (
@@ -446,12 +455,13 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
           <div className="control-grid">
             <label className="control-field"><span>{labels.channel}</span><select value={preferences.updateChannel} onChange={(event) => onPreferences({ ...preferences, updateChannel: event.target.value as WidgetPreferences['updateChannel'] })}><option value="stable">{labels.stable}</option><option value="beta">{labels.beta}</option></select></label>
             <label className="control-check"><input type="checkbox" checked={preferences.automaticUpdates} onChange={(event) => onPreferences({ ...preferences, automaticUpdates: event.target.checked })} /><span>{labels.autoUpdate}</span></label>
-            <label className="control-check"><input type="checkbox" checked={autostartEnabled} onChange={(event) => onAutostart(event.target.checked)} /><span>{labels.autostart}</span></label>
+            <label className="control-check"><input type="checkbox" checked={autostartEnabled} disabled={operationPending} onChange={(event) => onAutostart(event.target.checked)} /><span>{labels.autostart}</span></label>
           </div>
           <div className="control-section-title"><span>{labels.diagnostics}</span></div>
-          <div className="diagnostic-summary"><Heartbeat /><div><strong>Quota Float {diagnostics?.appVersion ?? "…"}</strong><p>{diagnostics?.platform ?? "…"} · {diagnostics?.preferencesBackupAvailable || diagnostics?.runtimeBackupAvailable ? (zh ? "恢复点可用" : "Recovery point available") : (zh ? "等待首次备份" : "Awaiting first backup")}</p></div><button type="button" onClick={onCopyDiagnostics}>{labels.copy}</button></div>
+          <div className="diagnostic-summary"><Heartbeat /><div><strong>Quota Float {diagnostics?.appVersion ?? "…"}</strong><p>{diagnostics?.platform ?? "…"} · {diagnostics?.preferencesBackupAvailable || diagnostics?.runtimeBackupAvailable ? (zh ? "恢复点可用" : "Recovery point available") : (zh ? "等待首次备份" : "Awaiting first backup")}</p></div><button type="button" disabled={operationPending} onClick={onCopyDiagnostics}>{labels.copy}</button></div>
           <div className="control-section-title"><span>{labels.backup}</span></div>
-          <div className="backup-actions"><button type="button" onClick={onExport}><DownloadSimple />{labels.export}</button><button type="button" onClick={onImport}><UploadSimple />{labels.import}</button><button type="button" onClick={onRestore}><ArrowCounterClockwise />{labels.restore}</button></div>
+          <div className="backup-actions"><button type="button" disabled={operationPending} onClick={onExport}><DownloadSimple />{labels.export}</button><button type="button" disabled={operationPending} onClick={onImport}><UploadSimple />{labels.import}</button><button type="button" disabled={operationPending} onClick={onRestore}><ArrowCounterClockwise />{labels.restore}</button></div>
+          {operation ? <div className={`control-operation-status${operation.pending ? " is-pending" : operation.error ? " is-error" : " is-success"}`} role="status" aria-live="polite">{operation.message}</div> : null}
           </> : null}
         </div>
       </div>

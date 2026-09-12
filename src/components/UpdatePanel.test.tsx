@@ -68,6 +68,26 @@ describe("UpdatePanel states", () => {
     expect(screen.getByRole("button", { name: "Restart and install" })).toBeInTheDocument();
   });
 
+  it("falls back to an indeterminate progress bar for invalid progress", () => {
+    render(
+      <UpdatePanel
+        state={{ phase: "downloading", info, progress: { downloadedBytes: 1, totalBytes: 0, percent: Number.NaN }, error: null }}
+        language="en"
+        onClose={vi.fn()}
+        onDownload={vi.fn()}
+        onInstall={vi.fn()}
+        onRetry={vi.fn()}
+        onLater={vi.fn()}
+        onSkip={vi.fn()}
+        onOpenRelease={vi.fn()}
+      />,
+    );
+
+    const progressbar = screen.getByRole("progressbar");
+    expect(progressbar).not.toHaveAttribute("aria-valuenow");
+    expect(progressbar.querySelector("span")).toHaveStyle({ width: "18%" });
+  });
+
   it("keeps installation non-dismissible and focuses the dialog", () => {
     renderPhase("installing");
     expect(screen.getByRole("button", { name: "Close update center" })).toBeDisabled();

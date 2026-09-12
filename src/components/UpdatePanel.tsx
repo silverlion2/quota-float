@@ -58,7 +58,9 @@ export function UpdatePanel({ state, language, onClose, onDownload, onInstall, o
           ? t.updateCurrent
           : state.error ?? t.updateCenterSubtitle;
   const progress = state.progress?.percent;
-  const boundedProgress = progress === null || progress === undefined ? null : Math.max(0, Math.min(100, progress));
+  const boundedProgress = progress === null || progress === undefined || !Number.isFinite(progress)
+    ? null
+    : Math.max(0, Math.min(100, progress));
 
   return (
     <section ref={dialogRef} className="update-panel" role="dialog" aria-modal="true" aria-labelledby="app-update-title" tabIndex={-1} onMouseDown={(event) => event.stopPropagation()}>

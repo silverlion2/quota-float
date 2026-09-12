@@ -13,7 +13,7 @@ import {
   Wrench,
   X,
 } from "@phosphor-icons/react";
-import { type CSSProperties, useCallback, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { exportUsageData, fetchCodexTokenUsage, sendDesktopNotification } from "../lib/bridge";
 import { clampPercent, formatResetTime } from "../lib/format";
 import { deliverNotificationOnce } from "../lib/notificationDelivery";
@@ -40,6 +40,7 @@ import {
 import { buildCodexBillingPlanComparison } from "../lib/billingPlan";
 import { buildPeriodUsageJson, buildPricingCatalogJson, buildUsageCsv, buildUsageJson, buildUsageShareSvg } from "../lib/usageExport";
 import { buildUsageCalendar, MAX_RETAINED_DAILY_SUMMARIES, MAX_RETAINED_QUOTA_SAMPLES, observedTrendUse, recentQuotaTrend, retainedQuotaCoverageStart, usageSummary } from "../lib/usageInsights";
+import { requestLatest, type LatestRequestState } from "../lib/latestRequest";
 import type {
   CodexTokenUsageReport,
   DailyPaceBaseline,
@@ -142,6 +143,7 @@ export function UsageInsightsPanel({
   const [tokenLoading, setTokenLoading] = useState(false);
   const [tokenError, setTokenError] = useState<string | null>(null);
   const [operationMessage, setOperationMessage] = useState<string | null>(null);
+  const tokenRequest = useRef<LatestRequestState>({ sequence: 0 });
   const [budgetDraft, setBudgetDraft] = useState(String(preferences.monthlyApiBudgetUsd));
   const [upgradeDateDraft, setUpgradeDateDraft] = useState(preferences.codexPlanUpgradeDate ?? "");
   const [planTargetDraft, setPlanTargetDraft] = useState(String(preferences.codexPlanValueTargetRatio));
@@ -189,16 +191,31 @@ export function UsageInsightsPanel({
     setTokenLoading(true);
     setTokenError(null);
     setOperationMessage(null);
-    void fetchCodexTokenUsage(force, rebuild)
-      .then((report) => {
+    requestLatest(
+      tokenRequest.current,
+      () => fetchCodexTokenUsage(force, rebuild),
+      (report) => {
         setTokenReport(report);
         if (rebuild) setOperationMessage(english ? "Local usage index rebuilt." : "本地用量索引已重建。");
-      })
-      .catch(() => setTokenError(english ? "Token metadata is unavailable." : "Token 元数据不可用。"))
-      .finally(() => setTokenLoading(false));
+      },
+      () => setTokenError(english ? "Token metadata is unavailable." : "Token 元数据不可用。"),
+      () => setTokenLoading(false),
+    );
   }, [english, snapshot.provider]);
 
-  useEffect(() => { loadTokenUsage(false, false); }, [loadTokenUsage]);
+  useEffect(() => {
+    if (snapshot.provider !== "codex") {
+      // Invalidate an in-flight Codex request when navigating to another
+      // provider, and avoid showing a previous provider's report on return.
+      tokenRequest.current.sequence += 1;
+      setTokenReport(null);
+      setTokenLoading(false);
+      setTokenError(null);
+      return;
+    }
+    loadTokenUsage(false, false);
+    return () => { tokenRequest.current.sequence += 1; };
+  }, [loadTokenUsage, snapshot.provider]);
   useEffect(() => { setBudgetDraft(String(preferences.monthlyApiBudgetUsd)); }, [preferences.monthlyApiBudgetUsd]);
   useEffect(() => { setUpgradeDateDraft(preferences.codexPlanUpgradeDate ?? ""); }, [preferences.codexPlanUpgradeDate]);
   useEffect(() => { setPlanTargetDraft(String(preferences.codexPlanValueTargetRatio)); }, [preferences.codexPlanValueTargetRatio]);

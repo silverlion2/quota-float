@@ -5,7 +5,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_WIDGET_PREFERENCES } from "../lib/preferences";
 import type { AppDiagnostics, ProviderSnapshot, RuntimeState, WidgetPreferences } from "../types";
-import { ControlCenter } from "./ControlCenter";
+import { ControlCenter, type ControlOperation } from "./ControlCenter";
 
 afterEach(cleanup);
 
@@ -61,6 +61,7 @@ function renderControlCenter(
   preferences: WidgetPreferences = { ...DEFAULT_WIDGET_PREFERENCES, language: "en" },
   onRuntimeState = vi.fn(),
   state = runtimeState,
+  operation: ControlOperation | null = null,
 ) {
   render(
     <ControlCenter
@@ -79,6 +80,7 @@ function renderControlCenter(
       onCopyDiagnostics={vi.fn()}
       autostartEnabled
       onAutostart={vi.fn()}
+      operation={operation}
     />,
   );
   return { onPreferences, onRuntimeState };
@@ -194,6 +196,30 @@ describe("ControlCenter provider health", () => {
     expect(providersTab).toHaveAttribute("aria-current", "page");
     expect(screen.getByText("平台显示与监控")).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "监控中" })).toHaveLength(7);
+  });
+
+  it("localizes the close control in Chinese", () => {
+    renderControlCenter(
+      vi.fn(),
+      vi.fn(),
+      { ...DEFAULT_WIDGET_PREFERENCES, language: "zh-CN" },
+    );
+
+    expect(screen.getByRole("button", { name: "关闭" })).toHaveAttribute("title", "关闭");
+  });
+
+  it("shows pending system operation feedback and prevents conflicting system actions", () => {
+    renderControlCenter(vi.fn(), vi.fn(), { ...DEFAULT_WIDGET_PREFERENCES, language: "en" }, vi.fn(), runtimeState, {
+      kind: "export",
+      pending: true,
+      message: "Exporting backup…",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "System" }));
+
+    expect(screen.getByRole("status")).toHaveTextContent("Exporting backup…");
+    expect(screen.getByRole("button", { name: "Export settings and history" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Import backup" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Restore latest automatic backup" })).toBeDisabled();
   });
 
   it("pauses provider monitoring independently from visibility", () => {

@@ -5,6 +5,7 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProviderSnapshot, VolcengineDiagnostics, WidgetPreferences } from "../types";
 import { DEFAULT_WIDGET_PREFERENCES } from "../lib/preferences";
+import * as usageInsights from "../lib/usageInsights";
 import { QuotaBar, QuotaBottleneckBar, QuotaCard, QuotaOrb } from "./QuotaCard";
 
 const codex: ProviderSnapshot = {
@@ -114,6 +115,58 @@ afterEach(() => {
 });
 
 describe("QuotaCard platform ledger", () => {
+  it("does not derive hidden history sparklines when the preference is off", () => {
+    const recentTrend = vi.spyOn(usageInsights, "recentQuotaTrend");
+    const { container } = render(
+      <QuotaCard
+        snapshot={codex}
+        snapshots={[codex, qoder]}
+        preferences={{ ...preferences, showHistorySparklines: false }}
+        history={Array.from({ length: 100 }, (_, index) => ({
+          provider: "codex" as const,
+          capturedAt: new Date(Date.now() - index * 60_000).toISOString(),
+          metric: 90 - index % 20,
+          metricKind: "percent" as const,
+          status: "ok" as const,
+          resetsAt: codex.weeklyWindow?.resetsAt ?? null,
+        }))}
+        onSelectProvider={noop}
+        onLock={noop}
+        onLanguage={noop}
+        onDrag={noop}
+        onHover={noop}
+        consumingProviders={new Set()}
+      />,
+    );
+
+    expect(recentTrend).not.toHaveBeenCalled();
+    expect(container.querySelectorAll(".provider-history")).toHaveLength(0);
+    recentTrend.mockRestore();
+  });
+
+  it("reuses cockpit trend data when only the focused region changes", () => {
+    const recentTrend = vi.spyOn(usageInsights, "recentQuotaTrend");
+    render(
+      <QuotaCard
+        snapshot={codex}
+        snapshots={[codex]}
+        preferences={{ ...preferences, expandedLayout: "cockpit" }}
+        history={[{ provider: "codex", capturedAt: new Date().toISOString(), metric: 74, metricKind: "percent", status: "ok", resetsAt: codex.weeklyWindow?.resetsAt ?? null }]}
+        onSelectProvider={noop}
+        onLock={noop}
+        onLanguage={noop}
+        onDrag={noop}
+        onHover={noop}
+        consumingProviders={new Set()}
+      />,
+    );
+
+    expect(recentTrend).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getAllByRole("button", { name: "Enlarge this area" })[0]);
+    expect(recentTrend).toHaveBeenCalledOnce();
+    recentTrend.mockRestore();
+  });
+
   it("shows the live Codex reset forecast and opens its source", () => {
     const onOpenResetForecast = vi.fn();
     render(
@@ -381,7 +434,7 @@ describe("QuotaCard platform ledger", () => {
     expect(screen.getByText("WEEKDAY × HOUR")).toBeInTheDocument();
     expect(screen.getByText(/quota retention: 90-day full samples, then daily compaction; capacity 120,000 samples \/ 100,000 daily summaries/i)).toBeInTheDocument();
     expect(screen.getByText(/actual retained coverage starts Jul 15, 2026/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Alert while open" })).toHaveAttribute("title", "Checked only while Codex Insights is open");
+    expect(await screen.findByRole("button", { name: "Alert while open" })).toHaveAttribute("title", "Checked only while Codex Insights is open");
 
     fireEvent.click(quotaTab);
     expect(quotaTab).toHaveAttribute("aria-selected", "true");

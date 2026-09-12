@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useModalDialog } from "./modalDialog";
 
@@ -10,9 +10,19 @@ afterEach(cleanup);
 function TestDialog({ onClose, closeOnEscape = true }: { onClose: () => void; closeOnEscape?: boolean }) {
   const dialogRef = useModalDialog<HTMLElement>(onClose, closeOnEscape);
   return (
-    <section ref={dialogRef} role="dialog" tabIndex={-1}>
+    <section ref={dialogRef} role="dialog" aria-modal="true" tabIndex={-1}>
       <button type="button" data-dialog-initial-focus>First</button>
       <button type="button">Last</button>
+    </section>
+  );
+}
+
+function HiddenInitialFocusDialog({ onClose }: { onClose: () => void }) {
+  const dialogRef = useModalDialog<HTMLElement>(onClose);
+  return (
+    <section ref={dialogRef} role="dialog" aria-modal="true" tabIndex={-1}>
+      <button type="button" data-dialog-initial-focus hidden>Hidden</button>
+      <button type="button">Visible</button>
     </section>
   );
 }
@@ -37,7 +47,7 @@ describe("modal dialog keyboard behavior", () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it("restores focus and can block Escape during a non-dismissible operation", () => {
+  it("restores focus and can block Escape during a non-dismissible operation", async () => {
     const onClose = vi.fn();
     const opener = document.createElement("button");
     document.body.append(opener);
@@ -48,7 +58,22 @@ describe("modal dialog keyboard behavior", () => {
     expect(onClose).not.toHaveBeenCalled();
 
     view.unmount();
+    await act(async () => {});
     expect(opener).toHaveFocus();
     opener.remove();
+  });
+
+  it("skips a hidden initial target", () => {
+    render(<HiddenInitialFocusDialog onClose={vi.fn()} />);
+
+    expect(screen.getByRole("button", { name: "Visible" })).toHaveFocus();
+  });
+
+  it("does not steal focus from a replacement dialog", async () => {
+    const first = render(<TestDialog onClose={vi.fn()} />);
+    first.unmount();
+    render(<HiddenInitialFocusDialog onClose={vi.fn()} />);
+    await act(async () => {});
+    expect(screen.getByRole("button", { name: "Visible" })).toHaveFocus();
   });
 });

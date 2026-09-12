@@ -2,7 +2,8 @@
 
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import * as usageInsights from "../lib/usageInsights";
 import { QuotaHistoryCurve } from "./QuotaHistoryCurve";
 
 const points = [
@@ -61,5 +62,42 @@ describe("QuotaHistoryCurve", () => {
     expect(curve).not.toHaveAttribute("tabindex");
     expect(curve).toHaveClass("quota-history-curve--empty");
     expect(within(curve).queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("memoizes expensive geometry while inspecting a stable history", () => {
+    const buildGeometry = vi.spyOn(usageInsights, "buildQuotaTrendGeometry");
+    const now = new Date("2026-08-08T08:00:00Z");
+    render(<QuotaHistoryCurve points={points} language="en" variant="insights" now={now} />);
+    const curve = screen.getByRole("img", { name: "24-hour quota remaining curve" });
+    Object.defineProperty(curve, "getBoundingClientRect", { configurable: true, value: () => ({ left: 0, width: 220 }) });
+
+    movePointer(curve, 4);
+    movePointer(curve, 6);
+
+    expect(buildGeometry).toHaveBeenCalledOnce();
+    buildGeometry.mockRestore();
+  });
+
+  it("selects the nearest point when source samples are out of order", () => {
+    render(<QuotaHistoryCurve points={[points[2], points[0], points[1]]} language="en" variant="insights" now={new Date("2026-08-08T08:00:00Z")} />);
+    const curve = screen.getByRole("img", { name: "24-hour quota remaining curve" });
+    Object.defineProperty(curve, "getBoundingClientRect", { configurable: true, value: () => ({ left: 0, width: 220 }) });
+
+    movePointer(curve, 4);
+
+    expect(within(curve).getByText("90%")).toBeInTheDocument();
+  });
+
+  it("keeps the implicit current time stable while inspecting a history", () => {
+    const buildGeometry = vi.spyOn(usageInsights, "buildQuotaTrendGeometry");
+    render(<QuotaHistoryCurve points={points} language="en" variant="insights" />);
+    const curve = screen.getByRole("img", { name: /quota remaining curve/ });
+    Object.defineProperty(curve, "getBoundingClientRect", { configurable: true, value: () => ({ left: 0, width: 220 }) });
+
+    movePointer(curve, 4);
+    movePointer(curve, 6);
+
+    expect(buildGeometry).toHaveBeenCalledOnce();
+    buildGeometry.mockRestore();
   });
 });

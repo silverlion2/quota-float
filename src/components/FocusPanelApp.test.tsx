@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_WIDGET_PREFERENCES } from "../lib/preferences";
 import type { ProviderSnapshot, SnapshotCacheRead } from "../types";
@@ -10,7 +10,7 @@ const bridge = vi.hoisted(() => ({
   closeFocusPanel: vi.fn(),
   fetchSnapshots: vi.fn(),
   getPreferences: vi.fn(),
-  listenFocusPanelUpdates: vi.fn(async () => () => undefined),
+  listenFocusPanelUpdates: vi.fn(async (_callback: () => void) => () => undefined),
   readCachedSnapshots: vi.fn(),
   readFocusPanelHistory: vi.fn(),
   startFocusPanelDragging: vi.fn(),
@@ -71,5 +71,28 @@ describe("detached focus panel cache isolation", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("No cached quota data yet");
     expect(bridge.fetchSnapshots).not.toHaveBeenCalled();
+  });
+
+  it("keeps the newest cache result when an earlier reload resolves late", async () => {
+    let notify: (() => void) | undefined;
+    let resolveInitial: (value: SnapshotCacheRead) => void = () => undefined;
+    const initialCache = new Promise<SnapshotCacheRead>((resolve) => { resolveInitial = resolve; });
+    const freshSnapshot = { ...cachedSnapshot, status: "ok" as const, message: "Fresh cache" };
+    bridge.readCachedSnapshots
+      .mockImplementationOnce(() => initialCache)
+      .mockResolvedValueOnce({ snapshots: [freshSnapshot], freshness: "fresh", oldestAgeSeconds: 1 } satisfies SnapshotCacheRead);
+    bridge.listenFocusPanelUpdates.mockImplementation(async (callback: () => void) => {
+      notify = callback;
+      return () => undefined;
+    });
+
+    render(<FocusPanelApp />);
+    await waitFor(() => expect(notify).toBeDefined());
+    act(() => notify?.());
+
+    expect(await screen.findByText("snapshot:ok:Fresh cache")).toBeInTheDocument();
+    resolveInitial({ snapshots: [cachedSnapshot], freshness: "stale", oldestAgeSeconds: 90 });
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText("snapshot:ok:Fresh cache")).toBeInTheDocument();
   });
 });

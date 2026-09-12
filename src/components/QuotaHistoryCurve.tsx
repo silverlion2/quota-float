@@ -3,6 +3,7 @@ import {
   type KeyboardEvent,
   type PointerEvent,
   useId,
+  useMemo,
   useState,
 } from "react";
 import { buildQuotaTrendGeometry, type QuotaTrendPoint } from "../lib/usageInsights";
@@ -21,6 +22,20 @@ interface Props {
 const VIEWBOX_WIDTH = 220;
 const MAX_RENDERED_SAMPLES = 720;
 
+function nearestPointIndex(points: Array<{ x: number; index: number }>, pointerX: number): number {
+  if (points.length < 2) return points[0]?.index ?? 0;
+  let low = 0;
+  let high = points.length - 1;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (points[middle].x < pointerX) low = middle + 1;
+    else high = middle;
+  }
+  if (low === 0) return points[0].index;
+  const previous = low - 1;
+  return points[pointerX - points[previous].x <= points[low].x - pointerX ? previous : low].index;
+}
+
 function formatPoint(point: QuotaTrendPoint, language: Language): { time: string; value: string } {
   const locale = language === "en" ? "en-US" : "zh-CN";
   const time = new Intl.DateTimeFormat(locale, {
@@ -38,20 +53,25 @@ export function QuotaHistoryCurve({
   points,
   language,
   variant,
-  now = new Date(),
+  now,
   hours = 24,
   interactive = true,
   ariaLabel,
 }: Props) {
   const gradientId = `quota-history-${useId().replaceAll(":", "")}`;
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
-  const geometry = buildQuotaTrendGeometry(points, now, hours);
-  const renderedIndexes = geometry && geometry.points.length > MAX_RENDERED_SAMPLES
-    ? Array.from({ length: Math.ceil(geometry.points.length / Math.ceil(geometry.points.length / MAX_RENDERED_SAMPLES)) }, (_, index) =>
-      Math.min(geometry.points.length - 1, index * Math.ceil(geometry.points.length / MAX_RENDERED_SAMPLES)))
-    : geometry?.points.map((_, index) => index) ?? [];
-  if (geometry && renderedIndexes.at(-1) !== geometry.points.length - 1) renderedIndexes.push(geometry.points.length - 1);
-  const renderedGeometry = geometry && renderedIndexes.length > 0
+  const resolvedNow = useMemo(() => now ?? new Date(), [now, points, hours]);
+  const geometry = useMemo(() => buildQuotaTrendGeometry(points, resolvedNow, hours), [points, resolvedNow, hours]);
+  const renderedIndexes = useMemo(() => {
+    if (!geometry) return [];
+    const indexes = geometry.points.length > MAX_RENDERED_SAMPLES
+      ? Array.from({ length: Math.ceil(geometry.points.length / Math.ceil(geometry.points.length / MAX_RENDERED_SAMPLES)) }, (_, index) =>
+        Math.min(geometry.points.length - 1, index * Math.ceil(geometry.points.length / MAX_RENDERED_SAMPLES)))
+      : geometry.points.map((_, index) => index);
+    if (indexes.at(-1) !== geometry.points.length - 1) indexes.push(geometry.points.length - 1);
+    return indexes;
+  }, [geometry]);
+  const renderedGeometry = useMemo(() => geometry && renderedIndexes.length > 0
     ? (() => {
       const visible = renderedIndexes.map((index) => geometry.points[index]);
       const pathPoints = visible.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`);
@@ -61,10 +81,13 @@ export function QuotaHistoryCurve({
         points: visible,
       };
     })()
-    : geometry;
+    : geometry, [geometry, renderedIndexes]);
+  const nearestLookup = useMemo(() => geometry?.points
+    .map((point, index) => ({ x: point.x, index }))
+    .sort((left, right) => left.x - right.x || left.index - right.index) ?? [], [geometry]);
   const activePoint = activeIndex === null ? null : points[activeIndex] ?? null;
   const activeGeometry = activeIndex === null ? null : geometry?.points[activeIndex] ?? null;
-  const tooltip = activePoint ? formatPoint(activePoint, language) : null;
+  const tooltip = useMemo(() => activePoint ? formatPoint(activePoint, language) : null, [activePoint, language]);
   const resolvedLabel = ariaLabel ?? (language === "en"
     ? `${hours}-hour quota remaining curve`
     : `${hours} 小时剩余额度曲线`);
@@ -74,16 +97,7 @@ export function QuotaHistoryCurve({
     const bounds = event.currentTarget.getBoundingClientRect();
     if (bounds.width <= 0) return;
     const pointerX = Math.min(VIEWBOX_WIDTH, Math.max(0, ((event.clientX - bounds.left) / bounds.width) * VIEWBOX_WIDTH));
-    let nearestIndex = 0;
-    let nearestDistance = Number.POSITIVE_INFINITY;
-    geometry.points.forEach((point, index) => {
-      const distance = Math.abs(point.x - pointerX);
-      if (distance < nearestDistance) {
-        nearestDistance = distance;
-        nearestIndex = index;
-      }
-    });
-    setActiveIndex(nearestIndex);
+    setActiveIndex(nearestPointIndex(nearestLookup, pointerX));
   };
 
   const moveSelection = (event: KeyboardEvent<HTMLSpanElement>) => {

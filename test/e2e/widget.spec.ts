@@ -228,4 +228,72 @@ describe("Quota Float desktop widget", () => {
     await browser.keys(["Escape"]);
     await dialog.waitForDisplayed({ reverse: true });
   });
+
+  it("keeps repeated modal navigation responsive and restores keyboard focus", async () => {
+    await openControlCenter();
+    await browser.keys(["Escape"]);
+    const measurements = await browser.tauri.execute(async () => {
+      const painted = () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      const samples: number[] = [];
+      let restoredFocus = true;
+      let modalCount = 0;
+      let backdropFilter = "";
+      let clipPath = "";
+      let duration = "";
+      for (let index = 0; index < 8; index += 1) {
+        const trigger = document.querySelector<HTMLButtonElement>(".control-action")!;
+        trigger.focus();
+        const start = performance.now();
+        trigger.click();
+        await painted();
+        const dialog = document.querySelector<HTMLElement>('.control-center[role="dialog"]')!;
+        samples.push(performance.now() - start);
+        modalCount = Math.max(modalCount, document.querySelectorAll('[aria-modal="true"]').length);
+        const style = getComputedStyle(dialog);
+        backdropFilter = style.backdropFilter;
+        duration = style.animationDuration;
+        clipPath = getComputedStyle(document.querySelector(".quota-card")!).clipPath;
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        await painted();
+        restoredFocus &&= document.activeElement === trigger;
+      }
+      return { samples, restoredFocus, modalCount, backdropFilter, clipPath, duration };
+    });
+    console.log("Synthetic native modal timing (click to two animation frames, ms)", measurements);
+    expect(measurements.restoredFocus).toBe(true);
+    expect(measurements.modalCount).toBe(1);
+    expect(measurements.backdropFilter).toBe("none");
+    expect(measurements.clipPath).toBe("none");
+    expect(parseFloat(measurements.duration)).toBeLessThanOrEqual(0.16);
+    // A coarse stall guard, not an FPS claim: tight frame-rate numbers vary with CI load.
+    expect(Math.max(...measurements.samples)).toBeLessThan(1000);
+    await expect(browser.$('.control-center[role="dialog"]')).not.toBeExisting();
+  });
+
+  it("keeps control center content within the native window in both appearances", async () => {
+    await openControlCenter();
+    for (const appearance of ["light", "dark"] as const) {
+      await browser.tauri.execute((_, selected) => {
+        const buttons = document.querySelectorAll<HTMLButtonElement>('.appearance-options button');
+        buttons[selected === "light" ? 1 : 2]?.click();
+      }, appearance);
+      await browser.waitUntil(async () => browser.tauri.execute((_, selected) =>
+        Boolean(document.querySelector(`.quota-card--theme-${selected}`)), appearance,
+      ));
+      const bounds = await browser.tauri.execute(() => {
+        const dialog = document.querySelector<HTMLElement>(".control-center")!;
+        const body = document.querySelector<HTMLElement>(".control-body")!;
+        body.scrollTop = 0;
+        const rect = dialog.getBoundingClientRect();
+        return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: innerWidth, height: innerHeight, overflow: body.scrollWidth - body.clientWidth };
+      });
+      expect(bounds.left).toBeGreaterThanOrEqual(0);
+      expect(bounds.top).toBeGreaterThanOrEqual(0);
+      expect(bounds.right).toBeLessThanOrEqual(bounds.width);
+      expect(bounds.bottom).toBeLessThanOrEqual(bounds.height);
+      expect(bounds.overflow).toBeLessThanOrEqual(1);
+      await browser.saveScreenshot(`output/handoff/control-center-${appearance}-2026-09-12.png`);
+    }
+    await browser.keys(["Escape"]);
+  });
 });

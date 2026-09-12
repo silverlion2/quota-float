@@ -97,7 +97,7 @@
 .control-tabs { min-height: 0; display: flex; flex-direction: column; border-right: 1px solid rgba(35,73,119,.08); background: rgba(255,255,255,.2); }
 .control-tabs button { display: flex; align-items: center; border: 0; color: rgba(23,33,49,.56); background: transparent; font-weight: 690; cursor: pointer; text-align: left; }
 .control-tabs button:hover { color: #172131; background: rgba(255,255,255,.48); }
-.control-tabs button.is-active { color: #fff; background: var(--accent-color, #397ae0); box-shadow: 0 5px 14px color-mix(in srgb, var(--accent-color, #397ae0) 28%, transparent); }
+.control-tabs button.is-active { color: var(--ui-text, #172131); background: color-mix(in srgb, var(--accent-color, #397ae0) 14%, var(--ui-surface-strong, white)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-color, #397ae0) 28%, transparent); }
 .control-body { min-width: 0; min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(35,73,119,.22) transparent; }
 .control-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .control-field { min-width: 0; display: grid; color: rgba(23,33,49,.58); font-weight: 670; }
@@ -119,7 +119,7 @@
 .display-feature-option > svg { color: var(--accent-color, #397ae0); }
 .display-feature-option > span:not(.switch) { min-width: 0; }
 .display-feature-option strong, .display-feature-option small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.display-feature-option small { margin-top: 1px; color: rgba(23,33,49,.42); }
+.display-feature-option small { margin-top: 3px; color: var(--ui-muted, #536174); white-space: normal; line-height: 1.45; }
 .provider-settings { display: grid; }
 .provider-settings > div { min-width: 0; display: grid; grid-template-columns: minmax(64px, 1fr) 52px auto auto auto; align-items: center; border: 1px solid rgba(35,73,119,.08); border-radius: 8px; background: rgba(255,255,255,.38); }
 .provider-settings strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1000,8 +1000,8 @@ button { font: inherit; }
 .appearance-options svg { width: 13px; height: 13px; }
 .display-feature-option { grid-template-columns: 18px minmax(0, 1fr) 32px; gap: 8px; }
 .display-feature-option > svg { width: 16px; height: 16px; }
-.display-feature-option strong { font-size: 9px; }
-.display-feature-option small { font-size: 7px; }
+.display-feature-option strong { font-size: 10px; }
+.display-feature-option small { font-size: 9px; }
 .provider-settings { gap: 5px; }
 .provider-settings > div { grid-template-columns: minmax(64px, 1fr) 54px auto auto auto; gap: 6px; }
 .provider-settings strong { font-size: 9px; }
@@ -1190,9 +1190,9 @@ select:focus-visible {
 .color-theme-option strong,
 .color-theme-option small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .layout-option strong,
-.color-theme-option strong { font-size: 9px; }
+.color-theme-option strong { font-size: 10px; }
 .layout-option small,
-.color-theme-option small { margin-top: 2px; color: rgba(23,33,49,.45); font-size: 7px; }
+.color-theme-option small { margin-top: 3px; color: var(--ui-muted, #536174); font-size: 9px; white-space: normal; line-height: 1.35; }
 .layout-option--float > i { justify-content: flex-start; padding-left: 8px; background: #1a2028; }
 .layout-option--float .layout-float-value { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 9px; color: #1a2028; background: #dce8f1; font-size: 10px; font-style: normal; font-weight: 720; }
 .layout-option--float .layout-float-value small { display: inline; margin: 0 0 0 1px; color: inherit; font-size: 5px; }
@@ -1259,7 +1259,7 @@ select:focus-visible {
 .color-accent-field { margin-top: 7px; }
 
 .quota-card--theme-dark .layout-choice-group legend,
-.quota-card--theme-dark :is(.layout-option small, .color-theme-option small) { color: rgba(233,240,244,.5); }
+.quota-card--theme-dark :is(.layout-option small, .color-theme-option small) { color: var(--ui-muted); }
 .quota-card--theme-dark :is(.layout-option, .color-theme-option) { color: #edf2f5; border-color: rgba(255,255,255,.08); background: rgba(255,255,255,.035); }
 .quota-card--theme-dark :is(.layout-option, .color-theme-option):hover { background: rgba(255,255,255,.065); }
 .quota-card--theme-dark .bar-edge-choice { border-color: rgba(255,255,255,.08); background: rgba(255,255,255,.025); }
@@ -1436,15 +1436,15 @@ button.usage-stat-card:hover { border-color: color-mix(in srgb, var(--accent-col
 .diagnostics-header > button,
 .update-header > button { width: 26px; height: 26px; }
 .control-tabs { gap: 3px; padding: 8px 6px; }
-.control-tabs button { min-height: 30px; gap: 6px; padding: 0 8px; border-radius: 8px; font-size: 8px; }
+.control-tabs button { min-height: 32px; gap: 6px; padding: 0 8px; border-radius: 8px; font-size: 10px; }
 .control-body { padding: 9px 11px 12px; }
 .control-grid { gap: 7px 9px; }
-.control-field { gap: 4px; font-size: 8px; }
+.control-field { gap: 5px; font-size: 10px; }
 .control-field select,
 .control-field input[type="number"],
-.layout-save input { height: 27px; padding: 0 8px; font-size: 9px; }
-.control-section-title { min-height: 27px; margin-top: 5px; font-size: 8px; }
-.appearance-options button { min-height: 28px; font-size: 8px; }
+.layout-save input { height: 30px; padding: 0 8px; font-size: 11px; }
+.control-section-title { min-height: 30px; margin-top: 7px; font-size: 10px; letter-spacing: 0; text-transform: none; }
+.appearance-options button { min-height: 30px; font-size: 10px; }
 .display-feature-options { gap: 5px; margin-top: 5px; }
 .display-feature-option { min-height: 40px; padding: 6px 8px; }
 .provider-settings > div { min-height: 30px; padding: 3px 5px 3px 8px; }
@@ -1455,9 +1455,9 @@ button.usage-stat-card:hover { border-color: color-mix(in srgb, var(--accent-col
 .activity-item { min-height: 38px; padding: 5px 8px; }
 .saved-layouts > p,
 .activity-list > p { min-height: 68px; margin: 3px 0; font-size: 9px; }
-.layout-option { min-height: 42px; grid-template-columns: 56px minmax(0, 1fr); padding: 4px 6px; }
+.layout-option { min-height: 52px; grid-template-columns: 44px minmax(0, 1fr); padding: 6px; }
 .layout-option > i { height: 30px; }
-.color-theme-option { min-height: 46px; grid-template-columns: 52px minmax(0, 1fr); padding: 4px 6px; }
+.color-theme-option { min-height: 52px; grid-template-columns: 40px minmax(0, 1fr); padding: 6px; }
 .color-theme-option > i { height: 34px; padding: 6px; }
 
 .diagnostics-panel,
@@ -1497,9 +1497,9 @@ button.usage-stat-card:hover { border-color: color-mix(in srgb, var(--accent-col
   --motion-emphasized: cubic-bezier(.22, 1, .36, 1);
   --motion-standard: cubic-bezier(.2, .72, .28, 1);
   --motion-snappy: cubic-bezier(.3, .8, .35, 1);
-  --motion-fast: 140ms;
-  --motion-medium: 220ms;
-  --motion-slow: 320ms;
+  --motion-fast: 120ms;
+  --motion-medium: 160ms;
+  --motion-slow: 200ms;
 }
 
 .quota-card {
@@ -1507,90 +1507,81 @@ button.usage-stat-card:hover { border-color: color-mix(in srgb, var(--accent-col
   --shell-enter-y: 6px;
   --shell-exit-x: 0px;
   --shell-exit-y: 4px;
-  --shell-clip: inset(37% 41% round 999px);
   animation: shell-enter var(--motion-medium) var(--motion-emphasized) both;
   transform-origin: center;
   transition:
     color var(--motion-medium) var(--motion-standard),
     border-color var(--motion-medium) var(--motion-standard),
-    border-radius var(--motion-medium) var(--motion-standard),
-    background-color var(--motion-medium) var(--motion-standard),
-    box-shadow var(--motion-medium) var(--motion-standard);
+    background-color var(--motion-medium) var(--motion-standard);
 }
-.quota-card--origin-top { --shell-enter-y: -10px; --shell-exit-y: -6px; --shell-clip: inset(0 12% 88% round 0 0 16px 16px); transform-origin: top center; }
-.quota-card--origin-left { --shell-enter-x: -10px; --shell-enter-y: 0px; --shell-exit-x: -6px; --shell-exit-y: 0px; --shell-clip: inset(8% 88% 8% 0 round 0 16px 16px 0); transform-origin: center left; }
-.quota-card--origin-right { --shell-enter-x: 10px; --shell-enter-y: 0px; --shell-exit-x: 6px; --shell-exit-y: 0px; --shell-clip: inset(8% 0 8% 88% round 16px 0 0 16px); transform-origin: center right; }
+.quota-card--origin-top { --shell-enter-y: -10px; --shell-exit-y: -6px; transform-origin: top center; }
+.quota-card--origin-left { --shell-enter-x: -10px; --shell-enter-y: 0px; --shell-exit-x: -6px; --shell-exit-y: 0px; transform-origin: center left; }
+.quota-card--origin-right { --shell-enter-x: 10px; --shell-enter-y: 0px; --shell-exit-x: 6px; --shell-exit-y: 0px; transform-origin: center right; }
 .quota-card--collapsing { animation: shell-exit var(--motion-fast) cubic-bezier(.4, 0, 1, 1) both; }
 
 @keyframes shell-enter {
-  from { opacity: 0; clip-path: var(--shell-clip); transform: translate3d(var(--shell-enter-x), var(--shell-enter-y), 0) scale(.975); }
-  65% { opacity: 1; }
-  to { opacity: 1; clip-path: inset(0 round var(--card-radius, 28px)); transform: translate3d(0, 0, 0) scale(1); }
+  from { opacity: .6; transform: translate3d(var(--shell-enter-x), var(--shell-enter-y), 0) scale(.99); }
+  to { opacity: 1; transform: none; }
 }
 @keyframes shell-exit {
-  from { opacity: 1; clip-path: inset(0 round var(--card-radius, 28px)); transform: translate3d(0, 0, 0) scale(1); }
-  to { opacity: 0; clip-path: var(--shell-clip); transform: translate3d(var(--shell-exit-x), var(--shell-exit-y), 0) scale(.982); }
+  from { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  to { opacity: 0; transform: translate3d(var(--shell-exit-x), var(--shell-exit-y), 0) scale(.99); }
 }
 
 .quota-orb,
 .quota-bar {
-  animation: compact-enter 190ms var(--motion-emphasized) both;
+  animation: compact-enter var(--motion-medium) var(--motion-emphasized) both;
   transition:
     opacity var(--motion-slow) var(--motion-standard),
     color var(--motion-medium) var(--motion-standard),
     border-color var(--motion-medium) var(--motion-standard),
-    border-radius var(--motion-medium) var(--motion-standard),
-    background-color var(--motion-medium) var(--motion-standard),
-    box-shadow var(--motion-medium) var(--motion-standard),
-    backdrop-filter var(--motion-slow) var(--motion-standard),
-    -webkit-backdrop-filter var(--motion-slow) var(--motion-standard);
+    background-color var(--motion-medium) var(--motion-standard);
 }
 .quota-bar--top { transform-origin: top center; }
 .quota-bar--left { transform-origin: center left; }
 .quota-bar--right { transform-origin: center right; }
 @keyframes compact-enter {
   from { opacity: .18; transform: scale(.94); }
-  to { opacity: 1; transform: scale(1); }
+  to { opacity: 1; transform: none; }
 }
 
-.primary-pane,
 .quota-tab-panel:not([hidden]),
 .control-view {
-  animation: view-enter var(--motion-medium) var(--motion-standard) both;
+  animation: view-enter var(--motion-fast) var(--motion-standard) both;
 }
 @keyframes view-enter {
-  from { opacity: 0; transform: translate3d(0, 5px, 0); }
-  to { opacity: 1; transform: translate3d(0, 0, 0); }
+  from { opacity: .65; transform: translate3d(0, 2px, 0); }
+  to { opacity: 1; transform: none; }
 }
 
 .diagnostics-panel,
 .update-panel,
 .control-center,
 .usage-insights-panel {
-  animation: overlay-enter 210ms var(--motion-emphasized) both;
+  animation: overlay-enter var(--motion-medium) var(--motion-emphasized) both;
   transform-origin: center;
 }
 @keyframes overlay-enter {
-  from { opacity: 0; transform: translate3d(0, 7px, 0) scale(.975); }
-  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  from { opacity: .65; transform: translate3d(0, 4px, 0); }
+  to { opacity: 1; transform: none; }
 }
 
 .reset-credit-tip,
 .operation-notice {
-  animation: popover-enter 180ms var(--motion-emphasized) both;
+  animation: popover-enter var(--motion-fast) var(--motion-emphasized) both;
   transform-origin: bottom left;
 }
 @keyframes popover-enter {
   from { opacity: 0; transform: translate3d(0, 4px, 0) scale(.97); }
-  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  to { opacity: 1; transform: none; }
 }
 
 .aurora {
-  transition: opacity var(--motion-slow) var(--motion-standard), filter var(--motion-slow) var(--motion-standard);
+  transition: opacity var(--motion-slow) var(--motion-standard);
 }
 .progress span,
 .quota-window-progress span {
-  transition: width 520ms var(--motion-emphasized);
+  transition: width var(--motion-slow) var(--motion-emphasized);
 }
 .bar-progress i {
   transition: width var(--motion-slow) var(--motion-emphasized), height var(--motion-slow) var(--motion-emphasized);
@@ -1979,7 +1970,7 @@ button.usage-stat-card:hover { border-color: color-mix(in srgb, var(--accent-col
   --ui-muted: rgba(23,33,49,.56);
   --ui-faint: rgba(23,33,49,.38);
   --ui-border: rgba(35,73,119,.11);
-  --ui-panel: linear-gradient(145deg, rgba(242,247,251,.985), rgba(232,241,248,.97));
+  --ui-panel: #eef3f8;
   --ui-surface: rgba(255,255,255,.42);
   --ui-surface-strong: rgba(255,255,255,.68);
   --ui-surface-hover: rgba(255,255,255,.82);
@@ -1991,10 +1982,10 @@ button.usage-stat-card:hover { border-color: color-mix(in srgb, var(--accent-col
 }
 .quota-card--style-graphite.quota-card--theme-light {
   --ui-text: #1a2530;
-  --ui-muted: rgba(26,37,48,.58);
+  --ui-muted: rgba(26,37,48,.7);
   --ui-faint: rgba(26,37,48,.38);
   --ui-border: rgba(50,76,98,.13);
-  --ui-panel: linear-gradient(145deg, rgba(247,249,250,.99), rgba(229,236,240,.98));
+  --ui-panel: #edf1f4;
   --ui-surface: rgba(255,255,255,.46);
   --ui-surface-strong: rgba(255,255,255,.72);
   --ui-surface-hover: rgba(255,255,255,.9);
@@ -2004,7 +1995,7 @@ button.usage-stat-card:hover { border-color: color-mix(in srgb, var(--accent-col
   --ui-muted: rgba(59,45,34,.6);
   --ui-faint: rgba(59,45,34,.4);
   --ui-border: rgba(111,80,52,.16);
-  --ui-panel: repeating-linear-gradient(0deg, rgba(94,71,48,.026) 0 1px, transparent 1px 14px), linear-gradient(145deg, rgba(248,240,225,.99), rgba(239,226,203,.98));
+  --ui-panel: #f3eadb;
   --ui-surface: rgba(255,252,244,.4);
   --ui-surface-strong: rgba(255,252,244,.68);
   --ui-surface-hover: rgba(255,252,244,.9);
@@ -2017,7 +2008,7 @@ button.usage-stat-card:hover { border-color: color-mix(in srgb, var(--accent-col
   --ui-muted: rgba(233,240,244,.58);
   --ui-faint: rgba(233,240,244,.36);
   --ui-border: rgba(255,255,255,.085);
-  --ui-panel: linear-gradient(145deg, rgba(20,27,36,.99), rgba(13,18,25,.985));
+  --ui-panel: #141b24;
   --ui-surface: rgba(255,255,255,.038);
   --ui-surface-strong: rgba(255,255,255,.062);
   --ui-surface-hover: rgba(255,255,255,.085);
@@ -2028,7 +2019,7 @@ button.usage-stat-card:hover { border-color: color-mix(in srgb, var(--accent-col
   --ui-inverse: #111820;
 }
 .quota-card--style-graphite.quota-card--theme-dark {
-  --ui-panel: linear-gradient(145deg, rgba(16,21,29,.995), rgba(8,12,17,.99));
+  --ui-panel: #10151d;
   --ui-border: rgba(153,190,200,.105);
 }
 .quota-card--style-paper.quota-card--theme-dark {
@@ -2036,7 +2027,7 @@ button.usage-stat-card:hover { border-color: color-mix(in srgb, var(--accent-col
   --ui-muted: rgba(243,238,232,.58);
   --ui-faint: rgba(243,238,232,.36);
   --ui-border: rgba(210,188,164,.13);
-  --ui-panel: repeating-linear-gradient(0deg, rgba(255,255,255,.018) 0 1px, transparent 1px 14px), linear-gradient(145deg, rgba(31,27,24,.995), rgba(22,19,17,.99));
+  --ui-panel: #1f1b18;
   --ui-surface: rgba(255,248,238,.035);
   --ui-surface-strong: rgba(255,248,238,.06);
   --ui-surface-hover: rgba(255,248,238,.085);
@@ -2046,8 +2037,33 @@ button.usage-stat-card:hover { border-color: color-mix(in srgb, var(--accent-col
   color: var(--ui-text);
   border-color: var(--ui-border);
   background: var(--ui-panel);
-  box-shadow: var(--ui-shadow);
+  box-shadow: none;
+  border-radius: 16px;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
+.quota-card--overlay-open > .aurora { animation-play-state: paused; }
+.quota-tab-panel--insights .usage-insights-panel { animation: none; }
+.quota-card :is(.control-header > button, .usage-insights-header > button) {
+  color: var(--ui-text);
+  border-color: var(--ui-border);
+  background: var(--ui-surface-strong);
+}
+.quota-card button:disabled { cursor: default; }
+.control-operation-status {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: var(--ui-text);
+  background: var(--ui-surface-strong);
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.control-operation-status.is-error { color: var(--ui-danger); }
+.control-operation-status.is-success { color: var(--ui-positive); }
+.control-center :is(button, input):disabled { opacity: .5; cursor: default; }
+.switch input:focus-visible + i { outline: 2px solid var(--accent-color, #397ae0); outline-offset: 3px; }
 .quota-card--style-paper :is(.control-center, .diagnostics-panel, .update-panel, .usage-insights-panel) { border-radius: 14px; }
 .quota-card :is(.control-header, .diagnostics-header, .update-header) { border-color: var(--ui-border); }
 .quota-card :is(.control-header small, .control-section-title, .control-section-title--appearance small, .control-field, .diagnostics-header p:not(.diagnostics-kicker), .diagnostics-health small, .diagnostics-grid dt, .diagnostics-hint, .update-header p:not(.update-kicker), .update-status small, .update-notes > p, .update-notes > div, .update-footer > span) { color: var(--ui-muted); }
@@ -2304,7 +2320,7 @@ button.usage-stat-card:hover { border-color: color-mix(in srgb, var(--accent-col
 .update-body { grid-template-columns: 148px minmax(0, 1fr); gap: 9px; }
 .update-status,
 .update-notes { padding: 9px 10px; }
-.update-notes > div { height: 78px; font-size: 9px; line-height: 1.45; }
+.update-notes > div { height: 78px; font-size: 11px; line-height: 1.45; }
 .update-status strong { font-size: 11px; }
 
 .quota-tab-panel--insights .usage-insights-panel,
@@ -2405,8 +2421,8 @@ button.usage-stat-card:hover { border-color: color-mix(in srgb, var(--accent-col
   .provider-ledger { padding: 10px 0 0; border-top: 1px solid var(--ui-border); border-left: 0; }
   .control-center { grid-template-columns: minmax(0, 1fr); grid-template-rows: 48px auto minmax(0, 1fr); }
   .control-header { grid-column: 1; }
-  .control-tabs { grid-row: 2; display: flex; overflow-x: auto; padding: 5px 7px; }
-  .control-tabs button { min-width: 66px; }
+  .control-tabs { grid-row: 2; display: flex; flex-direction: row; overflow-x: auto; padding: 5px 7px; }
+  .control-tabs button { min-width: 66px; flex-shrink: 0; }
   .control-body { grid-column: 1; grid-row: 3; }
   .usage-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .usage-dimension-filters { grid-template-columns: minmax(0, 1fr); }
@@ -2480,14 +2496,14 @@ button.usage-stat-card:hover { border-color: color-mix(in srgb, var(--accent-col
   gap: 6px;
   margin-top: 6px;
   padding: 3px 7px 3px 5px;
-  border-left: 2px solid var(--accent-color, #397ae0);
-  border-radius: 3px 7px 7px 3px;
+  border: 1px solid var(--ui-border);
+  border-radius: 7px;
   background: color-mix(in srgb, var(--ui-surface-strong) 55%, transparent);
   letter-spacing: 0;
 }
 .reset-time--personal span {
-  color: var(--ui-faint);
-  font-size: 6px;
+  color: var(--ui-muted);
+  font-size: 7px;
   font-weight: 780;
   letter-spacing: .08em;
   text-transform: uppercase;
@@ -2527,7 +2543,8 @@ button.usage-stat-card:hover { border-color: color-mix(in srgb, var(--accent-col
 }
 .provider-row.is-selected {
   border-color: color-mix(in srgb, var(--accent-color, #397ae0) 24%, var(--ui-border));
-  box-shadow: inset 3px 0 0 var(--accent-color, #397ae0);
+  background: color-mix(in srgb, var(--accent-color, #397ae0) 12%, var(--ui-surface-strong));
+  box-shadow: none;
 }
 
 .quota-bar--top {

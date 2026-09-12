@@ -194,6 +194,7 @@ function ProviderLedgerRow({
   history,
   showHistory,
   preferRisk,
+  now,
 }: {
   definition: ProviderDefinition;
   snapshot?: ProviderSnapshot;
@@ -214,6 +215,7 @@ function ProviderLedgerRow({
   history: QuotaTrendPoint[];
   showHistory: boolean;
   preferRisk: boolean;
+  now: Date;
 }) {
   const t = copy[language];
   const riskWindow = snapshot
@@ -283,7 +285,7 @@ function ProviderLedgerRow({
           <strong>{definition.label}</strong>
           <small>{snapshot?.plan ?? ""}</small>
         </span>
-        {showHistory ? <span className="provider-history"><QuotaHistoryCurve points={history} language={language} variant="micro" interactive={false} /></span> : null}
+        {showHistory ? <span className="provider-history"><QuotaHistoryCurve points={history} language={language} variant="micro" interactive={false} now={now} /></span> : null}
         <span className="provider-value">
           <strong>{value}</strong>
           <small>{detail}</small>
@@ -411,6 +413,7 @@ export function CockpitDashboard({
   onDetachRegion,
   detached = false,
 }: CockpitDashboardProps) {
+  const now = useMinuteClock();
   const windows = trackedQuotaWindows(snapshot);
   const headlineWindow = windows.find(({ period }) => period === "weekly") ?? windows[0] ?? null;
   const remaining = headlineWindow ? clampPercent(headlineWindow.window.remainingPercent) : null;
@@ -423,27 +426,28 @@ export function CockpitDashboard({
       : balance !== null
         ? new Intl.NumberFormat(language === "en" ? "en-US" : "zh-CN", { notation: "compact", maximumFractionDigits: 1 }).format(balance)
         : "—";
-  const trendNow = new Date();
-  const historyPoints = recentQuotaTrend(history, snapshot.provider, remaining, trendNow, 24);
-  const today = new Date();
-  today.setHours(12, 0, 0, 0);
-  const usageByDate = new Map(
-    dailyUsage
-      .filter((item) => item.provider === snapshot.provider)
-      .map((item) => [item.localDate, item.observedUsedPercent] as const),
-  );
-  const activityDays = Array.from({ length: 91 }, (_, index) => {
-    const date = new Date(today);
-    date.setDate(today.getDate() - (90 - index));
-    const dateKey = localDateKey(date);
-    const value = usageByDate.get(dateKey) ?? null;
-    const level = value === null || value <= 0 ? 0 : value < 3 ? 1 : value < 8 ? 2 : value < 16 ? 3 : 4;
-    return { dateKey, value, level };
-  });
-  const observedTotal = activityDays.reduce((total, item) => total + (item.value ?? 0), 0);
-  const periodLabels: Record<QuotaPeriod, string> = language === "en"
+  const historyPoints = useMemo(() => recentQuotaTrend(history, snapshot.provider, remaining, now, 24), [history, snapshot.provider, remaining, now]);
+  const activityDays = useMemo(() => {
+    const today = new Date(now);
+    today.setHours(12, 0, 0, 0);
+    const usageByDate = new Map(
+      dailyUsage
+        .filter((item) => item.provider === snapshot.provider)
+        .map((item) => [item.localDate, item.observedUsedPercent] as const),
+    );
+    return Array.from({ length: 91 }, (_, index) => {
+      const date = new Date(today);
+      date.setDate(today.getDate() - (90 - index));
+      const dateKey = localDateKey(date);
+      const value = usageByDate.get(dateKey) ?? null;
+      const level = value === null || value <= 0 ? 0 : value < 3 ? 1 : value < 8 ? 2 : value < 16 ? 3 : 4;
+      return { dateKey, value, level };
+    });
+  }, [dailyUsage, now, snapshot.provider]);
+  const observedTotal = useMemo(() => activityDays.reduce((total, item) => total + (item.value ?? 0), 0), [activityDays]);
+  const periodLabels: Record<QuotaPeriod, string> = useMemo(() => language === "en"
     ? { "5h": "5 hours", weekly: "Week", monthly: "Month" }
-    : { "5h": "5 小时", weekly: "本周", monthly: "本月" };
+    : { "5h": "5 小时", weekly: "本周", monthly: "本月" }, [language]);
   const focusLabel = (region: CockpitRegion) => focusedRegion === region
     ? (language === "en" ? "Restore dashboard" : "恢复驾驶舱")
     : (language === "en" ? "Enlarge this area" : "放大这个区域");
@@ -476,7 +480,7 @@ export function CockpitDashboard({
           </div>
           <div className="cockpit-trend">
             <div><span>{language === "en" ? "Quota remaining · 24h" : "剩余额度 · 24 小时"}</span><small>{historyPoints.length >= 2 ? (language === "en" ? `${historyPoints.length} local samples · hover to inspect` : `${historyPoints.length} 个本地样本 · 悬停查看`) : (language === "en" ? "Collecting local samples" : "正在积累本地样本")}</small></div>
-            <QuotaHistoryCurve points={historyPoints} language={language} variant="cockpit" now={trendNow} ariaLabel={language === "en" ? "24-hour quota remaining curve" : "24 小时剩余额度曲线"} />
+            <QuotaHistoryCurve points={historyPoints} language={language} variant="cockpit" now={now} ariaLabel={language === "en" ? "24-hour quota remaining curve" : "24 小时剩余额度曲线"} />
           </div>
         </div>
       </article>
@@ -644,18 +648,20 @@ export const QuotaCard = memo(function QuotaCard({
     return t.creditItem(index, formatDateTime(value, language));
   }), [language, snapshot.resetCreditExpiresAt, t]);
   const snapshotsByProvider = useMemo(() => new Map(snapshots.map((item) => [item.provider, item])), [snapshots]);
-  const percentageHistoryByProvider = useMemo(() => {
-    return new Map(PROVIDER_CATALOG.map((definition) => [
-      definition.id,
-      recentQuotaTrend(history, definition.id, null, now, 24),
-    ]));
-  }, [history, now]);
   const providerDefinitions = useMemo(() => {
     const byProvider = new Map(PROVIDER_CATALOG.map((definition) => [definition.id, definition]));
     const visibleOrder = normalizeProviderOrder(preferences.providerOrder).filter((provider) => !preferences.hiddenProviders.includes(provider));
     const displayedOrder = preferences.riskFirst ? sortProviderIdsByRisk(visibleOrder, snapshots) : visibleOrder;
     return displayedOrder.map((provider) => byProvider.get(provider)!);
   }, [preferences.hiddenProviders, preferences.providerOrder, preferences.riskFirst, snapshots]);
+  const showProviderHistory = preferences.showHistorySparklines && !insightsOpen && !overlayOpen && preferences.expandedLayout !== "cockpit";
+  const percentageHistoryByProvider = useMemo(() => {
+    if (!showProviderHistory) return new Map<ProviderId, QuotaTrendPoint[]>();
+    return new Map(providerDefinitions.map((definition) => [
+      definition.id,
+      recentQuotaTrend(history, definition.id, null, now, 24),
+    ]));
+  }, [history, now, providerDefinitions, showProviderHistory]);
   const resetMarker = snapshot.provider === "codex" && snapshot.status === "ok" && isRecentCodexReset(recentCodexReset, now) ? recentCodexReset : null;
   const visibleResetForecast = snapshot.provider === "codex" && snapshot.status === "ok" ? freshResetForecast(resetForecast, now) : null;
 
@@ -830,27 +836,30 @@ export const QuotaCard = memo(function QuotaCard({
         inert={overlayOpen || undefined}
       >
       {preferences.expandedLayout === "cockpit" ? (
-        <div className="expanded-provider-strip" aria-label={language === "en" ? "Provider quick switch" : "平台快捷切换"}>
-          <p>{language === "en" ? "Providers" : "平台"}<span>{providerDefinitions.length}</span></p>
-          <ProviderLogoSlider
-            providers={providerDefinitions.map((definition) => ({ id: definition.id, label: definition.label }))}
-            selected={snapshot.provider}
-            onSelect={onSelectProvider}
-            ariaLabel={language === "en" ? "Choose provider" : "选择平台"}
-          />
-        </div>
+        !insightsOpen ? <>
+          <div className="expanded-provider-strip" aria-label={language === "en" ? "Provider quick switch" : "平台快捷切换"}>
+            <p>{language === "en" ? "Providers" : "平台"}<span>{providerDefinitions.length}</span></p>
+            <ProviderLogoSlider
+              providers={providerDefinitions.map((definition) => ({ id: definition.id, label: definition.label }))}
+              selected={snapshot.provider}
+              onSelect={onSelectProvider}
+              ariaLabel={language === "en" ? "Choose provider" : "选择平台"}
+            />
+          </div>
+        </>
+        : null
       ) : null}
       {preferences.expandedLayout === "cockpit" ? (
-        <CockpitDashboard
-          snapshot={snapshot}
-          history={history}
-          dailyUsage={dailyUsage}
-          paceBaselines={paceBaselines}
-          language={language}
-          focusedRegion={cockpitFocus}
-          onFocusRegion={setCockpitFocus}
-          onDetachRegion={onDetachCockpitRegion}
-        />
+        !insightsOpen ? <CockpitDashboard
+            snapshot={snapshot}
+            history={history}
+            dailyUsage={dailyUsage}
+            paceBaselines={paceBaselines}
+            language={language}
+            focusedRegion={cockpitFocus}
+            onFocusRegion={setCockpitFocus}
+            onDetachRegion={onDetachCockpitRegion}
+          /> : null
       ) : (
       <>
       <section className="primary-pane" key={snapshot.provider}>
@@ -984,8 +993,9 @@ export const QuotaCard = memo(function QuotaCard({
               onMove={moveProvider}
               condensed={preferences.collapsedProviders.includes(definition.id)}
               history={percentageHistoryByProvider.get(definition.id) ?? []}
-              showHistory={preferences.showHistorySparklines}
+              showHistory={showProviderHistory}
               preferRisk={preferences.riskFirst}
+              now={now}
             />
           ))}
         </div>

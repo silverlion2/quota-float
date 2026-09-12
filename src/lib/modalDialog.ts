@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useLayoutEffect, useRef, type RefObject } from "react";
 
 const FOCUSABLE_SELECTOR = [
   "button:not([disabled])",
@@ -11,7 +11,8 @@ const FOCUSABLE_SELECTOR = [
 
 function focusableElements(dialog: HTMLElement): HTMLElement[] {
   return Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
-    .filter((element) => !element.hidden && element.getAttribute("aria-hidden") !== "true");
+    .filter((element) => !element.hidden && element.getAttribute("aria-hidden") !== "true")
+    .filter((element) => !element.closest("[hidden], [aria-hidden='true']"));
 }
 
 /**
@@ -28,16 +29,17 @@ export function useModalDialog<T extends HTMLElement>(
   onCloseRef.current = onClose;
   closeOnEscapeRef.current = closeOnEscape;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
 
     const previousFocus = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;
-    const initialFocus = dialog.querySelector<HTMLElement>("[data-dialog-initial-focus]:not([disabled])")
-      ?? focusableElements(dialog)[0]
-      ?? dialog;
+    const requestedFocus = dialog.querySelector<HTMLElement>("[data-dialog-initial-focus]:not([disabled]):not([hidden])");
+    const initialFocus = requestedFocus && !requestedFocus.closest("[hidden], [aria-hidden='true']")
+      ? requestedFocus
+      : focusableElements(dialog)[0] ?? dialog;
     initialFocus.focus();
 
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -72,7 +74,14 @@ export function useModalDialog<T extends HTMLElement>(
     document.addEventListener("keydown", handleKeyDown);
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
-      if (previousFocus?.isConnected) previousFocus.focus();
+      // React removes the background's inert attribute later in this commit.
+      // Restore after those mutations, while letting a replacement dialog keep focus.
+      queueMicrotask(() => {
+        const activeElement = document.activeElement;
+        const dialogOwnsFocus = activeElement instanceof HTMLElement
+          && activeElement.closest("[role='dialog'][aria-modal='true']");
+        if (!dialogOwnsFocus && previousFocus?.isConnected) previousFocus.focus();
+      });
     };
   }, []);
 

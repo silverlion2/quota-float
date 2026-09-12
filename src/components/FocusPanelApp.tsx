@@ -1,5 +1,5 @@
 import { DotsSix, X } from "@phosphor-icons/react";
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { resolveAppearanceMode, systemPrefersDark } from "../lib/appearance";
 import { closeFocusPanel, getPreferences, listenFocusPanelUpdates, readCachedSnapshots, readFocusPanelHistory, startFocusPanelDragging } from "../lib/bridge";
 import { normalizeWidgetPreferences } from "../lib/preferences";
@@ -28,11 +28,14 @@ export function FocusPanelApp() {
   const [value, setValue] = useState<FocusPanelState | null>(null);
   const [error, setError] = useState<string | null>(target ? null : "Invalid focus panel target.");
   const [systemDark, setSystemDark] = useState(systemPrefersDark);
+  const reloadGeneration = useRef(0);
 
   const reload = useCallback(async () => {
     if (!target) return;
+    const generation = ++reloadGeneration.current;
     try {
       const [preferencesValue, history, cache] = await Promise.all([getPreferences(), readFocusPanelHistory(target.provider, 90), readCachedSnapshots([target.provider])]);
+      if (generation !== reloadGeneration.current) return;
       const snapshot = cache.snapshots.find((item) => item.provider === target.provider);
       if (!snapshot) {
         setValue(null);
@@ -42,6 +45,7 @@ export function FocusPanelApp() {
       setValue({ preferences: normalizeWidgetPreferences(preferencesValue), history, snapshot });
       setError(null);
     } catch (reason) {
+      if (generation !== reloadGeneration.current) return;
       setError(reason instanceof Error ? reason.message : "Focus panel could not be refreshed.");
     }
   }, []);
@@ -64,6 +68,7 @@ export function FocusPanelApp() {
     }).catch(() => undefined);
     return () => {
       cancelled = true;
+      reloadGeneration.current += 1;
       window.clearInterval(timer);
       unlisten();
     };
