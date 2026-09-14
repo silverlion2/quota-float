@@ -23,6 +23,12 @@
       "identifier": "opener:allow-open-url",
       "allow": [
         { "url": "https://github.com/silverlion2/quota-float/releases/*" },
+        { "url": "https://github.com/farion1231/cc-switch" },
+        { "url": "https://github.com/steipete/CodexBar" },
+        { "url": "https://github.com/ccusage/ccusage" },
+        { "url": "https://github.com/openai/plugins" },
+        { "url": "https://github.com/Dimillian/CodexMonitor" },
+        { "url": "https://github.com/borawong/AiMaMi" },
         { "url": "https://codexresetradar.com/" },
         { "url": "https://codex-reset.com/" },
         { "url": "https://codexreset.app/" }

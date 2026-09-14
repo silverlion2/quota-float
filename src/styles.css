@@ -1438,8 +1438,16 @@ button.usage-stat-card:hover { border-color: color-mix(in srgb, var(--accent-col
 .control-header > button,
 .diagnostics-header > button,
 .update-header > button { width: 26px; height: 26px; }
-.control-tabs { gap: 3px; padding: 8px 6px; }
+.control-tabs { gap: 3px; padding: 8px 6px; overflow-y: auto; }
 .control-tabs button { min-height: 32px; gap: 6px; padding: 0 8px; border-radius: 8px; font-size: 10px; }
+.control-tabs button { flex-shrink: 0; }
+.codex-extensions { min-width: 0; display: grid; gap: 6px; }
+.extensions-note { margin: 0; color: var(--ui-muted); font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
+.extensions-note:empty { display: none; }
+.extensions-search input { width: 100%; min-width: 0; box-sizing: border-box; padding: 6px 8px; border: 1px solid var(--ui-border); border-radius: 7px; background: var(--ui-surface); color: var(--ui-text); font: inherit; }
+.codex-extensions .extensions-description { white-space: normal; line-height: 1.5; }
+.codex-extensions .control-section-title button { overflow-wrap: anywhere; text-align: left; }
+.codex-extensions button:disabled { opacity: .5; cursor: wait; }
 .control-body { padding: 9px 11px 12px; }
 .control-grid { gap: 7px 9px; }
 .control-field { gap: 5px; font-size: 10px; }

@@ -4,7 +4,9 @@ import App from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import "./styles.css";
 
-const DesignPlayground = lazy(() => import("./components/DesignPlayground").then((module) => ({ default: module.DesignPlayground })));
+const DesignPlayground = import.meta.env.DEV
+  ? lazy(() => import("./components/DesignPlayground").then((module) => ({ default: module.DesignPlayground })))
+  : null;
 const FocusPanelApp = lazy(() => import("./components/FocusPanelApp").then((module) => ({ default: module.FocusPanelApp })));
 
 if (import.meta.env.VITE_WDIO === "1") {
@@ -25,7 +27,7 @@ const fallbackLanguage = navigator.language.toLowerCase().startsWith("zh") ? "zh
 
 function AppEntry() {
   if (params.has("focusPanel")) return <FocusPanelApp />;
-  if (params.has("designer") || params.has("preview")) return <DesignPlayground />;
+  if (DesignPlayground && (params.has("designer") || params.has("preview"))) return <DesignPlayground />;
   return "__TAURI_INTERNALS__" in window ? <App /> : <BrowserPreview />;
 }
 

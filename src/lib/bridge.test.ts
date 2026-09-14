@@ -7,6 +7,7 @@ import {
   fetchSnapshots,
   fetchSnapshotsProgressively,
   fetchCodexTokenUsage,
+  fetchCodexExtensions,
   getVolcengineDiagnostics,
   listenDesktopEvents,
   notifyFocusPanels,
@@ -62,6 +63,7 @@ describe("widget transitions", () => {
     const cached = await readCachedSnapshots(["codex"]);
     const forecast = await fetchCodexResetForecast();
     const usage = await fetchCodexTokenUsage(true, true);
+    const extensions = await fetchCodexExtensions();
     const diagnostics = await getVolcengineDiagnostics();
     const reconnected = await reconnectVolcengine();
 
@@ -70,9 +72,15 @@ describe("widget transitions", () => {
     expect(cached).toMatchObject({ freshness: "fresh", snapshots: [{ provider: "codex" }] });
     expect(forecast).toMatchObject({ confidence: "medium", sourceCount: 3 });
     expect(usage.buckets.length).toBeGreaterThan(0);
+    expect(extensions).toMatchObject({ status: "ok", entries: [{ name: "example-docs" }, { name: "example-browser" }, { name: "example-review" }, { name: "example-design@local" }] });
     expect(diagnostics).toMatchObject({ authenticated: true, profileName: "coding-plan_personal" });
     expect(reconnected).toEqual(diagnostics);
     expect(api.invoke).not.toHaveBeenCalled();
+  });
+
+  it("reads extensions through a native command without passing local paths", async () => {
+    await fetchCodexExtensions();
+    expect(api.invoke).toHaveBeenCalledWith("fetch_codex_extensions");
   });
 
   it("passes the monitor work area to the Rust expansion command", async () => {

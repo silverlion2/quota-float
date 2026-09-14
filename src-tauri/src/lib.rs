@@ -1,6 +1,7 @@
 mod antigravity;
 mod claude;
 mod codex;
+mod codex_extensions;
 mod codex_usage;
 mod models;
 mod provider_registry;
@@ -614,6 +615,14 @@ fn valid_provider_id(value: &str) -> bool {
         value,
         "codex" | "claude" | "qoder" | "trae" | "workbuddy" | "volcengine" | "antigravity"
     )
+}
+
+pub(crate) fn ensure_main_window(window: &tauri::WebviewWindow) -> Result<(), String> {
+    if window.label() == "widget" {
+        Ok(())
+    } else {
+        Err("This command is only available to the main window.".into())
+    }
 }
 
 #[tauri::command]
@@ -2873,6 +2882,7 @@ pub fn run() {
             refresh_snapshots,
             get_codex_reset_forecast,
             get_codex_token_usage,
+            codex_extensions::fetch_codex_extensions,
             get_volcengine_diagnostics,
             reconnect_volcengine,
             expand_widget,

@@ -77,6 +77,42 @@ describe("Quota Float desktop widget", () => {
     await expect(browser.$("#root > *")).toBeExisting();
   });
 
+  it("shows the extension inventory and curated companions in the native control center", async () => {
+    const inventory = await browser.tauri.execute(async (tauri) => tauri.core.invoke("fetch_codex_extensions")) as { status: string; entries: { name: string }[] };
+    expect(inventory.status).toBe("ok");
+    expect(inventory.entries.some((entry) => entry.name === "example-docs")).toBe(true);
+    await openControlCenter();
+    await browser.tauri.execute(() => {
+      Array.from(document.querySelectorAll<HTMLButtonElement>(".control-tabs button"))
+        .find((button) => /Extensions|扩展/.test(button.textContent ?? ""))?.click();
+    });
+    await browser.$(".codex-extensions").waitForDisplayed();
+    await browser.waitUntil(async () => browser.tauri.execute(() =>
+      document.querySelector(".codex-extensions")?.textContent?.includes("example-docs") === true,
+    ));
+    const layout = await browser.tauri.execute(() => {
+      const panel = document.querySelector<HTMLElement>(".codex-extensions")!;
+      const dialog = document.querySelector<HTMLElement>(".control-center")!;
+      return { overflow: panel.scrollWidth - panel.clientWidth, right: dialog.getBoundingClientRect().right, width: innerWidth,
+        repositories: panel.querySelectorAll('button[aria-label*="GitHub"]').length };
+    });
+    expect(layout.overflow).toBeLessThanOrEqual(1);
+    expect(layout.right).toBeLessThanOrEqual(layout.width);
+    expect(layout.repositories).toBeGreaterThanOrEqual(4);
+    await browser.saveScreenshot("output/handoff/codex-extensions-2026-09-15.png");
+    await browser.tauri.execute(() => {
+      const input = document.querySelector<HTMLInputElement>('.extensions-search input')!;
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+      setter.call(input, "example-review");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await browser.waitUntil(async () => browser.tauri.execute(() => {
+      const text = document.querySelector(".codex-extensions")?.textContent ?? "";
+      return text.includes("example-review") && !text.includes("example-docs");
+    }));
+    await browser.keys(["Escape"]);
+  });
+
   it("pauses and resumes provider monitoring through persisted native preferences", async () => {
     await browser.tauri.execute(async (tauri) => {
       const preferences = await tauri.core.invoke("get_preferences") as { pausedProviders?: string[] };

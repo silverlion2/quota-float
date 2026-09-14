@@ -1,6 +1,7 @@
 import type { AppDiagnostics, BarPlacement, CockpitRegion, CodexTokenUsageReport, CompactLayout, FocusPanelHistory, ProviderId, ProviderSnapshot, ResetForecast, RuntimeState, SnapshotCacheRead, SnapshotRefreshProgress, VolcengineDiagnostics, WidgetPreferences } from "../types";
 import { EMPTY_RUNTIME_STATE, normalizeRuntimeState } from "./activity";
 import { DEFAULT_WIDGET_PREFERENCES } from "./preferences";
+import type { CodexExtensionsReport } from "./codexExtensions";
 
 const defaultPreferences = DEFAULT_WIDGET_PREFERENCES;
 
@@ -244,6 +245,20 @@ export async function fetchCodexTokenUsage(force = false, rebuild = false): Prom
   if (usesSyntheticData()) return mockCodexTokenUsage();
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<CodexTokenUsageReport>("get_codex_token_usage", { force, rebuild });
+}
+
+export async function fetchCodexExtensions(): Promise<CodexExtensionsReport> {
+  if (usesSyntheticData()) return {
+    status: "ok", truncated: false, warnings: [],
+    entries: [
+      { kind: "mcp", name: "example-docs", enabled: true, source: "codex_config" },
+      { kind: "mcp", name: "example-browser", enabled: false, source: "codex_config" },
+      { kind: "skill", name: "example-review", enabled: null, source: "agent_skills" },
+      { kind: "plugin", name: "example-design@local", enabled: true, source: "codex_config" },
+    ],
+  };
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<CodexExtensionsReport>("fetch_codex_extensions");
 }
 
 export type UsageExportFormat = "csv" | "json" | "svg";

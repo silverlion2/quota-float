@@ -61,6 +61,8 @@ Updater artifacts are signed with the project's Tauri update key. Windows Authen
 
 ## Features
 
+- **Codex extensions and companions:** Control center → Extensions shows a bounded, read-only inventory of user-level MCP, plugin configuration and discovered Skills, with type/name filters, partial-source feedback and six curated GitHub companions. Star counts are dated offline snapshots. This is an inventory and discovery surface; it does not install, enable or execute extensions.
+
 - Real quota windows, exact remaining balances, unlimited-plan states, and reset-credit expiration times when available.
 - Daily quota pace guidance and alerts, configurable thresholds, quiet hours, and notification cooldowns.
 - Per-provider adaptive refresh scheduling, a low-impact Project Focus mode, and monitoring pause controls for sources you do not need during active work.

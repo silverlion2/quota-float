@@ -4,6 +4,8 @@ Quota Float is designed to be local-first and minimal.
 
 ## What It Reads
 
+- Codex extension inventory: on demand, the Rust process reads a size-limited user-level `config.toml` and enumerates supported user skill directories. Only sanitized extension names, kind, source category and explicit enabled flags reach the widget. Config values, MCP commands, environment variables, URLs, file paths and skill contents are never returned. The inventory is held in memory, excluded from diagnostics/backups and never uploaded. Configured plugins are not proof of installation or runtime health; cache-only bundles and project-scoped overrides are outside this inventory.
+
 - Codex quota: reads the local Codex Desktop login file and sends the existing credential only to Codex quota endpoints.
 - Claude quota: reads the existing Claude Code OAuth credential from the supported local credential store and sends it only to Anthropic's usage endpoint. Quota Float never refreshes or rewrites that credential.
 - Codex Token insights: scans bounded local Codex session JSONL files but deserializes only session metadata needed for a project basename and normalized terminal category, `turn_context` model names, and numeric `token_count` metadata. Prompt, response, tool payload, full working-directory, account, and raw session identifiers are not retained or returned to the UI. Oversized and non-metadata records are discarded.
@@ -34,6 +36,8 @@ Backups exported by the user contain the same local application state. They do n
 Usage exports are explicit user actions. CSV and JSON aggregate data without exporting hashed session keys and replace project labels with `Project N`; the SVG card contains only summary metrics. None of these exports include prompts, responses, tool names, paths, account data, or raw records.
 
 ## What It Sends
+
+The companion catalog is an embedded snapshot and makes no background GitHub requests. Clicking a repository opens that fixed public GitHub URL in the system browser without attaching inventory or provider data.
 
 The app only calls these quota-related HTTPS endpoints from the local desktop process:
 
