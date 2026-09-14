@@ -40,6 +40,7 @@ const BAR_TOP_LOGICAL_HEIGHT: f64 = 38.0;
 const BAR_SIDE_LOGICAL_WIDTH: f64 = 64.0;
 const BAR_SIDE_LOGICAL_HEIGHT: f64 = 320.0;
 const EXPANDED_LOGICAL_WIDTH: f64 = 552.0;
+const MIN_EXPANDED_LOGICAL_WIDTH: f64 = 360.0;
 // The React card reports its intrinsic height immediately after expansion. This is also
 // the baseline height when the expanded view has no provider content.
 const EXPANDED_LOGICAL_HEIGHT: f64 = 260.0;
@@ -855,6 +856,33 @@ fn widget_window_size(logical_visual_size: f64, scale_factor: f64, safe_inset: u
     )
 }
 
+fn bounded_expanded_width(
+    content_width: Option<f64>,
+    current_width: u32,
+    scale_factor: f64,
+    safe_inset: u32,
+    bounds_width: Option<u32>,
+) -> u32 {
+    // Width is the total logical window width, including transparent insets.
+    // Height-only measurements must preserve a previously compacted panel.
+    let content_width = content_width.filter(|width| width.is_finite() && *width > 0.0);
+    let requested = content_width
+        .map(|width| {
+            logical_to_physical(
+                width.clamp(MIN_EXPANDED_LOGICAL_WIDTH, EXPANDED_LOGICAL_WIDTH),
+                scale_factor,
+            )
+        })
+        .unwrap_or(current_width);
+    let maximum = widget_window_size(EXPANDED_LOGICAL_WIDTH, scale_factor, safe_inset).min(
+        bounds_width
+            .map(|width| width.saturating_add(safe_inset.saturating_mul(2)))
+            .unwrap_or(u32::MAX),
+    );
+    let minimum = logical_to_physical(MIN_EXPANDED_LOGICAL_WIDTH, scale_factor).min(maximum);
+    requested.clamp(minimum, maximum)
+}
+
 fn bounded_expanded_height(
     content_height: f64,
     scale_factor: f64,
@@ -1391,6 +1419,7 @@ fn expand_widget(
 #[tauri::command]
 fn resize_expanded_widget(
     content_height: f64,
+    content_width: Option<f64>,
     work_area: Option<WorkAreaPayload>,
     app: AppHandle,
     state: State<'_, AppState>,
@@ -1401,7 +1430,6 @@ fn resize_expanded_widget(
     let current = current_widget_rect(&window)?;
     let (monitor, scale_factor) = monitor_and_scale(&window)?;
     let safe_inset = logical_to_physical(EDGE_SAFE_INSET_LOGICAL, scale_factor);
-    let expanded_width = widget_window_size(EXPANDED_LOGICAL_WIDTH, scale_factor, safe_inset);
     let bounds = work_area.map(|area| PhysicalBounds {
         position: PhysicalPosition::new(area.position.x, area.position.y),
         size: PhysicalSize::new(area.size.width, area.size.height),
@@ -1411,6 +1439,13 @@ fn resize_expanded_widget(
         size: *item.size(),
     });
     let active_bounds = bounds.or(fallback_bounds);
+    let expanded_width = bounded_expanded_width(
+        content_width,
+        current.size.width,
+        scale_factor,
+        safe_inset,
+        active_bounds.map(|bounds| bounds.size.width),
+    );
     let expanded_height = bounded_expanded_height(
         content_height,
         scale_factor,
@@ -1930,6 +1965,110 @@ mod geometry_tests {
     #[test]
     fn invalid_expanded_height_falls_back_to_the_default() {
         assert_eq!(bounded_expanded_height(f64::NAN, 1.0, 4, Some(1040)), 268);
+    }
+
+    #[test]
+    fn content_width_is_bounded_and_height_only_resize_preserves_narrow_width() {
+        for scale in [1.0, 1.25, 1.5] {
+            let inset = logical_to_physical(EDGE_SAFE_INSET_LOGICAL, scale);
+            let narrow = logical_to_physical(360.0, scale);
+            let wide = logical_to_physical(552.0, scale);
+            let legacy_width = widget_window_size(EXPANDED_LOGICAL_WIDTH, scale, inset);
+            assert_eq!(
+                bounded_expanded_width(None, legacy_width, scale, inset, None),
+                legacy_width
+            );
+            assert_eq!(
+                bounded_expanded_width(Some(360.0), wide, scale, inset, None),
+                narrow
+            );
+            assert_eq!(
+                bounded_expanded_width(Some(10.0), wide, scale, inset, None),
+                narrow
+            );
+            assert_eq!(
+                bounded_expanded_width(Some(900.0), narrow, scale, inset, None),
+                wide
+            );
+            for width in [
+                None,
+                Some(f64::NAN),
+                Some(f64::INFINITY),
+                Some(0.0),
+                Some(-1.0),
+            ] {
+                assert_eq!(
+                    bounded_expanded_width(width, narrow, scale, inset, None),
+                    narrow
+                );
+            }
+            let small_work_area = logical_to_physical(300.0, scale);
+            assert_eq!(
+                bounded_expanded_width(Some(552.0), wide, scale, inset, Some(small_work_area)),
+                small_work_area + inset * 2,
+            );
+        }
+    }
+
+    #[test]
+    fn narrower_content_preserves_every_bar_edge_and_anchor_across_scales() {
+        for scale in [1.0, 1.25, 1.5] {
+            let inset = logical_to_physical(EDGE_SAFE_INSET_LOGICAL, scale);
+            let bounds = PhysicalBounds {
+                position: PhysicalPosition::new(-1920, 40),
+                size: PhysicalSize::new(1920, 1000),
+            };
+            for edge in [BarEdge::Top, BarEdge::Left, BarEdge::Right] {
+                for offset in [0.0, 0.5, 1.0] {
+                    let placement = BarPlacement { edge, offset };
+                    let (collapsed, _) = bar_collapsed_geometry(
+                        placement,
+                        scale,
+                        inset,
+                        bounds.position,
+                        bounds.size,
+                    );
+                    for width in [552.0, 360.0, 552.0] {
+                        let size = PhysicalSize::new(
+                            bounded_expanded_width(
+                                Some(width),
+                                0,
+                                scale,
+                                inset,
+                                Some(bounds.size.width),
+                            ),
+                            bounded_expanded_height(420.0, scale, inset, Some(bounds.size.height)),
+                        );
+                        let position = bar_expanded_position_in_bounds(
+                            collapsed,
+                            size,
+                            placement,
+                            bounds,
+                            inset as i32,
+                        );
+                        assert_within_bounds(WidgetRect { position, size }, bounds, inset as i32);
+                        match edge {
+                            BarEdge::Top => {
+                                assert_eq!(position.y, bounds.position.y - inset as i32);
+                                if offset == 0.5 {
+                                    assert_eq!(
+                                        position.x + size.width as i32 / 2,
+                                        collapsed.position.x + collapsed.size.width as i32 / 2
+                                    );
+                                }
+                            }
+                            BarEdge::Left => {
+                                assert_eq!(position.x, bounds.position.x - inset as i32)
+                            }
+                            BarEdge::Right => assert_eq!(
+                                position.x + size.width as i32,
+                                bounds.position.x + bounds.size.width as i32 + inset as i32
+                            ),
+                        }
+                    }
+                }
+            }
+        }
     }
 
     #[test]

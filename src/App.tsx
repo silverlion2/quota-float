@@ -43,6 +43,7 @@ export default function App() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [hovered, setHovered] = useState(false);
   const [compact, setCompact] = useState(true);
+  const [providerListPreference, setProviderListPreference] = useState<boolean | null>(null);
   const [collapsing, setCollapsing] = useState(false);
   const [consumingProviders, setConsumingProviders] = useState<Set<string>>(() => new Set());
   const [operationError, setOperationError] = useState<string | null>(null);
@@ -716,8 +717,10 @@ export default function App() {
         if (cancelled) return;
         // Changing compact placement while pinned open also resets native
         // geometry, even when the DOM's size did not change for ResizeObserver.
-        const height = document.querySelector<HTMLElement>(".quota-card")?.offsetHeight ?? 0;
-        if (height > 0) await resizeWidgetToContent(height);
+        const card = document.querySelector<HTMLElement>(".quota-card");
+        const height = card?.offsetHeight ?? 0;
+        const width = Number(card?.dataset.contentWidth) || undefined;
+        if (height > 0) await resizeWidgetToContent(height, width);
       })
       .catch(() => { if (!cancelled) setOperationError("Widget expand failed."); });
     return () => { cancelled = true; };
@@ -734,22 +737,30 @@ export default function App() {
     if (!card) return;
     let animationFrame: number | null = null;
     let lastHeight = 0;
-    const syncHeight = () => {
+    let lastWidth: number | undefined;
+    const syncSize = () => {
       animationFrame = null;
       const contentHeight = card.offsetHeight;
-      if (contentHeight <= 0 || Math.abs(contentHeight - lastHeight) < 1) return;
+      // Use the layout's requested window width, not the current viewport width:
+      // a narrow native viewport must still be able to grow for an open dialog.
+      const contentWidth = Number(card.dataset.contentWidth) || undefined;
+      if (contentHeight <= 0 || (Math.abs(contentHeight - lastHeight) < 1 && contentWidth === lastWidth)) return;
       lastHeight = contentHeight;
-      void resizeWidgetToContent(contentHeight).catch(() => setOperationError("Widget resize failed."));
+      lastWidth = contentWidth;
+      void resizeWidgetToContent(contentHeight, contentWidth).catch(() => setOperationError("Widget resize failed."));
     };
     const scheduleSync = () => {
       if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);
-      animationFrame = window.requestAnimationFrame(syncHeight);
+      animationFrame = window.requestAnimationFrame(syncSize);
     };
     scheduleSync();
     const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(scheduleSync);
     resizeObserver?.observe(card);
+    const layoutObserver = new MutationObserver(scheduleSync);
+    layoutObserver.observe(card, { attributes: true, attributeFilter: ["data-content-width"] });
     return () => {
       resizeObserver?.disconnect();
+      layoutObserver.disconnect();
       if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);
     };
   }, [compact, Boolean(current)]);
@@ -805,6 +816,8 @@ export default function App() {
     <QuotaCard
       snapshot={current}
       snapshots={orderedSnapshots}
+      providerListPreference={providerListPreference}
+      onProviderListPreferenceChange={setProviderListPreference}
       preferences={preferences}
       resolvedAppearance={resolvedAppearance}
       onSelectProvider={(provider: ProviderId) => {

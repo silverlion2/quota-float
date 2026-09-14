@@ -104,12 +104,15 @@ vi.mock("./components/ControlCenter", () => ({
 vi.mock("./components/QuotaCard", () => {
   const compact = ({ onHover }: { onHover: (value: boolean) => void }) => <button type="button" onClick={() => onHover(true)}>Expand widget</button>;
   const card = (props: any) => (
-    <main className="quota-card" onMouseEnter={() => props.onHover(true)}>
+    <main className="quota-card" data-content-width={props.controlOpen || props.updateOpen ? 552 : 400} onMouseEnter={() => props.onHover(true)}>
       <button type="button" aria-label="App update" onClick={props.onUpdateOpen}>Update</button>
       <button type="button" aria-label="Control center" onClick={props.onControlOpen}>Control</button>
       <button type="button" onClick={() => props.onPreferences({ ...props.preferences, accentColor: "#112233" })}>Save first</button>
       <button type="button" onClick={() => props.onPreferences({ ...props.preferences, accentColor: "#223344" })}>Save second</button>
       <button type="button" onClick={() => props.onPreferences({ ...props.preferences, stayExpanded: true, compactLayout: "bar" })}>Pin as bar</button>
+      <button type="button" onClick={() => props.onProviderListPreferenceChange(false)}>Collapse providers</button>
+      <button type="button" onClick={() => props.onHover(false)}>Leave widget</button>
+      <output aria-label="Provider list choice">{String(props.providerListPreference)}</output>
       <output>{props.preferences.accentColor}</output>
       {props.updateOpen ? <section role="dialog" aria-label="Update dialog">{props.updateState.phase}<button type="button" onClick={props.onUpdateClose}>Close update</button></section> : null}
       {props.controlOpen ? props.controlCenter : null}
@@ -136,6 +139,14 @@ async function renderExpandedApp() {
 }
 
 describe("App modal and preference lifecycle", () => {
+  it("retains the provider list choice after the expanded card unmounts and reopens", async () => {
+    await renderExpandedApp();
+    fireEvent.click(screen.getByRole("button", { name: "Collapse providers" }));
+    fireEvent.click(screen.getByRole("button", { name: "Leave widget" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Expand widget" }));
+    expect(await screen.findByLabelText("Provider list choice")).toHaveTextContent("false");
+  });
+
   it("does not reset native geometry when the pointer re-enters an expanded dialog", async () => {
     await renderExpandedApp();
     fireEvent.click(screen.getByRole("button", { name: "Control center" }));
@@ -151,7 +162,17 @@ describe("App modal and preference lifecycle", () => {
     vi.spyOn(screen.getByRole("main"), "offsetHeight", "get").mockReturnValue(448);
     vi.mocked(resizeWidgetToContent).mockClear();
     fireEvent.click(screen.getByRole("button", { name: "Pin as bar" }));
-    await waitFor(() => expect(resizeWidgetToContent).toHaveBeenLastCalledWith(448));
+    await waitFor(() => expect(resizeWidgetToContent).toHaveBeenLastCalledWith(448, 400));
+  });
+
+  it("grows and restores native width even when an overlay leaves content height unchanged", async () => {
+    await renderExpandedApp();
+    vi.spyOn(screen.getByRole("main"), "offsetHeight", "get").mockReturnValue(448);
+    vi.mocked(resizeWidgetToContent).mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "Control center" }));
+    await waitFor(() => expect(resizeWidgetToContent).toHaveBeenLastCalledWith(448, 552));
+    fireEvent.click(screen.getByRole("button", { name: "Close control" }));
+    await waitFor(() => expect(resizeWidgetToContent).toHaveBeenLastCalledWith(448, 400));
   });
 
   it("does not let a canceled update check reopen over the control center", async () => {

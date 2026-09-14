@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Reclaim desktop space automatically when only one provider is tracked, with compact 360px dashboards and a 400px single-column Cockpit.
+- Collapse and restore multi-provider lists while keeping quick switching and the choice across hover expansion within the running app.
+- Resize the native window in both dimensions; settings, diagnostics, updates, and Insights temporarily restore full width while preserving magnetic placement and DPI bounds.
+- Show only tracked, visible providers in the expanded list while retaining loading, signed-out, stale, and unavailable states.
+
 ## 0.3.13 - 2026-09-12
 
 - fix: preserve expanded native height on pointer re-entry

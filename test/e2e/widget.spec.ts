@@ -319,4 +319,45 @@ describe("Quota Float desktop widget", () => {
     }
     await browser.keys(["Escape"]);
   });
+  it("shrinks single-provider layouts and restores full dialog width in the native viewport", async () => {
+    const original = await browser.tauri.execute(async (tauri) => tauri.core.invoke("get_preferences"));
+    const reloadPreferences = async (preferences: unknown) => {
+      await browser.tauri.execute(async (tauri, next) => {
+        await tauri.core.invoke("set_preferences", { preferences: next });
+        (window as unknown as Record<string, unknown>).__e2eReloadPending = true;
+        setTimeout(() => window.location.reload(), 50);
+      }, preferences);
+      await browser.waitUntil(async () => browser.tauri.execute(() =>
+        !(window as unknown as Record<string, unknown>).__e2eReloadPending
+          && Boolean(document.querySelector(".quota-card")),
+      ));
+    };
+    const waitForWidth = async (width: number) => browser.waitUntil(async () => browser.tauri.execute((_, expected) =>
+      Math.abs(innerWidth - expected) <= 1, width,
+    ), { timeout: 5000, timeoutMsg: `Native viewport did not resize to ${width}` });
+    try {
+      for (const expandedLayout of ["dashboard", "provider-bar", "stacked", "cockpit"]) {
+        await reloadPreferences({ ...(original as Record<string, unknown>), expandedLayout,
+          hiddenProviders: ["claude", "qoder", "trae", "workbuddy", "volcengine", "antigravity"] });
+        const width = expandedLayout === "cockpit" ? 400 : 360;
+        await waitForWidth(width);
+        expect(await browser.tauri.execute(() => Boolean(document.querySelector(".provider-ledger")))).toBe(false);
+        await browser.saveScreenshot(`output/handoff/single-provider-${expandedLayout}-2026-09-14.png`);
+        const overflow = await browser.tauri.execute(() => {
+          // The clipped Aurora background intentionally extends beyond the card.
+          // Measure readable content rather than that decorative paint layer.
+          return Math.max(...Array.from(document.querySelectorAll<HTMLElement>(
+            ".quota-panel-header, .quota-tab-panel--quota, .primary-pane, .cockpit-dashboard",
+          )).map((node) => node.scrollWidth - node.clientWidth));
+        });
+        expect(overflow).toBeLessThanOrEqual(1);
+        await openControlCenter();
+        await waitForWidth(552);
+        await browser.keys(["Escape"]);
+        await waitForWidth(width);
+      }
+    } finally {
+      await reloadPreferences(original);
+    }
+  });
 });

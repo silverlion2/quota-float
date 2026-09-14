@@ -129,6 +129,27 @@ describe("widget transitions", () => {
     expect(api.invoke).not.toHaveBeenCalled();
   });
 
+  it("passes both content dimensions through the serialized window transition", async () => {
+    await Promise.all([setWidgetExpanded(true), resizeWidgetToContent(420, 360)]);
+    expect(api.invoke).toHaveBeenLastCalledWith("resize_expanded_widget", {
+      contentHeight: 420,
+      contentWidth: 360,
+      workArea: { position: { x: 0, y: 0 }, size: { width: 1920, height: 1040 } },
+    });
+    expect(api.calls).toEqual([
+      "start:expand_widget", "end:expand_widget",
+      "start:resize_expanded_widget", "end:resize_expanded_widget",
+    ]);
+  });
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, 0, -10])("omits invalid width %s while allowing height updates", async (width) => {
+    await resizeWidgetToContent(420, width);
+    expect(api.invoke).toHaveBeenCalledWith("resize_expanded_widget", {
+      contentHeight: 420,
+      workArea: { position: { x: 0, y: 0 }, size: { width: 1920, height: 1040 } },
+    });
+  });
+
   it("uses dedicated redacted diagnostics and reconnect commands", async () => {
     await getVolcengineDiagnostics();
     await reconnectVolcengine();

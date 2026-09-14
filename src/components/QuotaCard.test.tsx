@@ -115,6 +115,79 @@ afterEach(() => {
 });
 
 describe("QuotaCard platform ledger", () => {
+  const adaptiveProps = {
+    snapshot: codex, snapshots: [codex], preferences,
+    onSelectProvider: noop, onLock: noop, onLanguage: noop, onDrag: noop, onHover: noop,
+    consumingProviders: new Set<string>(),
+  };
+
+  it.each(["dashboard", "provider-bar", "stacked", "cockpit"] as const)("reclaims single-provider space in %s and allows manual expansion", (expandedLayout) => {
+    const { container } = render(<QuotaCard {...adaptiveProps} preferences={{ ...preferences, expandedLayout }} />);
+    const card = container.querySelector(".quota-card")!;
+    const width = expandedLayout === "cockpit" ? "400" : "360";
+    expect(card).toHaveAttribute("data-content-width", width);
+    expect(container.querySelector(".provider-ledger")).not.toBeInTheDocument();
+    expect(container.querySelector(".expanded-provider-strip")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Expand provider list" }));
+    expect(card).toHaveAttribute("data-content-width", "552");
+    expect(screen.getByRole("button", { name: "Collapse provider list" })).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Collapse provider list" }));
+    expect(card).toHaveAttribute("data-content-width", width);
+  });
+
+  it("keeps a compact provider switcher when the multi-provider list is collapsed", () => {
+    const onSelectProvider = vi.fn();
+    const { container } = render(<QuotaCard {...adaptiveProps} snapshots={[codex, qoder]} onSelectProvider={onSelectProvider} />);
+    fireEvent.click(screen.getByRole("button", { name: "Collapse provider list" }));
+    expect(container.querySelector(".quota-card")).toHaveAttribute("data-content-width", "360");
+    expect(container.querySelector(".provider-ledger")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: "QODER" }));
+    expect(onSelectProvider).toHaveBeenCalledWith("qoder");
+    fireEvent.click(screen.getByRole("button", { name: "Expand provider list" }));
+    expect(container.querySelector(".provider-ledger")).toBeInTheDocument();
+    expect(container.querySelector(".expanded-provider-strip")).not.toBeInTheDocument();
+  });
+
+  it.each(["ok", "stale", "signed_out", "unavailable", "loading"] as const)("keeps a tracked %s provider visible and respects hidden providers", (status) => {
+    const props = { ...adaptiveProps, snapshots: [codex, { ...qoder, status }] };
+    const { container, rerender } = render(<QuotaCard {...props} />);
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    expect(container.querySelector(".quota-card")).toHaveAttribute("data-content-width", "552");
+    rerender(<QuotaCard {...props} preferences={{ ...preferences, hiddenProviders: ["qoder"] }} />);
+    expect(container.querySelector(".quota-card")).toHaveAttribute("data-content-width", "360");
+  });
+
+  it("adapts as sources arrive and preserves an explicit collapsed choice across refreshes", () => {
+    const { container, rerender } = render(<QuotaCard {...adaptiveProps} />);
+    const card = container.querySelector(".quota-card")!;
+    rerender(<QuotaCard {...adaptiveProps} snapshots={[codex, qoder]} />);
+    expect(card).toHaveAttribute("data-content-width", "552");
+    fireEvent.click(screen.getByRole("button", { name: "Collapse provider list" }));
+    rerender(<QuotaCard {...adaptiveProps} snapshots={[{ ...codex }, { ...qoder }]} />);
+    expect(card).toHaveAttribute("data-content-width", "360");
+  });
+
+  it("restores the compact width after each full-width overlay closes", () => {
+    const { container, rerender } = render(<QuotaCard {...adaptiveProps} />);
+    const card = container.querySelector(".quota-card")!;
+    for (const overlay of ["controlOpen", "diagnosticsOpen", "updateOpen"] as const) {
+      rerender(<QuotaCard {...adaptiveProps} {...{ [overlay]: true }} />);
+      expect(card).toHaveAttribute("data-content-width", "552");
+      rerender(<QuotaCard {...adaptiveProps} />);
+      expect(card).toHaveAttribute("data-content-width", "360");
+    }
+  });
+
+  it("reports the provider-list choice and accepts it when the expanded card remounts", () => {
+    const onProviderListPreferenceChange = vi.fn();
+    const { unmount } = render(<QuotaCard {...adaptiveProps} snapshots={[codex, qoder]} providerListPreference={null} onProviderListPreferenceChange={onProviderListPreferenceChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "Collapse provider list" }));
+    expect(onProviderListPreferenceChange).toHaveBeenCalledWith(false);
+    unmount();
+    const { container } = render(<QuotaCard {...adaptiveProps} snapshots={[codex, qoder]} providerListPreference={false} onProviderListPreferenceChange={onProviderListPreferenceChange} />);
+    expect(container.querySelector(".quota-card")).toHaveAttribute("data-content-width", "360");
+    expect(screen.getByRole("button", { name: "Expand provider list" })).toHaveAttribute("aria-expanded", "false");
+  });
   it("does not derive hidden history sparklines when the preference is off", () => {
     const recentTrend = vi.spyOn(usageInsights, "recentQuotaTrend");
     const { container } = render(
@@ -410,10 +483,12 @@ describe("QuotaCard platform ledger", () => {
 
     const quotaTab = screen.getByRole("tab", { name: "Quota" });
     const insightsTab = screen.getByRole("tab", { name: "Insights" });
+    expect(quotaTab.closest(".quota-card")).toHaveAttribute("data-content-width", "360");
     expect(screen.getAllByRole("tab")).toHaveLength(2);
     expect(quotaTab).toHaveAttribute("aria-selected", "true");
 
     fireEvent.click(insightsTab);
+    expect(quotaTab.closest(".quota-card")).toHaveAttribute("data-content-width", "552");
     expect(insightsTab).toHaveAttribute("aria-selected", "true");
     expect(quotaTab).toHaveAttribute("aria-selected", "false");
     expect(await screen.findByRole("region", { name: "Usage insights" }, { timeout: 10_000 })).toBeInTheDocument();
@@ -437,6 +512,7 @@ describe("QuotaCard platform ledger", () => {
     expect(await screen.findByRole("button", { name: "Alert while open" })).toHaveAttribute("title", "Checked only while Codex Insights is open");
 
     fireEvent.click(quotaTab);
+    expect(quotaTab.closest(".quota-card")).toHaveAttribute("data-content-width", "360");
     expect(quotaTab).toHaveAttribute("aria-selected", "true");
     expect(screen.queryByRole("region", { name: "Usage insights" })).not.toBeInTheDocument();
 
@@ -466,7 +542,7 @@ describe("QuotaCard platform ledger", () => {
     expect(screen.queryByText("Daily guide")).not.toBeInTheDocument();
   });
 
-  it("marks platforms without a collector as not detected", () => {
+  it("omits platforms without a detected snapshot from the widget", () => {
     render(
       <QuotaCard
         snapshot={codex}
@@ -481,7 +557,8 @@ describe("QuotaCard platform ledger", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: /VOLCENGINE.*Not detected/i })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /VOLCENGINE.*Not detected/i })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
   });
 
   it("keeps a balance-based platform readable in the collapsed orb", () => {
@@ -984,9 +1061,9 @@ describe("QuotaCard platform ledger", () => {
     );
 
     const codexRow = screen.getByRole("listitem", { name: /Reorder CODEX/i });
-    const traeRow = screen.getByRole("listitem", { name: /Reorder TRAE/i });
-    vi.spyOn(traeRow, "getBoundingClientRect").mockReturnValue({ top: 0, height: 20 } as DOMRect);
-    const elementFromPoint = vi.fn(() => traeRow);
+    const qoderRow = screen.getByRole("listitem", { name: /Reorder QODER/i });
+    vi.spyOn(qoderRow, "getBoundingClientRect").mockReturnValue({ top: 0, height: 20 } as DOMRect);
+    const elementFromPoint = vi.fn(() => qoderRow);
     Object.defineProperty(document, "elementFromPoint", { configurable: true, value: elementFromPoint });
     const codexGrip = screen.getByRole("button", { name: /Reorder CODEX/i });
 
@@ -995,10 +1072,10 @@ describe("QuotaCard platform ledger", () => {
     fireEvent.pointerDown(codexGrip, { button: 0, pointerId: 1, clientY: 1 });
     expect(codexRow).toHaveClass("is-dragging");
     fireEvent.pointerMove(codexGrip, { pointerId: 1, clientY: 1 });
-    expect(traeRow).toHaveClass("is-drag-target");
-    fireEvent.pointerUp(codexGrip, { pointerId: 1, clientY: 1 });
+    expect(qoderRow).toHaveClass("is-drag-target");
+    fireEvent.pointerUp(codexGrip, { pointerId: 1, clientY: 19 });
 
-    expect(onReorderProviders).toHaveBeenCalledWith(["claude", "qoder", "codex", "trae", "workbuddy", "volcengine", "antigravity"]);
+    expect(onReorderProviders).toHaveBeenCalledWith(["qoder", "claude", "codex", "trae", "workbuddy", "volcengine", "antigravity"]);
   });
 
   it("supports Alt plus arrow keys as a sorting alternative", () => {
@@ -1019,6 +1096,6 @@ describe("QuotaCard platform ledger", () => {
     );
 
     fireEvent.keyDown(screen.getByRole("listitem", { name: /Reorder CODEX/i }), { key: "ArrowDown", altKey: true });
-    expect(onReorderProviders).toHaveBeenCalledWith(["claude", "codex", "qoder", "trae", "workbuddy", "volcengine", "antigravity"]);
+    expect(onReorderProviders).toHaveBeenCalledWith(["qoder", "claude", "codex", "trae", "workbuddy", "volcengine", "antigravity"]);
   });
 });

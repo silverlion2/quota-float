@@ -83,6 +83,8 @@ interface Props {
   onDetachCockpitRegion?: (region: CockpitRegion) => void;
   initialShowCreditTip?: boolean;
   initialInsightsOpen?: boolean;
+  providerListPreference?: boolean | null;
+  onProviderListPreferenceChange?: (expanded: boolean) => void;
 }
 
 function StatusIcon({ status, expired = false }: { status: ProviderSnapshot["status"]; expired?: boolean }) {
@@ -571,11 +573,20 @@ export const QuotaCard = memo(function QuotaCard({
   onDetachCockpitRegion,
   initialShowCreditTip = false,
   initialInsightsOpen = false,
+  providerListPreference: controlledProviderListPreference,
+  onProviderListPreferenceChange,
   collapsing = false,
 }: Props) {
   const now = useMinuteClock();
   const [showCreditTip, setShowCreditTip] = useState(initialShowCreditTip);
   const [insightsOpen, setInsightsOpen] = useState(initialInsightsOpen);
+  const [localProviderListPreference, setLocalProviderListPreference] = useState<boolean | null>(null);
+  const providerListPreference = controlledProviderListPreference === undefined ? localProviderListPreference : controlledProviderListPreference;
+  const setProviderListPreference = (expanded: boolean) => {
+    setLocalProviderListPreference(expanded);
+    onProviderListPreferenceChange?.(expanded);
+  };
+  const providerNavigationId = useId();
   const [cockpitFocus, setCockpitFocus] = useState<CockpitRegion | null>(null);
   const [draggedProvider, setDraggedProvider] = useState<ProviderId | null>(null);
   const [dragTargetProvider, setDragTargetProvider] = useState<ProviderId | null>(null);
@@ -650,11 +661,20 @@ export const QuotaCard = memo(function QuotaCard({
   const snapshotsByProvider = useMemo(() => new Map(snapshots.map((item) => [item.provider, item])), [snapshots]);
   const providerDefinitions = useMemo(() => {
     const byProvider = new Map(PROVIDER_CATALOG.map((definition) => [definition.id, definition]));
-    const visibleOrder = normalizeProviderOrder(preferences.providerOrder).filter((provider) => !preferences.hiddenProviders.includes(provider));
+    const trackedProviders = new Set(snapshots.map((item) => item.provider));
+    const visibleOrder = normalizeProviderOrder(preferences.providerOrder).filter((provider) => trackedProviders.has(provider) && !preferences.hiddenProviders.includes(provider));
     const displayedOrder = preferences.riskFirst ? sortProviderIdsByRisk(visibleOrder, snapshots) : visibleOrder;
     return displayedOrder.map((provider) => byProvider.get(provider)!);
   }, [preferences.hiddenProviders, preferences.providerOrder, preferences.riskFirst, snapshots]);
-  const showProviderHistory = preferences.showHistorySparklines && !insightsOpen && !overlayOpen && preferences.expandedLayout !== "cockpit";
+  const providerListExpanded = providerListPreference ?? providerDefinitions.length > 1;
+  const showProviderStrip = preferences.expandedLayout === "cockpit"
+    ? providerListExpanded || providerDefinitions.length > 1
+    : !providerListExpanded && providerDefinitions.length > 1;
+  const contentWidth = overlayOpen || insightsOpen || providerListExpanded ? 552 : preferences.expandedLayout === "cockpit" ? 400 : 360;
+  const providerListToggleLabel = language === "en"
+    ? providerListExpanded ? "Collapse provider list" : "Expand provider list"
+    : providerListExpanded ? "收起平台列表" : "展开平台列表";
+  const showProviderHistory = preferences.showHistorySparklines && providerListExpanded && !insightsOpen && !overlayOpen && preferences.expandedLayout !== "cockpit";
   const percentageHistoryByProvider = useMemo(() => {
     if (!showProviderHistory) return new Map<ProviderId, QuotaTrendPoint[]>();
     return new Map(providerDefinitions.map((definition) => [
@@ -667,6 +687,12 @@ export const QuotaCard = memo(function QuotaCard({
 
   useEffect(() => setCockpitFocus(null), [preferences.expandedLayout, snapshot.provider]);
 
+  const saveVisibleProviderOrder = (visibleOrder: ProviderId[]) => {
+    const visibleProviders = new Set(visibleOrder);
+    let index = 0;
+    onReorderProviders(normalizeProviderOrder(preferences.providerOrder).map((provider) => visibleProviders.has(provider) ? visibleOrder[index++] : provider));
+  };
+
   const commitProviderOrder = (source: ProviderId, target: ProviderId, after = false) => {
     const order = providerDefinitions.map((definition) => definition.id);
     const sourceIndex = order.indexOf(source);
@@ -676,7 +702,7 @@ export const QuotaCard = memo(function QuotaCard({
     const remainingTarget = order.indexOf(target);
     const insertAt = remainingTarget + (after ? 1 : 0);
     order.splice(insertAt, 0, source);
-    onReorderProviders(order);
+    saveVisibleProviderOrder(order);
     setReorderAnnouncement(t.providerMoved(PROVIDER_CATALOG.find((item) => item.id === source)?.label ?? source, insertAt + 1));
   };
 
@@ -686,7 +712,7 @@ export const QuotaCard = memo(function QuotaCard({
     const nextIndex = index + offset;
     if (index < 0 || nextIndex < 0 || nextIndex >= order.length) return;
     [order[index], order[nextIndex]] = [order[nextIndex], order[index]];
-    onReorderProviders(order);
+    saveVisibleProviderOrder(order);
     setReorderAnnouncement(t.providerMoved(providerDefinitions[index].label, nextIndex + 1));
   };
 
@@ -729,7 +755,9 @@ export const QuotaCard = memo(function QuotaCard({
   return (
     <main
       className={`quota-card quota-card--${snapshot.status} quota-card--${tier} quota-card--layout-${preferences.layoutMode} quota-card--expanded-${preferences.expandedLayout} quota-card--style-${preferences.colorTheme} quota-card--theme-${resolvedAppearance} quota-card--origin-${preferences.compactLayout === "bar" || preferences.compactLayout === "bottleneck" ? preferences.barEdge : "center"}${overlayOpen ? " quota-card--overlay-open" : ""}${diagnosticsOpen ? " quota-card--diagnostics-open" : ""}${updateOpen ? " quota-card--update-open" : ""}${insightsOpen ? " quota-card--insights-open" : ""}${collapsing ? " quota-card--collapsing" : ""}`}
-      style={{ "--accent-color": preferences.accentColor } as CSSProperties}
+      data-content-width={contentWidth}
+      data-provider-list={providerListExpanded ? "expanded" : "collapsed"}
+      style={{ "--accent-color": preferences.accentColor, "--widget-content-width": `${contentWidth}px` } as CSSProperties}
       onMouseEnter={() => onHover(true)}
       onMouseLeave={() => onHover(false)}
       onMouseDown={(event) => { if (event.button === 0) void onDrag(); }}
@@ -835,9 +863,22 @@ export const QuotaCard = memo(function QuotaCard({
         aria-hidden={overlayOpen || undefined}
         inert={overlayOpen || undefined}
       >
-      {preferences.expandedLayout === "cockpit" ? (
+      <div className="provider-layout-controls" onMouseDown={(event) => event.stopPropagation()}>
+        <button
+          type="button"
+          aria-expanded={providerListExpanded}
+          aria-controls={providerListExpanded || showProviderStrip ? providerNavigationId : undefined}
+          aria-label={providerListToggleLabel}
+          title={providerListToggleLabel}
+          onClick={() => setProviderListPreference(!providerListExpanded)}
+        >
+          {providerListExpanded ? <ArrowsInSimple /> : <ArrowsOutSimple />}
+          <span>{providerListToggleLabel}</span>
+        </button>
+      </div>
+      {showProviderStrip ? (
         !insightsOpen ? <>
-          <div className="expanded-provider-strip" aria-label={language === "en" ? "Provider quick switch" : "平台快捷切换"}>
+          <div id={providerNavigationId} className="expanded-provider-strip" aria-label={language === "en" ? "Provider quick switch" : "平台快捷切换"}>
             <p>{language === "en" ? "Providers" : "平台"}<span>{providerDefinitions.length}</span></p>
             <ProviderLogoSlider
               providers={providerDefinitions.map((definition) => ({ id: definition.id, label: definition.label }))}
@@ -958,7 +999,7 @@ export const QuotaCard = memo(function QuotaCard({
         )}
       </section>
 
-      <aside className="provider-ledger" aria-hidden={overlayOpen || undefined} inert={overlayOpen || undefined}>
+      {providerListExpanded ? <aside id={providerNavigationId} className="provider-ledger" aria-hidden={overlayOpen || undefined} inert={overlayOpen || undefined}>
         <header className="ledger-header">
           <p>{t.allServices}<span>{providerDefinitions.length}/{PROVIDER_CATALOG.length}</span>{preferences.riskFirst ? <b>{language === "en" ? "RISK FIRST" : "风险优先"}</b> : null}</p>
         </header>
@@ -999,7 +1040,7 @@ export const QuotaCard = memo(function QuotaCard({
             />
           ))}
         </div>
-      </aside>
+      </aside> : null}
       </>
       )}
       </div>

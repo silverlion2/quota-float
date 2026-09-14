@@ -207,6 +207,9 @@ button { font: inherit; }
   animation: panel-in .16s ease-out both;
 }
 .quota-card--overlay-open { min-height: 248px; }
+.quota-card[data-content-width] {
+  width: min(calc(var(--widget-content-width) - (var(--edge-safe-inset) * 2)), calc(100% - (var(--edge-safe-inset) * 2)));
+}
 .loading-card { min-width: 80px; min-height: 80px; padding: 18px; }
 @keyframes panel-in { from { opacity: .88; transform: scale(.985); } to { opacity: 1; transform: scale(1); } }
 .quota-card--healthy { --cool: #b9d5ee; --glow: #dff4e5; --warm: #c7ddf2; --aurora-opacity: .42; --progress-start: #397ae0; --progress-end: #91baf0; }
@@ -2556,3 +2559,20 @@ button.usage-stat-card:hover { border-color: color-mix(in srgb, var(--accent-col
 .quota-bar--top .bar-status { font-size: 7px; }
 .quota-bar--top .bar-freshness { font-size: 6.5px; }
 .bottleneck-provider-list button:focus-visible { outline-offset: -1px; }
+
+/* Provider density follows tracked sources, independent of the current WebView width. */
+.provider-layout-controls { grid-column: 1 / -1; display: flex; justify-content: flex-end; }
+.provider-layout-controls button { display: inline-flex; align-items: center; gap: 5px; min-height: 26px; padding: 3px 8px; border: 1px solid var(--ui-border); border-radius: 8px; color: var(--ui-muted); background: var(--ui-surface); cursor: pointer; font-size: 9px; }
+.provider-layout-controls button:hover { color: var(--ui-text); background: var(--ui-surface-hover); }
+.provider-layout-controls svg { width: 12px; height: 12px; }
+.quota-card[data-provider-list="collapsed"] .quota-tab-panel--quota { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; }
+.quota-card[data-content-width="360"] .quota-panel-header,
+.quota-card[data-content-width="400"] .quota-panel-header { flex-wrap: wrap; gap: 6px; }
+.quota-card[data-content-width="360"] .quota-panel-navigation,
+.quota-card[data-content-width="400"] .quota-panel-navigation { width: 100%; }
+.quota-card[data-content-width="360"] .quota-panel-actions,
+.quota-card[data-content-width="400"] .quota-panel-actions { flex-wrap: wrap; }
+.quota-card[data-content-width="400"] .cockpit-dashboard { grid-template-columns: minmax(0, 1fr); }
+.quota-card[data-content-width="400"] .cockpit-dashboard:not([data-focus="none"]) .cockpit-panel--overview .cockpit-overview-body { grid-template-columns: 120px minmax(0, 1fr); }
+.quota-card[data-content-width="400"] .cockpit-dashboard:not([data-focus="none"]) .cockpit-ring { width: 110px; height: 110px; }
+.quota-card[data-content-width="400"] .cockpit-dashboard:not([data-focus="none"]) .cockpit-ring::before { width: 86px; height: 86px; }

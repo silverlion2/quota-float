@@ -499,12 +499,17 @@ export function setWidgetExpanded(
   });
 }
 
-export function resizeWidgetToContent(contentHeight: number): Promise<void> {
+// contentWidth is the total logical window width, including its transparent inset.
+// contentHeight remains the measured card height; native sizing adds vertical insets.
+export function resizeWidgetToContent(contentHeight: number, contentWidth?: number): Promise<void> {
   if (!isTauri() || !Number.isFinite(contentHeight) || contentHeight <= 0) return Promise.resolve();
   return enqueueWidgetTransition(async () => {
     const { invoke } = await import("@tauri-apps/api/core");
     const workArea = await currentWorkArea();
-    await invoke("resize_expanded_widget", { contentHeight, workArea });
+    const width = contentWidth !== undefined && Number.isFinite(contentWidth) && contentWidth > 0
+      ? { contentWidth }
+      : {};
+    await invoke("resize_expanded_widget", { contentHeight, ...width, workArea });
   });
 }
 
