@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.15 - 2026-09-14
+
+- feat: add read-only Codex extensions and companion catalog
+
 ## 0.3.14 - 2026-09-14
 
 - Reclaim desktop space automatically when only one provider is tracked, with compact 360px dashboards and a 400px single-column Cockpit.
