@@ -23,4 +23,4 @@ Quota Float 控制中心新增「扩展」页：按 MCP、Skills、Plugins 分�
 
 本地 fast gate：40 个文件中的 318 项前端测试通过；102 项 Windows Rust 测试通过，最后的迭代器静态检查修正后，7 项扩展专项测试再次通过。生产构建、fmt、cargo check、全部 targets 的严格 Clippy、版本与 diff 检查通过。生产 JS 共 569,684 B，gzip JS 177,772 B，CSS 151,559 B，原有体积门槛保持不变。
 
-原生与正式发布证据归档在本次任务的 `output/review-2026-09-15/`，公开产物和流程结果见 [Release](https://github.com/silverlion2/quota-float/releases) 与 [Actions](https://github.com/silverlion2/quota-float/actions/workflows/release.yml)。Windows 多屏/DPI 与真实 Mac 视觉验收仍需对应设备，CI Universal 构建不替代这些检查。
+10 项 Windows 原生 E2E 已全部通过。v0.3.15 已正式公开，源码 CI 与发布流程成功；六项公开资产摘要、双平台更新签名和草稿候选完整安装生命周期均通过验收。精确提交、工作流、摘要及平台限制见 [v0.3.15 发布记录](RELEASE-0.3.15.md)，下载和原始验收资料保存在 `output/review-2026-09-15/`。Windows 多屏/DPI 与真实 Mac 视觉验收仍需对应设备，CI Universal 构建不替代这些检查。
