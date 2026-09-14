@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.14 - 2026-09-14
 
 - Reclaim desktop space automatically when only one provider is tracked, with compact 360px dashboards and a 400px single-column Cockpit.
 - Collapse and restore multi-provider lists while keeping quick switching and the choice across hover expansion within the running app.
