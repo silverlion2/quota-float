@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.16 - 2026-09-15
+
+- fix: validate reset evidence and add measured quota consumption planning
+- docs: archive v0.3.15 release verification
+
 ## 0.3.15 - 2026-09-14
 
 - feat: add read-only Codex extensions and companion catalog
