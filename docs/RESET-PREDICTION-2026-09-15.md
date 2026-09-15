@@ -27,9 +27,9 @@ No historical ground-truth evaluation of Quota Float's new policy has been compl
 
 ## Rollback and validation
 
-This is an additive, non-persistent presentation/calculation change. Existing preferences and quota history remain compatible with v0.3.15; rollback uses the previous public installer. Full local gate results and the exact release workflow/artifact checks are recorded with the v0.3.16 release evidence after they finish.
+This is an additive, non-persistent presentation/calculation change. Existing preferences and quota history remain compatible with v0.3.15; rollback uses the previous public installer. Published as Stable v0.3.16; final CI, release, installation and signature evidence is in the [release record](RELEASE-0.3.16.md).
 
-Local validation: 334 frontend tests passed across 43 files; after the clock-refresh correction, 58 affected component tests passed again. Windows Rust full suite passed 108 tests, followed by 14 reset-forecast tests after the additional parser/future-time regression (109 total tests now defined). Production build/bundle budgets, formatting, cargo check, strict Clippy and version/diff checks passed during integration; final build checks are repeated before committing.
+Local validation: 334 frontend tests passed across 43 files; after the clock-refresh correction, 58 affected component tests passed again. Windows Rust full suite passed 108 tests, followed by 14 reset-forecast tests after the additional parser/future-time regression; exact-source Windows CI subsequently passed all 109 tests. Final production build/bundle budgets, formatting, cargo check, strict Clippy and version/diff checks passed.
 
 11 native Windows E2E tests passed, including the new expandable consumption plan, bounded scrolling, source details, existing settings, detached windows and update dialog. The existing missing standalone tauri-driver diagnostic and mock-store cleanup warning did not prevent the embedded driver run; exit status was zero. Hardware DPI/multi-monitor coverage and real Mac UI checks remain outside this automated evidence.
 

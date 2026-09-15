@@ -141,7 +141,7 @@ npm run tauri build
 
 After a Codex Desktop update, run `npm run check:codex`. See the [provider compatibility contract](docs/PROVIDER-COMPATIBILITY.md), [Codex update compatibility guide](docs/CODEX-UPDATE-CHECK.md), and [release checklist](docs/GITHUB-RELEASE-CHECKLIST.md) for maintainer workflows.
 
-The source version is declared in `package.json` and checked against the native package metadata. Current review, validation, and publication status are recorded in the [2026-09-12 interaction and native-window follow-up](docs/SESSION-2026-09-12.md). Source support and automated tests do not imply manual validation on every platform.
+The source version is declared in `package.json` and checked against the native package metadata. Current validation and publication evidence is recorded in the [v0.3.16 release record](docs/RELEASE-0.3.16.md). Source support and automated tests do not imply manual validation on every platform.
 
 Maintainers can start with the [systematic review and task archive](docs/REVIEW-2026-09-09.md), [project summary](docs/PROJECT-SUMMARY.md), [architecture and repository structure](docs/ARCHITECTURE.md), [distribution/signing guide](docs/DISTRIBUTION.md), and [desktop development SOP](docs/DESKTOP-DEVELOPMENT-SOP.md).
 
