@@ -1,7 +1,8 @@
 import { ArrowClockwise, ArrowSquareOut, ArrowsInSimple, ArrowsOutSimple, CheckCircle, ClockCounterClockwise, CloudArrowDown, CloudSlash, DotsSixVertical, Gauge, GearSix, Pulse, PushPin, PushPinSlash, SignIn, SpinnerGap, WarningCircle, X } from "@phosphor-icons/react";
 import { lazy, memo, Suspense, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { clampPercent, formatDateTime, formatResetDate, formatResetTime, quotaTier } from "../lib/format";
-import { copy, normalizeLanguage, resetForecastLabel, resetForecastTitle } from "../lib/i18n";
+import { copy, normalizeLanguage, resetForecastTitle } from "../lib/i18n";
+import { freshResetForecast, resetSignalSummary } from "../lib/resetForecast";
 import { useModalDialog } from "../lib/modalDialog";
 import { normalizeProviderOrder, PROVIDER_CATALOG, type ProviderDefinition } from "../lib/providers";
 import { snapshotRemainingPercent, sortProviderIdsByRisk } from "../lib/providerPresentation";
@@ -14,26 +15,23 @@ import { ProviderLogoSlider } from "./ProviderLogoSlider";
 import { QuotaHistoryCurve } from "./QuotaHistoryCurve";
 import { EMPTY_UPDATE_STATE, UpdatePanel, type UpdateViewState } from "./UpdatePanel";
 import { ErrorBoundary } from "./ErrorBoundary";
+import { ResetOutlook } from "./ResetOutlook";
 
 const UsageInsightsPanel = lazy(() => import("./UsageInsightsPanel").then((module) => ({ default: module.UsageInsightsPanel })));
-const RESET_FORECAST_MAX_AGE_MS = 6 * 60 * 60_000;
-const CLOCK_FUTURE_TOLERANCE_MS = 5 * 60_000;
 
-function useMinuteClock(): Date {
+function useMinuteClock(refreshKey?: string): Date {
   const [now, setNow] = useState(() => new Date());
+  const previousKey = useRef(refreshKey);
+  useEffect(() => {
+    if (previousKey.current === refreshKey) return;
+    previousKey.current = refreshKey;
+    setNow(new Date());
+  }, [refreshKey]);
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 60_000);
     return () => window.clearInterval(timer);
   }, []);
   return now;
-}
-
-function freshResetForecast(forecast: ResetForecast | null | undefined, now: Date): ResetForecast | null {
-  if (!forecast) return null;
-  const fetchedAt = new Date(forecast.fetchedAt).getTime();
-  if (!Number.isFinite(fetchedAt)) return null;
-  const age = now.getTime() - fetchedAt;
-  return age >= -CLOCK_FUTURE_TOLERANCE_MS && age <= RESET_FORECAST_MAX_AGE_MS ? forecast : null;
 }
 
 interface Props {
@@ -577,7 +575,7 @@ export const QuotaCard = memo(function QuotaCard({
   onProviderListPreferenceChange,
   collapsing = false,
 }: Props) {
-  const now = useMinuteClock();
+  const now = useMinuteClock(snapshot.updatedAt);
   const [showCreditTip, setShowCreditTip] = useState(initialShowCreditTip);
   const [insightsOpen, setInsightsOpen] = useState(initialInsightsOpen);
   const [localProviderListPreference, setLocalProviderListPreference] = useState<boolean | null>(null);
@@ -913,7 +911,7 @@ export const QuotaCard = memo(function QuotaCard({
               {visibleResetForecast ? (
                 <button
                   type="button"
-                  className={`reset-forecast${visibleResetForecast.resetAnnounced ? " reset-forecast--announced" : ""}`}
+                  className="reset-forecast"
                   title={resetForecastTitle(language, visibleResetForecast)}
                   aria-label={resetForecastTitle(language, visibleResetForecast)}
                   onMouseDown={(event) => event.stopPropagation()}
@@ -922,7 +920,7 @@ export const QuotaCard = memo(function QuotaCard({
                   <Gauge weight="bold" />
                   <span className="reset-forecast-copy">
                     <small>{t.publicResetSignal}</small>
-                    <strong>{resetForecastLabel(language, visibleResetForecast.score, visibleResetForecast.windowHours, visibleResetForecast.resetAnnounced)}</strong>
+                    <strong>{resetSignalSummary(visibleResetForecast, language === "en")}</strong>
                   </span>
                 </button>
               ) : null}
@@ -1043,6 +1041,7 @@ export const QuotaCard = memo(function QuotaCard({
       </aside> : null}
       </>
       )}
+      {!insightsOpen && snapshot.provider === "codex" ? <ResetOutlook snapshot={snapshot} history={history} forecast={visibleResetForecast} now={now} language={language} onOpenSource={onOpenResetForecast} /> : null}
       </div>
 
       <div

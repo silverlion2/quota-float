@@ -70,7 +70,7 @@ describe("widget transitions", () => {
     expect(snapshots).toHaveLength(1);
     expect(snapshots[0]).toMatchObject({ provider: "codex", displayName: "CODEX", plan: "PRO" });
     expect(cached).toMatchObject({ freshness: "fresh", snapshots: [{ provider: "codex" }] });
-    expect(forecast).toMatchObject({ confidence: "medium", sourceCount: 3 });
+    expect(forecast).toMatchObject({ confidence: "low", sourceCount: 3 });
     expect(usage.buckets.length).toBeGreaterThan(0);
     expect(extensions).toMatchObject({ status: "ok", entries: [{ name: "example-docs" }, { name: "example-browser" }, { name: "example-review" }, { name: "example-design@local" }] });
     expect(diagnostics).toMatchObject({ authenticated: true, profileName: "coding-plan_personal" });

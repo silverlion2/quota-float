@@ -1375,6 +1375,18 @@ select:focus-visible {
 .reset-forecast { display: inline-flex; align-items: center; gap: 5px; text-align: left; }
 .reset-forecast > svg { width: 12px; height: 12px; flex: none; }
 .reset-forecast-copy { min-width: 0; display: grid; gap: 1px; }
+.reset-outlook { grid-column: 1 / -1; min-width: 0; border-top: 1px solid var(--ui-border); color: var(--ui-text); font-size: 10px; }
+.reset-outlook summary { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 5px; padding: 9px 2px; cursor: pointer; }
+.reset-outlook summary::before { content: "+"; }
+.reset-outlook[open] summary::before { content: "−"; }
+.reset-outlook summary strong { margin-left: auto; font-variant-numeric: tabular-nums; }
+.reset-outlook-body { display: grid; gap: 8px; max-height: 260px; overflow-y: auto; padding: 2px 5px 9px 2px; }
+.reset-outlook p, .reset-outlook h4, .reset-outlook dl { margin: 0; }
+.reset-outlook dl > div { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; }
+.reset-outlook dd { margin: 0; font-weight: 700; text-align: right; }
+.reset-outlook-note, .reset-outlook-source small { color: var(--ui-muted); line-height: 1.5; }
+.reset-outlook-source { display: grid; gap: 3px; border-top: 1px solid var(--ui-border); padding-top: 6px; }
+.reset-outlook-source button { font: inherit; color: inherit; text-align: left; padding: 4px 0; background: transparent; border: 0; cursor: pointer; }
 .reset-forecast-copy small { color: currentColor; font-size: 6px; font-weight: 760; letter-spacing: .08em; line-height: 1; text-transform: uppercase; opacity: .62; }
 .reset-forecast-copy strong { font-size: 8px; font-weight: 760; line-height: 1.1; white-space: nowrap; }
 .primary-metric span { font-size: var(--number-size, 46px); }

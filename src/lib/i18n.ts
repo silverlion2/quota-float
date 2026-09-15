@@ -254,11 +254,9 @@ export function resetForecastLabel(language: Language, score: number, hours: num
 
 export function resetForecastTitle(language: Language, forecast: ResetForecast): string {
   const count = forecast.sourceCount ?? forecast.sources?.length ?? 1;
-  const confidence = forecast.confidence ?? "low";
-  const sourceNames = forecast.sources?.map((source) => source.name).join(", ");
+  const sourceNames = forecast.sources?.filter((source) => source.included !== false).map((source) => source.name).join(", ");
   if (language === "en") {
-    return `Uncalibrated public reset signal: ${count} source${count === 1 ? "" : "s"}, ${confidence} forecast confidence. Your provider-reported personal reset schedule remains authoritative; this signal is reference only.${sourceNames ? ` Sources: ${sourceNames}.` : ""} Open the primary source.`;
+    return `Uncalibrated public reset signal: ${count} source${count === 1 ? "" : "s"}. Source agreement is not prediction accuracy. Your provider-reported personal reset schedule remains authoritative; this signal is reference only.${sourceNames ? ` Sources: ${sourceNames}.` : ""} Open the primary source.`;
   }
-  const confidenceLabel = confidence === "high" ? "高" : confidence === "medium" ? "中" : "低/未校准";
-  return `未校准的公开重置信号：${count} 个来源，预测可信度${confidenceLabel}。平台返回的个人重置周期始终为准，本信号仅供参考。${sourceNames ? `来源：${sourceNames}。` : ""}打开主要来源。`;
+  return `未校准的公开重置信号：${count} 个来源，来源一致不代表预测准确。平台返回的个人重置周期始终为准，本信号仅供参考。${sourceNames ? `来源：${sourceNames}。` : ""}打开主要来源。`;
 }

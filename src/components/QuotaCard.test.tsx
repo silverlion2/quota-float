@@ -265,7 +265,7 @@ describe("QuotaCard platform ledger", () => {
     );
 
     expect(screen.getByText("Public reset signal")).toBeInTheDocument();
-    expect(screen.getByText("48h signal · 92\/100")).toBeInTheDocument();
+    expect(screen.getAllByText("48h signal · 92\/100").length).toBeGreaterThan(0);
     expect(screen.getByText("Personal cycle")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Uncalibrated public reset signal/i }));
     expect(onOpenResetForecast).toHaveBeenCalledWith("https://codexresetradar.com/");
@@ -505,7 +505,7 @@ describe("QuotaCard platform ledger", () => {
     expect(screen.getByText("Range observed")).toBeInTheDocument();
     expect(screen.getByText("Daily guide")).toBeInTheDocument();
     expect(screen.getByText("Public reset signal")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Public reset signal 92/100 · 48h · reference only" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "48h signal · 92/100 · 48h · reference only" })).toBeInTheDocument();
     expect(screen.getByText("WEEKDAY × HOUR")).toBeInTheDocument();
     expect(screen.getByText(/quota retention: 90-day full samples, then daily compaction; capacity 120,000 samples \/ 100,000 daily summaries/i)).toBeInTheDocument();
     expect(screen.getByText(/actual retained coverage starts Jul 15, 2026/i)).toBeInTheDocument();

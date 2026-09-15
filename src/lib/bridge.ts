@@ -230,11 +230,12 @@ export async function fetchCodexResetForecast(): Promise<ResetForecast | null> {
     expectedAt: null,
     sourceUrl: "https://codex-reset.com/",
     sourceCount: 3,
-    confidence: "medium",
+    confidence: "low",
+    quality: "consistent",
     sources: [
-      { name: "Codex Reset", score: 62, fetchedAt: new Date().toISOString(), sourceUrl: "https://codex-reset.com/" },
-      { name: "Codex Reset Radar", score: 59, fetchedAt: new Date().toISOString(), sourceUrl: "https://codexresetradar.com/" },
-      { name: "Will Codex Reset Today", score: 67, fetchedAt: new Date().toISOString(), sourceUrl: "https://codexreset.app/" },
+      { name: "Codex Reset", score: 62, fetchedAt: new Date().toISOString(), sourceUrl: "https://codex-reset.com/", lastResetAt: new Date(Date.now() - 3 * 86_400_000).toISOString(), included: true, baselineVerified: true },
+      { name: "Codex Reset Radar", score: 59, fetchedAt: new Date().toISOString(), sourceUrl: "https://codexresetradar.com/", lastResetAt: new Date(Date.now() - 3 * 86_400_000).toISOString(), included: true, baselineVerified: true },
+      { name: "Will Codex Reset Today", score: 67, fetchedAt: new Date().toISOString(), sourceUrl: "https://codexreset.app/", lastResetAt: new Date(Date.now() - 3 * 86_400_000).toISOString(), included: true, baselineVerified: true },
     ],
   };
   const { invoke } = await import("@tauri-apps/api/core");

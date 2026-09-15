@@ -16,6 +16,7 @@ import {
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { exportUsageData, fetchCodexTokenUsage, sendDesktopNotification } from "../lib/bridge";
 import { clampPercent, formatResetTime } from "../lib/format";
+import { resetSignalSummary } from "../lib/resetForecast";
 import { deliverNotificationOnce } from "../lib/notificationDelivery";
 import { OPENAI_PRICING_CATALOG } from "../lib/openaiPricing";
 import { calculateQuotaPace, paceBaselineKey, trackedQuotaWindows } from "../lib/quotaPace";
@@ -313,8 +314,8 @@ export function UsageInsightsPanel({
       : ` · ${resetForecast.sourceCount} 个公开来源 · ${resetForecast.confidence === "high" ? "高" : resetForecast.confidence === "medium" ? "中" : "低/未校准"}预测可信度`)
     : "";
   const forecastMeta = english
-    ? `Public reset signal ${Math.round(resetForecast?.score ?? 0)}/100 · ${forecastWindow}h${forecastSourceMeta} · reference only`
-    : `公开重置信号 ${Math.round(resetForecast?.score ?? 0)}/100 · ${forecastWindow} 小时${forecastSourceMeta} · 仅供参考`;
+    ? `${resetForecast ? resetSignalSummary(resetForecast, true) : "Public reset signal"} · ${forecastWindow}h${forecastSourceMeta} · reference only`
+    : `${resetForecast ? resetSignalSummary(resetForecast, false) : "公开重置信号"} · ${forecastWindow} 小时${forecastSourceMeta} · 仅供参考`;
   const tokenValue = (value: number): string => tokenLoading && !tokenReport ? "…" : knownTokenData ? compactNumber(value, language) : "—";
   const activeDays = knownTokenData ? tokenSummary.activeDays : quotaSummary.activeDays;
   const averageActiveDay = knownTokenData && tokenSummary.activeDays > 0 ? `${compactNumber(tokenSummary.totalTokens / tokenSummary.activeDays, language)} Token` : percent(quotaSummary.averageActiveDayPercent);
@@ -379,7 +380,7 @@ export function UsageInsightsPanel({
             <button type="button" className="usage-icon-action" onClick={() => void handleExport("csv")} aria-label={english ? "Export anonymized CSV" : "导出脱敏 CSV"} title={english ? "Export anonymized CSV" : "导出脱敏 CSV"}><DownloadSimple /></button>
             <button type="button" className="usage-icon-action" onClick={() => void handleExport("svg")} aria-label={english ? "Share SVG summary" : "生成分享卡片"} title={english ? "Share SVG summary" : "生成分享卡片"}><ShareNetwork /></button>
           </> : null}
-          {resetForecast && snapshot.provider === "codex" ? <button type="button" className="usage-reset-badge" onClick={() => onOpenResetForecast?.(resetForecast.sourceUrl)} aria-label={forecastMeta} title={forecastMeta}><Gauge weight="bold" />{`${Math.round(resetForecast.score)}/100`}</button> : null}
+          {resetForecast && snapshot.provider === "codex" ? <button type="button" className="usage-reset-badge" onClick={() => onOpenResetForecast?.(resetForecast.sourceUrl)} aria-label={forecastMeta} title={forecastMeta}><Gauge weight="bold" />{resetSignalSummary(resetForecast, english)}</button> : null}
           {onClose ? <button type="button" className="usage-close" onClick={onClose} aria-label={english ? "Close usage insights" : "关闭用量洞察"}><X /></button> : null}
         </div>
       </header>

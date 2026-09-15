@@ -64,6 +64,12 @@ export interface ResetForecast {
   sourceCount?: number;
   confidence?: "low" | "medium" | "high";
   sources?: ResetForecastSource[];
+  quality?: "limited" | "conflicting" | "consistent";
+  scoreMin?: number | null;
+  scoreMax?: number | null;
+  qualityReason?: string | null;
+  latestResetAt?: string | null;
+  exclusions?: { name: string; sourceUrl: string; lastResetAt: string | null; reason: string }[];
 }
 
 export interface ResetForecastSource {
@@ -71,6 +77,10 @@ export interface ResetForecastSource {
   score: number;
   fetchedAt: string;
   sourceUrl: string;
+  lastResetAt?: string | null;
+  included?: boolean;
+  baselineVerified?: boolean;
+  exclusionReason?: string | null;
 }
 
 export interface WidgetPreferences {

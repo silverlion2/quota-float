@@ -77,6 +77,25 @@ describe("Quota Float desktop widget", () => {
     await expect(browser.$("#root > *")).toBeExisting();
   });
 
+  it("shows the reset consumption plan with bounded source details", async () => {
+    await browser.$(".reset-outlook summary").click();
+    await browser.$(".reset-outlook[open]").waitForExist();
+    const plan = await browser.tauri.execute(() => {
+      const panel = document.querySelector<HTMLElement>(".reset-outlook")!;
+      const body = panel.querySelector<HTMLElement>(".reset-outlook-body")!;
+      return { text: panel.textContent, overflow: panel.scrollWidth - panel.clientWidth,
+        bodyHeight: body.clientHeight, sources: panel.querySelectorAll(".reset-outlook-source").length };
+    });
+    expect(plan.text).toContain("Target average");
+    expect(plan.text).toContain("pp/h");
+    expect(plan.text).toContain("Last reported reset");
+    expect(plan.sources).toBe(3);
+    expect(plan.overflow).toBeLessThanOrEqual(1);
+    expect(plan.bodyHeight).toBeLessThanOrEqual(280);
+    await browser.saveScreenshot("output/handoff/reset-consumption-plan.png");
+    await browser.$(".reset-outlook summary").click();
+  });
+
   it("shows the extension inventory and curated companions in the native control center", async () => {
     const inventory = await browser.tauri.execute(async (tauri) => tauri.core.invoke("fetch_codex_extensions")) as { status: string; entries: { name: string }[] };
     expect(inventory.status).toBe("ok");

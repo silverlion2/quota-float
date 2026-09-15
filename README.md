@@ -65,6 +65,7 @@ Updater artifacts are signed with the project's Tauri update key. Windows Authen
 
 - Real quota windows, exact remaining balances, unlimited-plan states, and reset-credit expiration times when available.
 - Daily quota pace guidance and alerts, configurable thresholds, quiet hours, and notification cooldowns.
+- Reset & consumption plan: see the weekly percentage points per hour needed before your personal reset, recent observed burn and projected unused quota. Public tracker details expose stale reset history, conflicting scores and missing evidence.
 - Per-provider adaptive refresh scheduling, a low-impact Project Focus mode, and monitoring pause controls for sources you do not need during active work.
 - Floating orb, persistent expansion, always-on-top control, provider rotation, drag-to-reorder, and localized tray actions.
 - Local quota timeline for resets, low-quota crossings, provider failures, recoveries, and updates: full samples for the latest 90 days, then daily endpoint/extrema compaction, bounded to 120,000 quota samples and 100,000 daily summaries.
