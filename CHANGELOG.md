@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.17 - 2026-09-17
 
 - Add custom local date ranges to Usage Insights, applying the same dates to Token totals, charts, filters, quota history and anonymized exports.
 - Correct rolling multi-day charts to include the starting boundary date and preserve the previous selection when custom dates are invalid.
