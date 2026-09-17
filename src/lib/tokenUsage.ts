@@ -1,7 +1,9 @@
 import type { CodexTokenUsageBucket, CodexTokenUsageReport } from "../types";
 import { OPENAI_PRICING_CATALOG, pricingForModel, ratesForModel } from "./openaiPricing";
 
-export type UsageRange = "today" | "24h" | "7d" | "30d" | "90d" | "all";
+export type UsagePresetRange = "today" | "24h" | "7d" | "30d" | "90d" | "all";
+export interface CustomUsageRange { startDate: string; endDate: string }
+export type UsageRange = UsagePresetRange | CustomUsageRange;
 export type UsageReportPeriod = "week" | "month";
 
 export const OPENAI_PRICING_SOURCE = OPENAI_PRICING_CATALOG.source;
@@ -119,6 +121,7 @@ export function usageCoverageStart(report: CodexTokenUsageReport, fallback = new
 }
 
 export function usageRangeStart(range: UsageRange, now = new Date(), firstAvailableAt = now): Date {
+  if (typeof range !== "string") return usageRangeBounds(range, now).start;
   if (range === "all") return firstAvailableAt > now ? now : firstAvailableAt;
   if (range === "today") return new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const hours = range === "24h" ? 24 : range === "7d" ? 7 * 24 : range === "30d" ? 30 * 24 : 90 * 24;
@@ -126,10 +129,36 @@ export function usageRangeStart(range: UsageRange, now = new Date(), firstAvaila
 }
 
 export function usageRangeBounds(range: UsageRange, now = new Date(), firstAvailableAt = now): { start: Date; end: Date; previousStart: Date; previousEnd: Date } {
+  if (typeof range !== "string") {
+    // Invalid drafts never widen a query or silently select another period.
+    if (!validateCustomUsageRange(range, now)) return { start: now, end: now, previousStart: now, previousEnd: now };
+    const start = parseLocalUsageDate(range.startDate)!;
+    const end = parseLocalUsageDate(range.endDate)!;
+    end.setDate(end.getDate() + 1);
+    const boundedEnd = new Date(Math.min(end.getTime(), now.getTime()));
+    return { start, end: boundedEnd, previousStart: new Date(start.getTime() - (boundedEnd.getTime() - start.getTime())), previousEnd: start };
+  }
   const start = usageRangeStart(range, now, firstAvailableAt);
   if (range === "all") return { start, end: now, previousStart: start, previousEnd: start };
   const duration = Math.max(1, now.getTime() - start.getTime());
   return { start, end: now, previousStart: new Date(start.getTime() - duration), previousEnd: start };
+}
+
+function parseLocalUsageDate(value: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [year, month, day] = value.split("-").map(Number);
+  if (year < 1970) return null;
+  const date = new Date(year, month - 1, day);
+  return localDateKey(date) === value ? date : null;
+}
+
+export function validateCustomUsageRange(range: CustomUsageRange, now = new Date()): boolean {
+  const start = parseLocalUsageDate(range.startDate);
+  const end = parseLocalUsageDate(range.endDate);
+  if (!start || !end || !Number.isFinite(now.getTime()) || start > end || range.endDate > localDateKey(now)) return false;
+  // Calendar days, independent of daylight-saving transitions.
+  const days = (Date.UTC(end.getFullYear(), end.getMonth(), end.getDate()) - Date.UTC(start.getFullYear(), start.getMonth(), start.getDate())) / 86_400_000 + 1;
+  return days <= 366;
 }
 
 export function estimateBucketCost(bucket: CodexTokenUsageBucket): TokenCostBreakdown | null {
@@ -336,7 +365,9 @@ export function buildCurrentPeriodUsageReport(
 export function buildApiBudgetForecast(summary: TokenUsageSummary, range: UsageRange, budgetUsd: number, now = new Date(), coverageStart = now, currentMonthUsd = summary.cost.totalUsd): ApiBudgetForecast {
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   const elapsedToday = Math.max(1 / 24, (now.getTime() - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) / 86_400_000);
-  const observedDays = range === "today" ? elapsedToday
+  const customBounds = typeof range !== "string" ? usageRangeBounds(range, now) : null;
+  const observedDays = customBounds ? Math.max(1 / 24, (customBounds.end.getTime() - customBounds.start.getTime()) / 86_400_000)
+    : range === "today" ? elapsedToday
     : range === "24h" ? 1
       : range === "7d" ? 7
         : range === "30d" ? 30
@@ -355,26 +386,24 @@ export function relativeChange(current: number, previous: number): number | null
   return previous > 0 ? ((current - previous) / previous) * 100 : null;
 }
 
-function seriesKeys(range: UsageRange, now: Date, start: Date): Array<{ key: string; label: string }> {
-  if (range === "today") {
-    return Array.from({ length: now.getHours() + 1 }, (_, hour) => ({ key: `${localDateKey(now)}-${String(hour).padStart(2, "0")}`, label: `${String(hour).padStart(2, "0")}:00` }));
-  }
-  if (range === "24h") {
-    const cursor = new Date(now);
+function seriesKeys(range: UsageRange, end: Date, start: Date): Array<{ key: string; label: string }> {
+  if (start >= end) return [];
+  if (range === "today" || range === "24h") {
+    const cursor = new Date(start);
     cursor.setMinutes(0, 0, 0);
-    cursor.setHours(cursor.getHours() - 23);
-    return Array.from({ length: 24 }, () => {
-      const value = { key: `${localDateKey(cursor)}-${String(cursor.getHours()).padStart(2, "0")}`, label: `${String(cursor.getHours()).padStart(2, "0")}:00` };
-      cursor.setHours(cursor.getHours() + 1);
-      return value;
-    });
+    const keys: Array<{ key: string; label: string }> = [];
+    while (cursor < end) {
+      keys.push({ key: `${localDateKey(cursor)}-${String(cursor.getHours()).padStart(2, "0")}`, label: `${String(cursor.getHours()).padStart(2, "0")}:00` });
+      cursor.setTime(cursor.getTime() + 3_600_000);
+    }
+    return keys;
   }
   if (range === "all") {
     const cursor = new Date(start.getFullYear(), start.getMonth(), 1, 12);
-    const end = new Date(now.getFullYear(), now.getMonth(), 1, 12);
+    const finalMonth = new Date(end.getFullYear(), end.getMonth(), 1, 12);
     const formatter = new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short" });
     const keys: Array<{ key: string; label: string }> = [];
-    while (cursor <= end) {
+    while (cursor <= finalMonth) {
       keys.push({
         key: `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`,
         label: formatter.format(cursor),
@@ -383,21 +412,21 @@ function seriesKeys(range: UsageRange, now: Date, start: Date): Array<{ key: str
     }
     return keys;
   }
-  const days = range === "7d" ? 7 : range === "30d" ? 30 : 90;
-  const cursor = new Date(now.getFullYear(), now.getMonth(), now.getDate() - days + 1, 12);
+  const cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
   const formatter = new Intl.DateTimeFormat(undefined, { month: "numeric", day: "numeric" });
-  return Array.from({ length: days }, () => {
-    const value = { key: localDateKey(cursor), label: formatter.format(cursor) };
+  const keys: Array<{ key: string; label: string }> = [];
+  while (cursor < end) {
+    keys.push({ key: localDateKey(cursor), label: formatter.format(cursor) });
     cursor.setDate(cursor.getDate() + 1);
-    return value;
-  });
+  }
+  return keys;
 }
 
 export function buildTokenSeries(report: CodexTokenUsageReport, range: UsageRange, now = new Date(), filters: TokenUsageFilters = {}): TokenSeriesPoint[] {
   const bounds = usageRangeBounds(range, now, usageCoverageStart(report, now));
   const hourly = range === "today" || range === "24h";
   const monthly = range === "all";
-  const points = new Map(seriesKeys(range, now, bounds.start).map((item) => [item.key, { ...item, inputTokens: 0, cachedInputTokens: 0, outputTokens: 0, totalTokens: 0, costUsd: 0 }]));
+  const points = new Map(seriesKeys(range, bounds.end, bounds.start).map((item) => [item.key, { ...item, inputTokens: 0, cachedInputTokens: 0, outputTokens: 0, totalTokens: 0, costUsd: 0 }]));
   for (const bucket of bucketsInWindow(report.buckets, bounds.start, bounds.end, filters)) {
     const date = new Date(bucket.bucketStart);
     const key = hourly

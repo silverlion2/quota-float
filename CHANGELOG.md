@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Add custom local date ranges to Usage Insights, applying the same dates to Token totals, charts, filters, quota history and anonymized exports.
+- Correct rolling multi-day charts to include the starting boundary date and preserve the previous selection when custom dates are invalid.
+- Keep reset forecasts visible through refresh failures and respect the validity of participating sources.
+- Align Codex Profile lifetime statistics with the account endpoint used by Codex Desktop, and include deduplicated archived sessions in local usage indexing.
+
 ## 0.3.16 - 2026-09-15
 
 - fix: validate reset evidence and add measured quota consumption planning

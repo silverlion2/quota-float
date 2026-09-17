@@ -22,7 +22,7 @@ vi.mock("../lib/bridge", () => ({
 
 import { UsageInsightsPanel } from "./UsageInsightsPanel";
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 const snapshot = (provider: ProviderSnapshot["provider"]): ProviderSnapshot => ({
   provider,
@@ -133,5 +133,54 @@ describe("UsageInsightsPanel token loading", () => {
     expect(screen.getByText("42,000,000,000 Token")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "All" }));
     expect(screen.getByText("42,000,000,000 Token")).toBeInTheDocument();
+  });
+
+  it("keeps the last applied range until a valid custom date range is applied", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 8, 17, 12));
+    mocks.fetchCodexTokenUsage.mockResolvedValue({ ...report, buckets: [{ ...report.buckets[0], bucketStart: new Date(2026, 8, 17, 11).toISOString() }] });
+    renderPanel(snapshot("codex"));
+    await screen.findByRole("img", { name: "24H token usage trend" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Custom" }));
+    fireEvent.change(screen.getByLabelText("From"), { target: { value: "2026-09-01" } });
+    fireEvent.change(screen.getByLabelText("Through"), { target: { value: "2026-09-18" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("1–366");
+    expect(screen.getByRole("img", { name: "24H token usage trend" })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("From"), { target: { value: "2026-09-10" } });
+    fireEvent.change(screen.getByLabelText("Through"), { target: { value: "2026-09-12" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    expect(screen.getByRole("button", { name: "Custom" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("img", { name: "2026-09-10 → 2026-09-12 recorded quota remaining curve" })).toBeInTheDocument();
+    expect(screen.getAllByText("No local Token records in this range and filter selection.")).toHaveLength(2);
+    expect(screen.getByText("42,000,000,000 Token")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "24H" }));
+    expect(screen.queryByLabelText("From")).not.toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "24H token usage trend" })).toBeInTheDocument();
+  });
+
+  it("limits historical quota samples to the selected dates and never substitutes today's quota", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 8, 17, 12));
+    const active = { ...snapshot("claude"), weeklyWindow: { remainingPercent: 15, resetsAt: new Date(2026, 8, 20).toISOString(), windowSeconds: 604800 } };
+    const history = [
+      { provider: "claude" as const, capturedAt: new Date(2026, 8, 14, 12).toISOString(), metricKind: "percent" as const, metric: 80, resetsAt: active.weeklyWindow.resetsAt, status: "ok" as const },
+      { provider: "claude" as const, capturedAt: new Date(2026, 8, 15, 0).toISOString(), metricKind: "percent" as const, metric: 50, resetsAt: active.weeklyWindow.resetsAt, status: "ok" as const },
+    ];
+    const view = render(<UsageInsightsPanel snapshot={active} snapshots={[active]} history={history} dailyUsage={[]} paceBaselines={{}} language="en" preferences={DEFAULT_WIDGET_PREFERENCES} />);
+    fireEvent.click(screen.getByRole("button", { name: "Custom" }));
+    fireEvent.change(screen.getByLabelText("From"), { target: { value: "2026-09-14" } });
+    fireEvent.change(screen.getByLabelText("Through"), { target: { value: "2026-09-14" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    const card = view.container.querySelector(".usage-quota-trend-card")!;
+    expect(card.querySelector("header strong")).toHaveTextContent("80%");
+    expect(card.querySelectorAll(".quota-history-sample")).toHaveLength(1);
+    fireEvent.change(screen.getByLabelText("From"), { target: { value: "2026-09-10" } });
+    fireEvent.change(screen.getByLabelText("Through"), { target: { value: "2026-09-10" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    expect(card.querySelector("header strong")).toHaveTextContent("—");
+    expect(card.querySelectorAll(".quota-history-sample")).toHaveLength(0);
   });
 });

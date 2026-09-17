@@ -1725,8 +1725,15 @@ button.usage-stat-card:hover { border-color: color-mix(in srgb, var(--accent-col
 .usage-refresh:disabled { cursor: wait; opacity: .66; }
 .usage-refresh svg { width: 12px; height: 12px; }
 .usage-refresh:disabled svg { animation: diagnostics-spin 1s linear infinite; }
+.usage-custom-range { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; font-size: 10px; color: var(--ui-muted); }
+.usage-custom-range label { display: grid; gap: 4px; }
+.usage-custom-range :is(input, button) { padding: 5px; border: 1px solid var(--ui-border); border-radius: 6px; color: var(--ui-text); background: var(--ui-surface); font: inherit; }
+.usage-custom-range small { flex-basis: 100%; }
+.usage-custom-range [role="alert"] { color: var(--ui-danger); }
+.quota-card--theme-dark .usage-custom-range input { color-scheme: dark; }
+.quota-card--theme-light .usage-custom-range input { color-scheme: light; }
 
-.usage-summary-grid { min-width: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.usage-summary-grid { min-width: 0; display: grid; }
 .usage-summary-grid .usage-stat-card {
   min-height: 67px;
   padding: 8px 9px 7px;
@@ -1996,8 +2003,6 @@ button.usage-stat-card:hover { border-color: color-mix(in srgb, var(--accent-col
 /* Unified semantic palette: every expanded surface inherits the selected style and appearance. */
 .quota-card {
   --ui-text: #172131;
-  --ui-muted: rgba(23,33,49,.56);
-  --ui-faint: rgba(23,33,49,.38);
   --ui-border: rgba(35,73,119,.11);
   --ui-panel: #eef3f8;
   --ui-surface: rgba(255,255,255,.42);
@@ -2021,8 +2026,6 @@ button.usage-stat-card:hover { border-color: color-mix(in srgb, var(--accent-col
 }
 .quota-card--style-paper.quota-card--theme-light {
   --ui-text: #332a22;
-  --ui-muted: rgba(59,45,34,.6);
-  --ui-faint: rgba(59,45,34,.4);
   --ui-border: rgba(111,80,52,.16);
   --ui-panel: #f3eadb;
   --ui-surface: rgba(255,252,244,.4);
@@ -2034,8 +2037,6 @@ button.usage-stat-card:hover { border-color: color-mix(in srgb, var(--accent-col
 }
 .quota-card--theme-dark {
   --ui-text: #edf2f5;
-  --ui-muted: rgba(233,240,244,.58);
-  --ui-faint: rgba(233,240,244,.36);
   --ui-border: rgba(255,255,255,.085);
   --ui-panel: #141b24;
   --ui-surface: rgba(255,255,255,.038);
@@ -2053,8 +2054,6 @@ button.usage-stat-card:hover { border-color: color-mix(in srgb, var(--accent-col
 }
 .quota-card--style-paper.quota-card--theme-dark {
   --ui-text: #f3eee8;
-  --ui-muted: rgba(243,238,232,.58);
-  --ui-faint: rgba(243,238,232,.36);
   --ui-border: rgba(210,188,164,.13);
   --ui-panel: #1f1b18;
   --ui-surface: rgba(255,248,238,.035);

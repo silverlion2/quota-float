@@ -36,7 +36,11 @@ import {
   usageCoverageStart,
   type TokenUsageFilters,
   type UsageReportPeriod,
+  type CustomUsageRange,
+  type UsagePresetRange,
   type UsageRange,
+  validateCustomUsageRange,
+  usageRangeBounds,
 } from "../lib/tokenUsage";
 import { buildCodexBillingPlanComparison } from "../lib/billingPlan";
 import { buildPeriodUsageJson, buildPricingCatalogJson, buildUsageCsv, buildUsageJson, buildUsageShareSvg } from "../lib/usageExport";
@@ -76,7 +80,7 @@ interface Props {
 
 type ChartMode = "token" | "cost";
 type UsageExport = "csv" | "json" | "svg" | "pricing";
-const RANGE_OPTIONS: UsageRange[] = ["today", "24h", "7d", "30d", "90d", "all"];
+const RANGE_OPTIONS: UsagePresetRange[] = ["today", "24h", "7d", "30d", "90d", "all"];
 
 function percent(value: number | null, digits = 1): string {
   return value === null ? "—" : `${value.toFixed(digits).replace(/\.0$/, "")}%`;
@@ -105,13 +109,19 @@ function changeLabel(value: number | null): string | null {
 }
 
 function rangeDayCount(range: UsageRange, allDays = 90): number {
+  if (typeof range === "object") return Math.max(1, Math.round((new Date(`${range.endDate}T00:00:00`).getTime() - new Date(`${range.startDate}T00:00:00`).getTime()) / 86_400_000) + 1);
   return range === "today" ? 1 : range === "24h" ? 2 : range === "7d" ? 7 : range === "30d" ? 30 : range === "90d" ? 90 : allDays;
 }
 
 function rangeLabel(range: UsageRange, english: boolean): string {
+  if (typeof range === "object") return `${range.startDate} → ${range.endDate}`;
   if (range === "today") return english ? "Today" : "今天";
   if (range === "all") return english ? "All" : "全部";
   return range.toUpperCase();
+}
+
+function dateInputValue(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 function heatLevel(value: number, maximum: number): 0 | 1 | 2 | 3 | 4 {
@@ -141,6 +151,10 @@ export function UsageInsightsPanel({
 }: Props) {
   const english = language === "en";
   const [range, setRange] = useState<UsageRange>("24h");
+  const [customStartDraft, setCustomStartDraft] = useState(() => dateInputValue(new Date(Date.now() - 6 * 86_400_000)));
+  const [customEndDraft, setCustomEndDraft] = useState(() => dateInputValue(new Date()));
+  const [customRangeError, setCustomRangeError] = useState(false);
+  const [customRangeOpen, setCustomRangeOpen] = useState(false);
   const [chartMode, setChartMode] = useState<ChartMode>("token");
   const [modelFilter, setModelFilter] = useState("");
   const [projectFilter, setProjectFilter] = useState("");
@@ -173,24 +187,21 @@ export function UsageInsightsPanel({
   );
   const providerHistoryStart = retainedQuotaStart?.getTime() ?? null;
   const allQuotaDays = providerHistoryStart === null ? 1 : Math.max(1, Math.ceil((now.getTime() - providerHistoryStart) / 86_400_000) + 1);
+  const rangeBounds = useMemo(() => usageRangeBounds(range, now, retainedQuotaStart ?? now), [now, range, retainedQuotaStart]);
+  const calendarNow = typeof range === "object" ? new Date(`${range.endDate}T12:00:00`) : now;
   const calendar = useMemo(
-    () => buildUsageCalendar(dailyUsage, history, snapshot.provider, now, rangeDayCount(range, allQuotaDays)),
-    [allQuotaDays, dailyUsage, history, range, snapshot.provider],
+    () => buildUsageCalendar(dailyUsage, history, snapshot.provider, calendarNow, rangeDayCount(range, allQuotaDays)),
+    [allQuotaDays, calendarNow, dailyUsage, history, range, snapshot.provider],
   );
   const quotaSummary = useMemo(() => usageSummary(calendar), [calendar]);
-  const quotaRangeHours = range === "all" ? null
-    : range === "7d" ? 7 * 24
-      : range === "30d" ? 30 * 24
-        : range === "90d" ? 90 * 24
-          : 24;
+  const quotaRangeHours = Math.max(1 / 3_600_000, (rangeBounds.end.getTime() - rangeBounds.start.getTime()) / 3_600_000);
+  const customHistoricalRange = typeof range === "object";
   const quotaTrend = useMemo(
-    () => recentQuotaTrend(history, snapshot.provider, remaining, now, quotaRangeHours),
-    [history, quotaRangeHours, remaining, snapshot.provider],
+    () => recentQuotaTrend(customHistoricalRange ? history.filter((point) => Date.parse(point.capturedAt) >= rangeBounds.start.getTime() && Date.parse(point.capturedAt) < rangeBounds.end.getTime()) : history, snapshot.provider, customHistoricalRange ? null : remaining, rangeBounds.end, quotaRangeHours),
+    [customHistoricalRange, history, quotaRangeHours, rangeBounds.start, rangeBounds.end, remaining, snapshot.provider],
   );
-  const quotaCurveHours = quotaRangeHours ?? Math.max(24, quotaTrend.length > 0
-    ? (now.getTime() - Date.parse(quotaTrend[0].capturedAt)) / 3_600_000
-    : 24);
-  const rangeObserved = range === "24h" || range === "today" ? observedTrendUse(quotaTrend) : quotaSummary.observedUsedPercent;
+  const quotaCurveHours = quotaRangeHours;
+  const rangeObserved = (range === "24h" || range === "today") ? observedTrendUse(quotaTrend) : quotaSummary.observedUsedPercent;
   const cycleUsed = remaining === null ? null : 100 - remaining;
 
   const loadTokenUsage = useCallback((force = false, rebuild = false) => {
@@ -301,8 +312,12 @@ export function UsageInsightsPanel({
   const chartMaximum = Math.max(0, ...tokenSeries.map((point) => chartMode === "cost" ? point.costUsd : point.totalTokens));
   const heatMaximum = Math.max(0, ...heatmap.map((cell) => chartMode === "cost" ? cell.costUsd : cell.tokens));
   const knownTokenData = snapshot.provider === "codex" && tokenSummary !== null && tokenSummary.totalTokens > 0;
+  const emptyTokenMessage = tokenReport && snapshot.provider === "codex"
+    ? (english ? "No local Token records in this range and filter selection." : "所选区间与筛选条件下没有本地 Token 记录。")
+    : (english ? "Token metadata is currently available for Codex only." : "目前仅 Codex 提供 Token 元数据。");
   const weekdayLabels = english ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] : ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
   const rangeText = rangeLabel(range, english);
+  const isCustomRange = typeof range === "object";
   const tokenCoverageStart = tokenReport ? usageCoverageStart(tokenReport, now) : null;
   const coverageDate = tokenCoverageStart && tokenReport?.buckets.length
     ? new Intl.DateTimeFormat(english ? "en-US" : "zh-CN", { year: "numeric", month: "short", day: "numeric" }).format(tokenCoverageStart)
@@ -393,11 +408,25 @@ export function UsageInsightsPanel({
 
       <div className="usage-toolbar">
         <div className="usage-range-tabs" role="group" aria-label={english ? "Usage range" : "用量区间"}>
-          {RANGE_OPTIONS.map((option) => <button type="button" key={option} className={range === option ? "is-active" : ""} aria-pressed={range === option} onClick={() => setRange(option)}>{rangeLabel(option, english)}</button>)}
+          {RANGE_OPTIONS.map((option) => <button type="button" key={option} className={range === option ? "is-active" : ""} aria-pressed={range === option} onClick={() => { setCustomRangeOpen(false); setRange(option); }}>{rangeLabel(option, english)}</button>)}
+          <button type="button" className={isCustomRange ? "is-active" : ""} aria-pressed={isCustomRange} aria-expanded={customRangeOpen} onClick={() => { setCustomRangeOpen(true); setCustomRangeError(false); }}>{english ? "Custom" : "自定义"}</button>
         </div>
         <label className="usage-provider-filter"><span>{english ? "Provider" : "平台"}</span><select value={snapshot.provider} onChange={(event) => onSelectProvider?.(event.target.value as ProviderId)}>{snapshots.map((item) => <option key={item.provider} value={item.provider}>{item.displayName}</option>)}</select></label>
         {snapshot.provider === "codex" ? <button type="button" className="usage-refresh" disabled={tokenLoading} onClick={() => loadTokenUsage(true, false)} aria-label={english ? "Refresh token metadata" : "刷新 Token 元数据"} title={english ? "Refresh token metadata" : "刷新 Token 元数据"}>{tokenLoading ? <SpinnerGap /> : <ArrowClockwise />}</button> : null}
       </div>
+
+      {customRangeOpen ? <div className="usage-custom-range" aria-label={english ? "Custom usage date range" : "自定义用量日期范围"}>
+        <label><span>{english ? "From" : "开始"}</span><input type="date" min="1970-01-01" max={dateInputValue(now)} value={customStartDraft} onChange={(event) => setCustomStartDraft(event.target.value)} /></label>
+        <label><span>{english ? "Through" : "结束"}</span><input type="date" min="1970-01-01" max={dateInputValue(now)} value={customEndDraft} onChange={(event) => setCustomEndDraft(event.target.value)} /></label>
+        <button type="button" onClick={() => {
+          const next: CustomUsageRange = { startDate: customStartDraft, endDate: customEndDraft };
+          if (!validateCustomUsageRange(next, now)) { setCustomRangeError(true); return; }
+          setCustomRangeError(false);
+          setRange(next);
+        }}>{english ? "Apply" : "应用"}</button>
+        <small>{english ? "Local dates · includes end date · up to 366 days" : "本地日期 · 包含结束日 · 最多 366 天"}</small>
+        {customRangeError ? <small role="alert">{english ? "Choose 1–366 valid days ending on or before today." : "请选择 1–366 天且不晚于今天的有效区间。"}</small> : null}
+      </div> : null}
 
       {snapshot.provider === "codex" ? <div className="usage-dimension-filters" aria-label={english ? "Token dimensions" : "Token 维度筛选"}>
         <label><span>{english ? "Model" : "模型"}</span><select value={modelFilter} onChange={(event) => setModelFilter(event.target.value)}><option value="">{english ? "All models" : "全部模型"}</option>{filterOptions.models.map((value) => <option key={value}>{value}</option>)}</select></label>
@@ -488,22 +517,22 @@ export function UsageInsightsPanel({
       <article className="usage-quota-trend-card">
         <header>
           <span>{english ? `QUOTA REMAINING · ${rangeText.toUpperCase()}` : `剩余额度 · ${rangeText}`}</span>
-          <strong>{percent(quotaTrend.at(-1)?.remainingPercent ?? remaining, 1)}</strong>
+          <strong>{percent(quotaTrend.at(-1)?.remainingPercent ?? (isCustomRange ? null : remaining), 1)}</strong>
         </header>
         <QuotaHistoryCurve
           points={quotaTrend}
           language={language}
           variant="insights"
-          now={now}
+          now={rangeBounds.end}
           hours={quotaCurveHours}
-          ariaLabel={range === "24h"
+          ariaLabel={range === "24h" && !isCustomRange
             ? (english ? "24-hour quota remaining curve" : "24 小时剩余额度曲线")
             : (english ? `${rangeText} recorded quota remaining curve` : `${rangeText}已记录剩余额度曲线`)}
         />
         <footer>
-          <span>{range === "all" ? (quotaStartDate ?? (english ? "First record" : "首次记录")) : range === "today" ? (english ? "Today" : "今天") : `${rangeText} ${english ? "ago" : "前"}`}</span>
+          <span>{range === "all" ? (quotaStartDate ?? (english ? "First record" : "首次记录")) : isCustomRange ? range.startDate : range === "today" ? (english ? "Today" : "今天") : `${rangeText} ${english ? "ago" : "前"}`}</span>
           <small>{english ? "Hover or use arrow keys to inspect each sample" : "悬停或使用方向键查看每个时间点"}</small>
-          <span>{english ? "Now" : "现在"}</span>
+          <span>{isCustomRange ? range.endDate : (english ? "Now" : "现在")}</span>
         </footer>
       </article>
 
@@ -521,13 +550,13 @@ export function UsageInsightsPanel({
               const showLabel = index === 0 || index === tokenSeries.length - 1 || index % Math.max(1, Math.ceil(tokenSeries.length / 6)) === 0;
               return <span className="usage-bar-slot" key={point.key} title={`${point.label} · ${chartMode === "cost" ? money(point.costUsd) : compactNumber(point.totalTokens, language)}`}><i className={`usage-bar${chartMode === "cost" ? " usage-bar--cost" : ""}`} style={{ "--bar-height": `${height}%` } as CSSProperties}>{chartMode === "token" ? <><b className="usage-bar-output" style={{ flexBasis: `${point.outputTokens / total * 100}%` }} /><b className="usage-bar-input" style={{ flexBasis: `${uncached / total * 100}%` }} /><b className="usage-bar-cached" style={{ flexBasis: `${point.cachedInputTokens / total * 100}%` }} /></> : null}</i>{showLabel ? <small>{point.label}</small> : null}</span>;
             })}
-          </div> : <div className="usage-chart-empty">{tokenLoading ? <><SpinnerGap />{english ? "Scanning local token metadata…" : "正在扫描本地 Token 元数据…"}</> : tokenError ?? (english ? "Token metadata is currently available for Codex only." : "目前仅 Codex 提供 Token 元数据。")}</div>}
+          </div> : <div className="usage-chart-empty">{tokenLoading ? <><SpinnerGap />{english ? "Scanning local token metadata…" : "正在扫描本地 Token 元数据…"}</> : tokenError ?? emptyTokenMessage}</div>}
           <footer><span className="usage-legend-input" />{english ? "uncached input" : "非缓存输入"}<span className="usage-legend-cached" />{english ? "cached" : "缓存"}<span className="usage-legend-output" />{english ? "output" : "输出"}</footer>
         </article>
 
         <article className="usage-hourly-card">
           <header><span><CalendarDots weight="duotone" />{english ? "WEEKDAY × HOUR" : "星期 × 小时"}</span><small>{rangeText} · {chartMode === "cost" ? (english ? "API equivalent" : "API 等价费用") : "Token"}</small></header>
-          {knownTokenData ? <div className="usage-hourly-matrix" role="img" aria-label={chartMode === "cost" ? english ? "Hourly API-equivalent cost heatmap" : "分时 API 等价费用热力图" : english ? "Hourly token activity heatmap" : "分时 Token 活跃热力图"}>{weekdayLabels.map((label, weekday) => <div className="usage-hour-row" key={label}><span>{label}</span><div>{heatmap.slice(weekday * 24, weekday * 24 + 24).map((cell) => { const value = chartMode === "cost" ? cell.costUsd : cell.tokens; return <i className={`usage-hour-cell usage-hour-cell--${heatLevel(value, heatMaximum)}`} key={cell.hour} title={`${label} ${String(cell.hour).padStart(2, "0")}:00 · ${chartMode === "cost" ? money(cell.costUsd) : compactNumber(cell.tokens, language)}`} />; })}</div></div>)}<div className="usage-hour-axis"><span>00</span><span>03</span><span>06</span><span>09</span><span>12</span><span>15</span><span>18</span><span>21</span></div></div> : <div className="usage-chart-empty usage-chart-empty--heat">{tokenLoading ? (english ? "Building hourly map…" : "正在生成分时图…") : (english ? "No hourly Token signal for this provider." : "该平台暂无分时 Token 信号。")}</div>}
+          {knownTokenData ? <div className="usage-hourly-matrix" role="img" aria-label={chartMode === "cost" ? english ? "Hourly API-equivalent cost heatmap" : "分时 API 等价费用热力图" : english ? "Hourly token activity heatmap" : "分时 Token 活跃热力图"}>{weekdayLabels.map((label, weekday) => <div className="usage-hour-row" key={label}><span>{label}</span><div>{heatmap.slice(weekday * 24, weekday * 24 + 24).map((cell) => { const value = chartMode === "cost" ? cell.costUsd : cell.tokens; return <i className={`usage-hour-cell usage-hour-cell--${heatLevel(value, heatMaximum)}`} key={cell.hour} title={`${label} ${String(cell.hour).padStart(2, "0")}:00 · ${chartMode === "cost" ? money(cell.costUsd) : compactNumber(cell.tokens, language)}`} />; })}</div></div>)}<div className="usage-hour-axis"><span>00</span><span>03</span><span>06</span><span>09</span><span>12</span><span>15</span><span>18</span><span>21</span></div></div> : <div className="usage-chart-empty usage-chart-empty--heat">{tokenLoading ? (english ? "Building hourly map…" : "正在生成分时图…") : tokenError ?? emptyTokenMessage}</div>}
         </article>
       </div>
 

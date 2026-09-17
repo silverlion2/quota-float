@@ -89,10 +89,12 @@ export function buildUsageCsv(report: CodexTokenUsageReport, range: UsageRange, 
 }
 
 export function buildUsageJson(report: CodexTokenUsageReport, range: UsageRange, filters: TokenUsageFilters = {}, now = new Date()): string {
+  const bounds = usageRangeBounds(range, now, usageCoverageStart(report, now));
   return JSON.stringify({
     schemaVersion: 1,
     exportedAt: now.toISOString(),
     range,
+    period: { start: bounds.start.toISOString(), endExclusive: bounds.end.toISOString() },
     pricing: {
       version: OPENAI_PRICING_CATALOG.version,
       verifiedAt: OPENAI_PRICING_CATALOG.verifiedAt,
@@ -146,6 +148,7 @@ function compact(value: number, language: Language): string {
 
 export function buildUsageShareSvg(summary: TokenUsageSummary, models: ModelUsageSummary[], budget: ApiBudgetForecast, range: UsageRange, language: Language, now = new Date()): string {
   const english = language === "en";
+  const rangeText = typeof range === "string" ? range.toUpperCase() : `${range.startDate} → ${range.endDate}`;
   const modelRows = models.slice(0, 3).map((model, index) => {
     const y = 420 + index * 62;
     const width = Math.max(8, Math.round(model.share * 390));
@@ -156,7 +159,7 @@ export function buildUsageShareSvg(summary: TokenUsageSummary, models: ModelUsag
   <defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#07110f"/><stop offset="1" stop-color="#111823"/></linearGradient><linearGradient id="accent"><stop stop-color="#66f2ba"/><stop offset="1" stop-color="#58a6ff"/></linearGradient></defs>
   <style>.eyebrow{font:700 14px ui-monospace,monospace;letter-spacing:3px;fill:#66f2ba}.title{font:700 42px ui-monospace,monospace;fill:#f3f7f5}.meta{font:500 15px ui-monospace,monospace;fill:#87958f}.label{font:600 14px ui-monospace,monospace;fill:#82908b}.value{font:700 30px ui-monospace,monospace;fill:#f3f7f5}.cost{fill:#66f2ba}.model{font:600 16px ui-monospace,monospace;fill:#dce6e1}.model-value{font:700 16px ui-monospace,monospace;fill:#66f2ba}.track{fill:#1d2825}.bar{fill:url(#accent)}.fine{font:500 12px ui-monospace,monospace;fill:#6f7d78}</style>
   <rect width="840" height="640" rx="34" fill="url(#bg)"/><rect x="28" y="28" width="784" height="584" rx="24" fill="none" stroke="#26342f"/>
-  <text x="72" y="84" class="eyebrow">VIBE USAGE · LOCAL FIRST</text><text x="72" y="142" class="title">${english ? "CODEX USAGE" : "CODEX 用量全景"}</text><text x="72" y="176" class="meta">${range.toUpperCase()} · ${now.toISOString().slice(0, 10)} · ${xml(OPENAI_PRICING_CATALOG.version)}</text>
+  <text x="72" y="84" class="eyebrow">VIBE USAGE · LOCAL FIRST</text><text x="72" y="142" class="title">${english ? "CODEX USAGE" : "CODEX 用量全景"}</text><text x="72" y="176" class="meta">${xml(rangeText)} · ${now.toISOString().slice(0, 10)} · ${xml(OPENAI_PRICING_CATALOG.version)}</text>
   <text x="72" y="238" class="label">${english ? "TOTAL TOKEN" : "总 TOKEN"}</text><text x="72" y="278" class="value">${compact(summary.totalTokens, language)}</text>
   <text x="315" y="238" class="label">${english ? "API EQUIVALENT" : "API 等价费用"}</text><text x="315" y="278" class="value cost">$${summary.cost.totalUsd.toFixed(2)}</text>
   <text x="574" y="238" class="label">${english ? "SESSIONS" : "会话数"}</text><text x="574" y="278" class="value">${summary.sessions}</text>
