@@ -123,6 +123,8 @@ describe("QuotaCard platform ledger", () => {
 
   it.each(["dashboard", "provider-bar", "stacked", "cockpit"] as const)("reclaims single-provider space in %s and allows manual expansion", (expandedLayout) => {
     const { container } = render(<QuotaCard {...adaptiveProps} preferences={{ ...preferences, expandedLayout }} />);
+    expect(screen.getByText("Reset forecast & consumption plan")).toBeVisible();
+    expect(screen.getByText("No fresh public signal")).toBeInTheDocument();
     const card = container.querySelector(".quota-card")!;
     const width = expandedLayout === "cockpit" ? "400" : "360";
     expect(card).toHaveAttribute("data-content-width", width);
@@ -297,7 +299,7 @@ describe("QuotaCard platform ledger", () => {
     expect(screen.getByText("Personal cycle")).toBeInTheDocument();
   });
 
-  it("hides public reset signals while the provider snapshot is stale", () => {
+  it("keeps independent public reset signals while the provider snapshot is stale", () => {
     render(
       <QuotaCard
         snapshot={{ ...codex, status: "stale" }}
@@ -319,7 +321,8 @@ describe("QuotaCard platform ledger", () => {
       />,
     );
 
-    expect(screen.queryByText("Public reset signal")).not.toBeInTheDocument();
+    expect(screen.getByText("Public reset signal")).toBeInTheDocument();
+    expect(screen.queryByText("Target average")).not.toBeInTheDocument();
   });
 
   it("lists real platform values and selects a connected platform", () => {
@@ -492,6 +495,7 @@ describe("QuotaCard platform ledger", () => {
     expect(insightsTab).toHaveAttribute("aria-selected", "true");
     expect(quotaTab).toHaveAttribute("aria-selected", "false");
     expect(await screen.findByRole("region", { name: "Usage insights" }, { timeout: 10_000 })).toBeInTheDocument();
+    expect(screen.getByText("Reset forecast & consumption plan")).toBeVisible();
     expect(screen.getByRole("button", { name: "24H" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("img", { name: "24-hour quota remaining curve" })).toBeInTheDocument();
     const allHistory = screen.getByRole("button", { name: "All" });
@@ -500,7 +504,7 @@ describe("QuotaCard platform ledger", () => {
     expect(screen.getByRole("img", { name: "All recorded quota remaining curve" })).toBeInTheDocument();
     expect(screen.getByText("QUOTA REMAINING · ALL")).toBeInTheDocument();
     expect(screen.getAllByText("API equivalent").length).toBeGreaterThan(0);
-    expect(screen.getByText("Total Token")).toBeInTheDocument();
+    expect(screen.getByText("Local range Token")).toBeInTheDocument();
     expect(screen.getByText("Used this cycle")).toBeInTheDocument();
     expect(screen.getByText("Range observed")).toBeInTheDocument();
     expect(screen.getByText("Daily guide")).toBeInTheDocument();

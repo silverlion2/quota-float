@@ -17,7 +17,7 @@ const MAX_SCAN_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const MAX_INDEX_BYTES: u64 = 128 * 1024 * 1024;
 const MAX_METADATA_LINE_BYTES: usize = 64 * 1024;
 const LONG_CONTEXT_THRESHOLD: u64 = 272_000;
-const INDEX_SCHEMA_VERSION: u8 = 4;
+const INDEX_SCHEMA_VERSION: u8 = 5;
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -112,6 +112,7 @@ struct SessionContext {
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default, rename_all = "camelCase")]
 struct CachedSessionFile {
+    source_key: String,
     size: u64,
     modified_millis: u64,
     cursor: u64,
@@ -570,6 +571,7 @@ fn scan_session_file(
     }
     Ok((
         CachedSessionFile {
+            source_key: String::new(),
             size: file_size,
             modified_millis,
             cursor,
@@ -622,12 +624,23 @@ fn collect_from(
     let now = Utc::now();
     let cutoff = DateTime::<Utc>::from(SystemTime::UNIX_EPOCH);
     let system_cutoff = SystemTime::UNIX_EPOCH;
-    if !session_root.is_dir() {
+    let archived_root = session_root
+        .parent()
+        .map(|root| root.join("archived_sessions"));
+    if !session_root.is_dir() && !archived_root.as_ref().is_some_and(|root| root.is_dir()) {
         return Err("Codex session metadata is unavailable.".to_string());
     }
 
     let mut files = Vec::new();
     collect_session_files(session_root, system_cutoff, 0, &mut files);
+    if let Some(root) = &archived_root {
+        collect_session_files(root, system_cutoff, 0, &mut files);
+    }
+    files.sort_by_key(|entry| std::cmp::Reverse((entry.1, entry.0)));
+    // Codex rollout filenames end in the stable thread UUID. Moving a rollout
+    // into the archive (or briefly retaining both copies) must not add usage.
+    let mut seen = std::collections::BTreeSet::new();
+    files.retain(|(_, _, path)| seen.insert(session_identity(path, session_root)));
     files.sort_by_key(|entry| std::cmp::Reverse(entry.0));
     let discovered_files = files.len();
     files.truncate(MAX_SESSION_FILES);
@@ -641,12 +654,9 @@ fn collect_from(
     let mut truncated = discovered_files > files.len();
 
     for (modified, file_size, path) in files {
-        let relative = path
-            .strip_prefix(session_root)
-            .unwrap_or(&path)
-            .to_string_lossy()
-            .replace('\\', "/");
+        let relative = session_identity(&path, session_root);
         let file_key = index_file_key(&relative);
+        let source_key = index_file_key(&path.to_string_lossy());
         let modified_millis = system_time_millis(modified);
         let cached = index.files.remove(&file_key);
         if let Some(mut cached) = cached {
@@ -655,7 +665,8 @@ fn collect_from(
                     .map(|value| value.with_timezone(&Utc) >= cutoff)
                     .unwrap_or(false)
             });
-            if cached.size == file_size
+            if cached.source_key == source_key
+                && cached.size == file_size
                 && cached.modified_millis == modified_millis
                 && cached.cursor >= file_size
             {
@@ -663,7 +674,8 @@ fn collect_from(
                 next_files.insert(file_key, cached);
                 continue;
             }
-            let can_append = file_size >= cached.cursor
+            let can_append = cached.source_key == source_key
+                && file_size >= cached.cursor
                 && cached.cursor > 0
                 && modified_millis >= cached.modified_millis
                 && (file_size > cached.size || cached.cursor < file_size);
@@ -675,7 +687,7 @@ fn collect_from(
                 continue;
             }
             let context = if can_append {
-                cached.context
+                cached.context.clone()
             } else {
                 SessionContext {
                     session_key: anonymized_session_key(&relative),
@@ -683,7 +695,7 @@ fn collect_from(
                 }
             };
             let existing_buckets = if can_append {
-                cached.buckets
+                cached.buckets.clone()
             } else {
                 Vec::new()
             };
@@ -696,13 +708,17 @@ fn collect_from(
                 existing_buckets,
                 cutoff,
             ) {
-                Ok((scanned, bytes_read)) => {
+                Ok((mut scanned, bytes_read)) => {
+                    scanned.source_key = source_key;
                     scanned_files += 1;
                     incremental_files += usize::from(can_append);
                     scanned_bytes = scanned_bytes.saturating_add(bytes_read);
                     next_files.insert(file_key, scanned);
                 }
-                Err(_) => truncated = true,
+                Err(_) => {
+                    truncated = true;
+                    next_files.insert(file_key, cached);
+                }
             }
         } else {
             if scanned_bytes.saturating_add(file_size) > MAX_SCAN_BYTES {
@@ -722,7 +738,8 @@ fn collect_from(
                 Vec::new(),
                 cutoff,
             ) {
-                Ok((scanned, bytes_read)) => {
+                Ok((mut scanned, bytes_read)) => {
+                    scanned.source_key = source_key;
                     scanned_files += 1;
                     scanned_bytes = scanned_bytes.saturating_add(bytes_read);
                     next_files.insert(file_key, scanned);
@@ -804,9 +821,31 @@ fn collect_from(
 pub fn collect(cache_path: &Path, rebuild_index: bool) -> Result<CodexTokenUsageReport, String> {
     let session_root = codex_home()
         .map(|value| value.join("sessions"))
-        .filter(|value| value.is_dir())
         .ok_or_else(|| "Codex session metadata is unavailable.".to_string())?;
     collect_from(&session_root, cache_path, rebuild_index)
+}
+
+fn session_identity(path: &Path, session_root: &Path) -> String {
+    if let Some(stem) = path.file_stem().and_then(|value| value.to_str()) {
+        if let Some(id) = stem.get(stem.len().saturating_sub(36)..) {
+            if id.len() == 36
+                && id.bytes().enumerate().all(|(i, byte)| {
+                    if [8, 13, 18, 23].contains(&i) {
+                        byte == b'-'
+                    } else {
+                        byte.is_ascii_hexdigit()
+                    }
+                })
+            {
+                return id.to_ascii_lowercase();
+            }
+        }
+    }
+    // Nonstandard files remain distinct; never merge unrelated generic names.
+    path.strip_prefix(session_root.parent().unwrap_or(session_root))
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
 }
 
 #[cfg(test)]
@@ -938,6 +977,44 @@ mod tests {
         assert_eq!(incremental.incremental_files, 1);
         assert_eq!(incremental.matched_events, 2);
         assert!(incremental.scanned_bytes < fs::metadata(&session).unwrap().len());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn archived_rollouts_keep_stable_totals_across_moves_copies_and_restarts() {
+        let stamp = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = env::temp_dir().join(format!("quota-float-archive-{stamp}"));
+        let sessions = root.join("sessions");
+        let archived = root.join("archived_sessions");
+        fs::create_dir_all(&sessions).unwrap();
+        fs::create_dir_all(&archived).unwrap();
+        let name = "rollout-2026-09-17-00000000-0000-0000-0000-000000000001.jsonl";
+        let active = sessions.join(name);
+        let moved = archived.join(name);
+        let event = "{\"timestamp\":\"2026-09-17T00:00:00Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"last_token_usage\":{\"input_tokens\":100,\"cached_input_tokens\":80,\"output_tokens\":10,\"total_tokens\":110}}}}\n";
+        fs::write(&active, format!("{event}{}", event.replace("T00:", "T01:"))).unwrap();
+        let cache = root.join("index.json");
+        let total = |report: CodexTokenUsageReport| {
+            report
+                .buckets
+                .iter()
+                .map(|bucket| bucket.total_tokens)
+                .sum::<u64>()
+        };
+        assert_eq!(total(collect_from(&sessions, &cache, false).unwrap()), 220);
+        fs::copy(&active, &moved).unwrap();
+        assert_eq!(total(collect_from(&sessions, &cache, false).unwrap()), 220);
+        fs::write(&moved, event).unwrap(); // A shorter duplicate must not replace the full copy.
+        assert_eq!(total(collect_from(&sessions, &cache, false).unwrap()), 220);
+        fs::copy(&active, &moved).unwrap();
+        fs::remove_file(&active).unwrap();
+        assert_eq!(total(collect_from(&sessions, &cache, false).unwrap()), 220);
+        assert_eq!(total(collect_from(&sessions, &cache, false).unwrap()), 220);
+        fs::remove_dir(&sessions).unwrap();
+        assert_eq!(total(collect_from(&sessions, &cache, true).unwrap()), 220);
         fs::remove_dir_all(root).unwrap();
     }
 

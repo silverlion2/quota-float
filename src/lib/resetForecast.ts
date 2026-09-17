@@ -3,6 +3,15 @@ import type { ResetForecast } from "../types";
 const MAX_AGE_MS = 6 * 60 * 60_000;
 const FUTURE_TOLERANCE_MS = 5 * 60_000;
 
+export type ResetForecastLoadStatus = "loading" | "ready" | "cached" | "unavailable";
+
+export function settleResetForecast(previous: ResetForecast | null, incoming: ResetForecast | null, now: Date): { forecast: ResetForecast | null; status: ResetForecastLoadStatus } {
+  const fresh = freshResetForecast(incoming, now);
+  if (fresh) return { forecast: fresh, status: "ready" };
+  const cached = freshResetForecast(previous, now);
+  return { forecast: cached, status: cached ? "cached" : "unavailable" };
+}
+
 export function freshResetForecast(forecast: ResetForecast | null | undefined, now: Date): ResetForecast | null {
   if (!forecast || forecast.windowHours !== 48 || !Number.isFinite(forecast.score)
     || forecast.score < 0 || forecast.score > 100) return null;

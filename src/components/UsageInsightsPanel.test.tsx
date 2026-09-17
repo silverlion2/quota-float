@@ -1,18 +1,20 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_WIDGET_PREFERENCES } from "../lib/preferences";
 import type { CodexTokenUsageReport, ProviderSnapshot } from "../types";
 
 const mocks = vi.hoisted(() => ({
+  fetchCodexProfileStats: vi.fn(async () => ({ fetchedAt: new Date().toISOString(), lifetimeTokens: 42_000_000_000, peakDailyTokens: null })),
   fetchCodexTokenUsage: vi.fn(),
   exportUsageData: vi.fn(),
   sendDesktopNotification: vi.fn(),
 }));
 
 vi.mock("../lib/bridge", () => ({
+  fetchCodexProfileStats: mocks.fetchCodexProfileStats,
   fetchCodexTokenUsage: mocks.fetchCodexTokenUsage,
   exportUsageData: mocks.exportUsageData,
   sendDesktopNotification: mocks.sendDesktopNotification,
@@ -123,5 +125,13 @@ describe("UsageInsightsPanel token loading", () => {
 
     finishSecond(report);
     expect(await screen.findByRole("img", { name: "24H token usage trend" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cost" }));
+    expect(screen.getByRole("img", { name: "24H API-equivalent cost trend" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Hourly API-equivalent cost heatmap" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Token" }));
+    expect(screen.getByRole("img", { name: "Hourly token activity heatmap" })).toBeInTheDocument();
+    expect(screen.getByText("42,000,000,000 Token")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "All" }));
+    expect(screen.getByText("42,000,000,000 Token")).toBeInTheDocument();
   });
 });

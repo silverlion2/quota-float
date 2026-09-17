@@ -2,7 +2,7 @@ import { ArrowClockwise, ArrowSquareOut, ArrowsInSimple, ArrowsOutSimple, CheckC
 import { lazy, memo, Suspense, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { clampPercent, formatDateTime, formatResetDate, formatResetTime, quotaTier } from "../lib/format";
 import { copy, normalizeLanguage, resetForecastTitle } from "../lib/i18n";
-import { freshResetForecast, resetSignalSummary } from "../lib/resetForecast";
+import { freshResetForecast, resetSignalSummary, type ResetForecastLoadStatus } from "../lib/resetForecast";
 import { useModalDialog } from "../lib/modalDialog";
 import { normalizeProviderOrder, PROVIDER_CATALOG, type ProviderDefinition } from "../lib/providers";
 import { snapshotRemainingPercent, sortProviderIdsByRisk } from "../lib/providerPresentation";
@@ -58,6 +58,8 @@ interface Props {
   reconnecting?: boolean;
   recentCodexReset?: RecentCodexReset | null;
   resetForecast?: ResetForecast | null;
+  resetForecastStatus?: ResetForecastLoadStatus;
+  onRefreshResetForecast?: () => void;
   onOpenResetForecast?: (url: string) => void;
   paceBaselines?: Record<string, DailyPaceBaseline>;
   history?: QuotaHistoryPoint[];
@@ -548,6 +550,8 @@ export const QuotaCard = memo(function QuotaCard({
   reconnecting = false,
   recentCodexReset = null,
   resetForecast = null,
+  resetForecastStatus,
+  onRefreshResetForecast,
   onOpenResetForecast = () => undefined,
   paceBaselines = {},
   history = [],
@@ -681,7 +685,7 @@ export const QuotaCard = memo(function QuotaCard({
     ]));
   }, [history, now, providerDefinitions, showProviderHistory]);
   const resetMarker = snapshot.provider === "codex" && snapshot.status === "ok" && isRecentCodexReset(recentCodexReset, now) ? recentCodexReset : null;
-  const visibleResetForecast = snapshot.provider === "codex" && snapshot.status === "ok" ? freshResetForecast(resetForecast, now) : null;
+  const visibleResetForecast = snapshot.provider === "codex" ? freshResetForecast(resetForecast, now) : null;
 
   useEffect(() => setCockpitFocus(null), [preferences.expandedLayout, snapshot.provider]);
 
@@ -1041,7 +1045,7 @@ export const QuotaCard = memo(function QuotaCard({
       </aside> : null}
       </>
       )}
-      {!insightsOpen && snapshot.provider === "codex" ? <ResetOutlook snapshot={snapshot} history={history} forecast={visibleResetForecast} now={now} language={language} onOpenSource={onOpenResetForecast} /> : null}
+      {!insightsOpen && snapshot.provider === "codex" ? <ResetOutlook snapshot={snapshot} history={history} forecast={visibleResetForecast} loadStatus={resetForecastStatus} now={now} language={language} onOpenSource={onOpenResetForecast} onRefresh={onRefreshResetForecast} /> : null}
       </div>
 
       <div
@@ -1064,6 +1068,8 @@ export const QuotaCard = memo(function QuotaCard({
             language={language}
             preferences={preferences}
             resetForecast={visibleResetForecast}
+            resetForecastStatus={resetForecastStatus}
+            onRefreshResetForecast={onRefreshResetForecast}
             onSelectProvider={onSelectProvider}
             onPreferences={onPreferences}
             onOpenResetForecast={onOpenResetForecast}

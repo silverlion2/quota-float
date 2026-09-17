@@ -423,7 +423,9 @@ fn aggregate(mut sources: Vec<SourceForecast>) -> Option<ResetForecast> {
     });
     let fetched_at = sources
         .iter()
-        .map(|source| source.fetched_at)
+        .zip(included_sources.iter())
+        .filter(|(_, included)| **included)
+        .map(|(source, _)| source.fetched_at)
         .min()
         .expect("non-empty forecast sources");
     let reset_announced = announced.is_some();
@@ -844,6 +846,26 @@ mod tests {
             .quality_reason
             .as_deref()
             .is_some_and(|reason| reason.contains("25 percentage points")));
+    }
+
+    #[test]
+    fn excluded_source_does_not_expire_fresh_participating_sources() {
+        let mut old = source(
+            "old",
+            91,
+            "https://old.example/",
+            Some("2026-07-25T00:00:00Z"),
+        );
+        old.fetched_at = now() - chrono::Duration::hours(6) + chrono::Duration::minutes(1);
+        let mut a = source("a", 42, "https://a.example/", Some("2026-08-23T08:00:00Z"));
+        a.fetched_at = now() - chrono::Duration::minutes(10);
+        let b = source("b", 45, "https://b.example/", Some("2026-08-23T08:00:00Z"));
+        let forecast = aggregate(vec![old, a, b]).expect("fresh participating sources");
+        assert_eq!(forecast.fetched_at, "2026-08-23T10:20:00.000Z");
+        assert_eq!(forecast.source_count, 2);
+        assert!(!forecast.sources[0].included);
+        assert_eq!(forecast.sources.len(), 3);
+        assert_eq!(forecast.quality, ForecastQuality::Consistent);
     }
 
     #[test]

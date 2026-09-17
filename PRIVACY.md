@@ -6,7 +6,7 @@ Quota Float is designed to be local-first and minimal.
 
 - Codex extension inventory: on demand, the Rust process reads a size-limited user-level `config.toml` and enumerates supported user skill directories. Only sanitized extension names, kind, source category and explicit enabled flags reach the widget. Config values, MCP commands, environment variables, URLs, file paths and skill contents are never returned. The inventory is held in memory, excluded from diagnostics/backups and never uploaded. Configured plugins are not proof of installation or runtime health; cache-only bundles and project-scoped overrides are outside this inventory.
 
-- Codex quota: reads the local Codex Desktop login file and sends the existing credential only to Codex quota endpoints.
+- Codex quota and Profile statistics: Rust reads the local Codex Desktop login file and sends the existing credential only to the official Codex endpoints listed below. Profile lifetime tokens, peak daily tokens, streaks, longest turn duration and task count are selected from the response; names, avatars, account identifiers and raw responses are not returned to the UI. Profile statistics stay in memory, refresh every ten minutes while Insights is open, and are excluded from local usage exports and backups.
 - Claude quota: reads the existing Claude Code OAuth credential from the supported local credential store and sends it only to Anthropic's usage endpoint. Quota Float never refreshes or rewrites that credential.
 - Codex Token insights: scans bounded local Codex session JSONL files but deserializes only session metadata needed for a project basename and normalized terminal category, `turn_context` model names, and numeric `token_count` metadata. Prompt, response, tool payload, full working-directory, account, and raw session identifiers are not retained or returned to the UI. Oversized and non-metadata records are discarded.
 - Qoder: decrypts the existing Electron account cache for the current Windows user and reads its cached remaining quota.
@@ -43,6 +43,7 @@ The app only calls these quota-related HTTPS endpoints from the local desktop pr
 
 - `https://chatgpt.com/backend-api/wham/usage`
 - `https://chatgpt.com/backend-api/wham/rate-limit-reset-credits`
+- `https://chatgpt.com/backend-api/wham/profiles/me`
 - `https://api.anthropic.com/api/oauth/usage`
 - `https://api.trae.cn/trae/api/v2/pay/ide_user_ent_usage`
 - `https://copilot.tencent.com/v2/billing/meter/get-user-resource`
@@ -72,4 +73,4 @@ Quota Float displays quota returned by provider services, local account caches, 
 
 The public Codex global-reset outlook is separate from the personal reset time reported by Codex. It uses a freshness-gated median across available public trackers and reports source details and count. These signals are neither calibrated probabilities nor independently verified official announcements. They never change personal quota planning; only the provider-reported personal cycle determines that horizon.
 
-Token counts are available only when Codex exposes supported numeric metadata. The displayed cost is an API-equivalent estimate, not a Codex subscription bill or proof of actual API charges. Unknown models remain unpriced and reduce the displayed pricing coverage instead of inheriting a guessed rate.
+Account lifetime tokens come directly from the Codex Profile service's `stats.lifetime_tokens`, independently of local filters and scan coverage. If unavailable, local counts are not substituted. Local token detail scans include both active and archived session directories, deduplicate stable rollout IDs, and remain bounded. These local records can differ from account history. The displayed cost is an API-equivalent estimate, not a Codex subscription bill or proof of actual API charges. Unknown models remain unpriced and reduce the displayed pricing coverage instead of inheriting a guessed rate.

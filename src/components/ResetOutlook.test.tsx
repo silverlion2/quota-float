@@ -17,8 +17,8 @@ describe("reset consumption outlook", () => {
   it("shows a personal hourly target even when public sources conflict and opens the selected source", () => {
     const open = vi.fn();
     render(<ResetOutlook snapshot={snapshot} history={[]} forecast={forecast} now={now} language="en" onOpenSource={open} />);
-    fireEvent.click(screen.getByText("Reset & consumption plan"));
-    expect(screen.getAllByText("2 pp/h")).toHaveLength(2);
+    fireEvent.click(screen.getByText("Reset forecast & consumption plan"));
+    expect(screen.getByText("2 pp/h")).toBeInTheDocument();
     expect(screen.getByText("Sources conflict · no estimate")).toBeInTheDocument();
     expect(screen.queryByText("67/100")).not.toBeInTheDocument();
     expect(screen.getByText(/Recent continuous history is insufficient/)).toBeInTheDocument();
@@ -33,8 +33,32 @@ describe("reset consumption outlook", () => {
     expect(screen.getByText(/3 samples over 60 minutes/)).toBeInTheDocument();
     expect(screen.getByText("No fresh public signal")).toBeInTheDocument();
   });
-  it("does not offer consumption guidance for a stale provider", () => {
-    const { container } = render(<ResetOutlook snapshot={{ ...snapshot, status: "stale" }} history={[]} forecast={forecast} now={now} language="zh-CN" onOpenSource={vi.fn()} />);
-    expect(container).toBeEmptyDOMElement();
+  it.each(["stale", "signed_out", "unavailable"] as const)("retains public evidence but no consumption target for a %s provider", (status) => {
+    render(<ResetOutlook snapshot={{ ...snapshot, status }} history={[]} forecast={forecast} now={now} language="zh-CN" onOpenSource={vi.fn()} />);
+    expect(screen.getByText("重置预测与消耗计划")).toBeInTheDocument();
+    expect(screen.getByText("42/100 · 来源分数")).toBeInTheDocument();
+    expect(screen.queryByText("目标平均速度")).not.toBeInTheDocument();
+  });
+  it("keeps an expired forecast discoverable with source links and a retry action", () => {
+    const retry = vi.fn();
+    const open = vi.fn();
+    render(<ResetOutlook snapshot={snapshot} history={[]} forecast={{ ...forecast, fetchedAt: "2026-09-15T05:59:59Z" }} now={now} language="en" onOpenSource={open} onRefresh={retry} />);
+    fireEvent.click(screen.getByText("Reset forecast & consumption plan"));
+    expect(screen.getByText("No fresh public signal")).toBeInTheDocument();
+    expect(screen.queryByText(/42\/100/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh reset forecast" }));
+    expect(retry).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "Codex Reset ↗" }));
+    expect(open).toHaveBeenCalledWith("https://codex-reset.com/");
+  });
+  it("distinguishes loading and retained-cache states", () => {
+    const props = { snapshot, history: [], now, language: "en" as const, onOpenSource: vi.fn(), onRefresh: vi.fn() };
+    const view = render(<ResetOutlook {...props} forecast={null} loadStatus="loading" />);
+    fireEvent.click(screen.getByText("Reset forecast & consumption plan"));
+    expect(screen.getByText("Loading public signals…")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Refreshing…" })).toBeDisabled();
+    view.rerender(<ResetOutlook {...props} forecast={forecast} loadStatus="cached" />);
+    expect(screen.getByRole("status")).toHaveTextContent("Refresh failed");
+    expect(screen.getByText("42/100 · Tracker score")).toBeInTheDocument();
   });
 });

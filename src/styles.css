@@ -1376,11 +1376,17 @@ select:focus-visible {
 .reset-forecast > svg { width: 12px; height: 12px; flex: none; }
 .reset-forecast-copy { min-width: 0; display: grid; gap: 1px; }
 .reset-outlook { grid-column: 1 / -1; min-width: 0; border-top: 1px solid var(--ui-border); color: var(--ui-text); font-size: 10px; }
+.usage-profile-summary { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--ui-border); border-radius: 12px; font-size: 11px; }
+.usage-profile-summary .usage-refresh, .reset-outlook-body > button { width: auto; padding: 0 8px; font: inherit; white-space: nowrap; }
+.usage-profile-summary > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.usage-profile-summary p { margin: 0; color: var(--ui-muted); font-size: 10px; line-height: 1.5; }
+.usage-profile-summary .usage-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .reset-outlook summary { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 5px; padding: 9px 2px; cursor: pointer; }
 .reset-outlook summary::before { content: "+"; }
 .reset-outlook[open] summary::before { content: "−"; }
 .reset-outlook summary strong { margin-left: auto; font-variant-numeric: tabular-nums; }
 .reset-outlook-body { display: grid; gap: 8px; max-height: 260px; overflow-y: auto; padding: 2px 5px 9px 2px; }
+.reset-outlook-body > button { color: inherit; font: inherit; }
 .reset-outlook p, .reset-outlook h4, .reset-outlook dl { margin: 0; }
 .reset-outlook dl > div { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; }
 .reset-outlook dd { margin: 0; font-weight: 700; text-align: right; }
@@ -2297,6 +2303,8 @@ button.usage-stat-card:hover { border-color: color-mix(in srgb, var(--accent-col
 .focus-panel-header > button:hover { color: var(--ui-text); background: var(--ui-surface-hover); }
 .focus-panel-header > button svg { width: 12px; height: 12px; }
 .focus-panel-body { min-width: 0; min-height: 0; padding: 9px; overflow: hidden; }
+.focus-panel-body--warning { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 6px; }
+.focus-panel-warning { margin: 0; color: var(--ui-muted); font-size: 10px; }
 .focus-panel-body .cockpit-dashboard { height: 100%; }
 .focus-panel-body .cockpit-panel { height: 100%; min-height: 0; }
 .focus-panel-body .cockpit-dashboard[data-focus="overview"] .cockpit-overview-body,

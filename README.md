@@ -61,6 +61,8 @@ Updater artifacts are signed with the project's Tauri update key. Windows Authen
 
 ## Features
 
+- **Codex Profile account statistics:** Lifetime tokens, peak daily tokens, streaks, longest turn and task count use the same account endpoint as Codex Desktop Profile. Local range totals and cost estimates remain separately labeled; local detail indexing also includes archived rollouts.
+
 - **Codex extensions and companions:** Control center → Extensions shows a bounded, read-only inventory of user-level MCP, plugin configuration and discovered Skills, with type/name filters, partial-source feedback and six curated GitHub companions. Star counts are dated offline snapshots. This is an inventory and discovery surface; it does not install, enable or execute extensions.
 
 - Real quota windows, exact remaining balances, unlimited-plan states, and reset-credit expiration times when available.

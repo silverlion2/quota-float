@@ -5,7 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_WIDGET_PREFERENCES } from "./lib/preferences";
 import { EMPTY_RUNTIME_STATE } from "./lib/activity";
-import { resizeWidgetToContent, setWidgetExpanded } from "./lib/bridge";
+import { fetchCodexResetForecast, resizeWidgetToContent, setWidgetExpanded } from "./lib/bridge";
 
 type Deferred<T> = { promise: Promise<T>; resolve: (value: T) => void; reject: (reason?: unknown) => void };
 
@@ -113,6 +113,8 @@ vi.mock("./components/QuotaCard", () => {
       <button type="button" onClick={() => props.onProviderListPreferenceChange(false)}>Collapse providers</button>
       <button type="button" onClick={() => props.onHover(false)}>Leave widget</button>
       <output aria-label="Provider list choice">{String(props.providerListPreference)}</output>
+      <button type="button" onClick={props.onRefreshResetForecast}>Retry forecast</button>
+      <output aria-label="Forecast state">{props.resetForecastStatus}:{props.resetForecast?.score ?? "none"}</output>
       <output>{props.preferences.accentColor}</output>
       {props.updateOpen ? <section role="dialog" aria-label="Update dialog">{props.updateState.phase}<button type="button" onClick={props.onUpdateClose}>Close update</button></section> : null}
       {props.controlOpen ? props.controlCenter : null}
@@ -130,6 +132,7 @@ beforeEach(() => {
   testState.exportRequest = null;
   testState.exportCalls = 0;
   testState.preferenceWrites = [];
+  vi.mocked(fetchCodexResetForecast).mockReset().mockResolvedValue(null);
 });
 
 async function renderExpandedApp() {
@@ -139,6 +142,20 @@ async function renderExpandedApp() {
 }
 
 describe("App modal and preference lifecycle", () => {
+  it("retains a valid public forecast on empty responses and errors, then recovers", async () => {
+    const forecast = { score: 42, windowHours: 48, fetchedAt: new Date().toISOString(), resetAnnounced: false, sourceUrl: "https://codex-reset.com/" };
+    vi.mocked(fetchCodexResetForecast).mockResolvedValueOnce(forecast);
+    await renderExpandedApp();
+    await waitFor(() => expect(screen.getByLabelText("Forecast state")).toHaveTextContent("ready:42"));
+    fireEvent.click(screen.getByRole("button", { name: "Retry forecast" }));
+    await waitFor(() => expect(screen.getByLabelText("Forecast state")).toHaveTextContent("cached:42"));
+    vi.mocked(fetchCodexResetForecast).mockRejectedValueOnce(new Error("offline"));
+    fireEvent.click(screen.getByRole("button", { name: "Retry forecast" }));
+    await waitFor(() => expect(screen.getByLabelText("Forecast state")).toHaveTextContent("cached:42"));
+    vi.mocked(fetchCodexResetForecast).mockResolvedValueOnce({ ...forecast, score: 45 });
+    fireEvent.click(screen.getByRole("button", { name: "Retry forecast" }));
+    await waitFor(() => expect(screen.getByLabelText("Forecast state")).toHaveTextContent("ready:45"));
+  });
   it("retains the provider list choice after the expanded card unmounts and reopens", async () => {
     await renderExpandedApp();
     fireEvent.click(screen.getByRole("button", { name: "Collapse providers" }));

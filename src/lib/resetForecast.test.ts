@@ -1,11 +1,18 @@
 import { describe, expect, it } from "vitest";
 import type { ResetForecast } from "../types";
-import { freshResetForecast, resetSignalSummary } from "./resetForecast";
+import { freshResetForecast, resetSignalSummary, settleResetForecast } from "./resetForecast";
 
 const now = new Date("2026-09-15T12:00:00Z");
 const forecast: ResetForecast = { score: 66, windowHours: 48, fetchedAt: now.toISOString(), resetAnnounced: false, sourceUrl: "https://codex-reset.com/" };
 
 describe("public reset evidence presentation", () => {
+  it("retains valid data on failure without extending its expiry, then recovers", () => {
+    expect(settleResetForecast(forecast, null, now)).toEqual({ forecast, status: "cached" });
+    expect(settleResetForecast(forecast, null, new Date(now.getTime() + 6 * 60 * 60_000 + 1))).toEqual({ forecast: null, status: "unavailable" });
+    expect(settleResetForecast(null, null, now)).toEqual({ forecast: null, status: "unavailable" });
+    const next = { ...forecast, score: 42 };
+    expect(settleResetForecast(forecast, next, now)).toEqual({ forecast: next, status: "ready" });
+  });
   it("suppresses a consensus number when reset baselines conflict or evidence is limited", () => {
     expect(resetSignalSummary({ ...forecast, quality: "conflicting" }, true)).toBe("Sources conflict · no estimate");
     expect(resetSignalSummary({ ...forecast, quality: "limited" }, false)).toBe("证据不足");

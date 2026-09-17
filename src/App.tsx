@@ -21,6 +21,7 @@ import { resolveAppearanceMode, systemPrefersDark } from "./lib/appearance";
 import { loadStartupState } from "./lib/startup";
 import { runSingleFlight, type SingleFlightState } from "./lib/singleFlight";
 import { requestLatest, type LatestRequestState } from "./lib/latestRequest";
+import { settleResetForecast, type ResetForecastLoadStatus } from "./lib/resetForecast";
 import { monitoredProviderIds, nextProviderRefreshDelay, providersDueForRefresh, type ProviderAttemptTimes } from "./lib/refreshPolicy";
 import { buildDiagnosticReport } from "./lib/diagnosticReport";
 import type { AppDiagnostics, CockpitRegion, ProviderId, ProviderSnapshot, ResetForecast, RuntimeState, VolcengineDiagnostics, WidgetPreferences } from "./types";
@@ -39,6 +40,7 @@ export default function App() {
   const [snapshots, setSnapshots] = useState<ProviderSnapshot[]>([]);
   const [recentCodexReset, setRecentCodexReset] = useState<RecentCodexReset | null>(null);
   const [codexResetForecast, setCodexResetForecast] = useState<ResetForecast | null>(null);
+  const [resetForecastStatus, setResetForecastStatus] = useState<ResetForecastLoadStatus>("unavailable");
   const [preferences, setPreferences] = useState(DEFAULT_PREFS);
   const [activeIndex, setActiveIndex] = useState(0);
   const [hovered, setHovered] = useState(false);
@@ -219,6 +221,17 @@ export default function App() {
     void discardAppUpdate();
   }, [closeModal, preferences.updateChannel, updateState.phase]);
 
+  const refreshResetForecast = useCallback(() => {
+    setResetForecastStatus("loading");
+    const commitForecast = (incoming: ResetForecast | null) => {
+      const result = settleResetForecast(resetForecastRef.current, incoming, new Date());
+      resetForecastRef.current = result.forecast;
+      setCodexResetForecast(result.forecast);
+      setResetForecastStatus(result.status);
+    };
+    requestLatest(resetForecastRequest.current, fetchCodexResetForecast, commitForecast, () => commitForecast(null));
+  }, []);
+
   const refresh = useCallback((force = false) => runSingleFlight(refreshFlight.current, async () => {
     const preferenceSnapshot = preferencesRef.current;
     const monitored = monitoredProviderIds(preferenceSnapshot.pausedProviders);
@@ -233,10 +246,7 @@ export default function App() {
     const attemptedAt = Date.now();
     for (const provider of providerIds) providerAttempts.current[provider] = attemptedAt;
     if (providerIds.includes("codex")) {
-      requestLatest(resetForecastRequest.current, fetchCodexResetForecast, (forecast) => {
-        resetForecastRef.current = forecast;
-        setCodexResetForecast(forecast);
-      });
+      refreshResetForecast();
     }
     try {
       const values = await fetchSnapshotsProgressively(requestId, providerIds, (progress) => {
@@ -309,7 +319,7 @@ export default function App() {
     } finally {
       if (activeSnapshotRequest.current === requestId) activeSnapshotRequest.current = null;
     }
-  }, force), [commitRuntimeState]);
+  }, force), [commitRuntimeState, refreshResetForecast]);
 
   const loadVolcengineDiagnostics = useCallback(async () => {
     const sequence = ++diagnosticsSequence.current;
@@ -848,6 +858,8 @@ export default function App() {
       reconnecting={reconnecting}
       recentCodexReset={recentCodexReset}
       resetForecast={codexResetForecast}
+      resetForecastStatus={resetForecastStatus}
+      onRefreshResetForecast={refreshResetForecast}
       onOpenResetForecast={(url) => void openExternalUrl(url).catch(() => setOperationError("Reset forecast could not be opened."))}
       paceBaselines={runtimeState.dailyPaceBaselines}
       history={runtimeState.history}

@@ -204,6 +204,7 @@ struct AppState {
     snapshot_cache: Mutex<SnapshotCache>,
     codex_usage_fetch_lock: tokio::sync::Mutex<()>,
     codex_usage_cache: Mutex<Option<(Instant, codex_usage::CodexTokenUsageReport)>>,
+    codex_profile_identity: Mutex<Option<String>>,
     codex_usage_index_path: PathBuf,
     #[cfg(debug_assertions)]
     simulate_short_window_for_testing: Mutex<bool>,
@@ -772,6 +773,13 @@ async fn get_codex_reset_forecast(
     state: State<'_, AppState>,
 ) -> Result<Option<reset_forecast::ResetForecast>, String> {
     Ok(reset_forecast::fetch(&state.client).await)
+}
+
+#[tauri::command]
+async fn get_codex_profile_stats(
+    state: State<'_, AppState>,
+) -> Result<codex::CodexProfileStats, codex::CodexProfileError> {
+    codex::fetch_profile_stats(&state.client, &state.codex_profile_identity).await
 }
 
 #[tauri::command]
@@ -2856,6 +2864,7 @@ pub fn run() {
                 snapshot_cache: Mutex::new(SnapshotCache::default()),
                 codex_usage_fetch_lock: tokio::sync::Mutex::new(()),
                 codex_usage_cache: Mutex::new(None),
+                codex_profile_identity: Mutex::new(None),
                 codex_usage_index_path,
                 #[cfg(debug_assertions)]
                 simulate_short_window_for_testing: Mutex::new(false),
@@ -2882,6 +2891,7 @@ pub fn run() {
             refresh_snapshots,
             get_codex_reset_forecast,
             get_codex_token_usage,
+            get_codex_profile_stats,
             codex_extensions::fetch_codex_extensions,
             get_volcengine_diagnostics,
             reconnect_volcengine,

@@ -16,7 +16,7 @@ import {
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { exportUsageData, fetchCodexTokenUsage, sendDesktopNotification } from "../lib/bridge";
 import { clampPercent, formatResetTime } from "../lib/format";
-import { resetSignalSummary } from "../lib/resetForecast";
+import { resetSignalSummary, type ResetForecastLoadStatus } from "../lib/resetForecast";
 import { deliverNotificationOnce } from "../lib/notificationDelivery";
 import { OPENAI_PRICING_CATALOG } from "../lib/openaiPricing";
 import { calculateQuotaPace, paceBaselineKey, trackedQuotaWindows } from "../lib/quotaPace";
@@ -54,6 +54,8 @@ import type {
   WidgetPreferences,
 } from "../types";
 import { QuotaHistoryCurve } from "./QuotaHistoryCurve";
+import { CodexProfileSummary } from "./CodexProfileSummary";
+import { ResetOutlook } from "./ResetOutlook";
 
 interface Props {
   snapshot: ProviderSnapshot;
@@ -64,6 +66,8 @@ interface Props {
   language: Language;
   preferences: WidgetPreferences;
   resetForecast?: ResetForecast | null;
+  resetForecastStatus?: ResetForecastLoadStatus;
+  onRefreshResetForecast?: () => void;
   onSelectProvider?: (provider: ProviderId) => void;
   onPreferences?: (preferences: WidgetPreferences) => void;
   onOpenResetForecast?: (url: string) => void;
@@ -131,6 +135,8 @@ export function UsageInsightsPanel({
   onSelectProvider,
   onPreferences,
   onOpenResetForecast,
+  resetForecastStatus,
+  onRefreshResetForecast,
   onClose,
 }: Props) {
   const english = language === "en";
@@ -400,9 +406,12 @@ export function UsageInsightsPanel({
         <small>{english ? "Tool names stay excluded to preserve the no-content boundary." : "为保持不解析正文的边界，工具名称不进入索引。"}</small>
       </div> : null}
 
+      {snapshot.provider === "codex" ? <CodexProfileSummary language={language} /> : null}
+      {snapshot.provider === "codex" ? <ResetOutlook snapshot={snapshot} history={history} forecast={resetForecast ?? null} loadStatus={resetForecastStatus} now={now} language={language} onOpenSource={onOpenResetForecast ?? (() => undefined)} onRefresh={onRefreshResetForecast} /> : null}
+
       <div className="usage-summary-grid usage-summary-grid--extended">
         <article className="usage-stat-card usage-stat-card--cost"><span>{english ? "API equivalent" : "API 等价费用"}{changeLabel(costChange) ? <em>{changeLabel(costChange)}</em> : null}</span><strong>{tokenLoading && !tokenReport ? "…" : knownTokenData ? money(tokenSummary.cost.totalUsd) : "—"}</strong><small>{knownTokenData ? `${Math.round(tokenSummary.pricedTokenCoverage * 100)}% ${english ? "priced coverage" : "已定价覆盖"}` : (english ? "Codex metadata only" : "仅 Codex 元数据")}</small></article>
-        <article className="usage-stat-card"><span>{english ? "Total Token" : "总 Token"}{changeLabel(totalChange) ? <em>{changeLabel(totalChange)}</em> : null}</span><strong>{tokenValue(tokenSummary?.totalTokens ?? 0)}</strong><small>{rangeText} · {tokenSummary ? `${tokenSummary.models} ${english ? "models" : "个模型"}` : (english ? "awaiting metadata" : "等待元数据")}</small></article>
+        <article className="usage-stat-card"><span>{english ? "Local range Token" : "本机区间 Token"}{changeLabel(totalChange) ? <em>{changeLabel(totalChange)}</em> : null}</span><strong>{tokenValue(tokenSummary?.totalTokens ?? 0)}</strong><small>{rangeText} · {tokenReport?.truncated ? english ? "Partial index" : "部分索引" : tokenSummary ? `${tokenSummary.models} ${english ? "models" : "个模型"}` : (english ? "awaiting metadata" : "等待元数据")}</small></article>
         <article className="usage-stat-card"><span>{english ? "Input Token" : "输入 Token"}{changeLabel(inputChange) ? <em>{changeLabel(inputChange)}</em> : null}</span><strong>{tokenValue(tokenSummary?.inputTokens ?? 0)}</strong><small>{tokenSummary ? `${tokenSummary.inputOutputRatio.toFixed(1)}:1 ${english ? "input/output" : "输入/输出"}` : (english ? "includes cached input" : "包含缓存输入")}</small></article>
         <article className="usage-stat-card"><span>{english ? "Output Token" : "输出 Token"}{changeLabel(outputChange) ? <em>{changeLabel(outputChange)}</em> : null}</span><strong>{tokenValue(tokenSummary?.outputTokens ?? 0)}</strong><small>{tokenSummary ? `${compactNumber(tokenSummary.reasoningOutputTokens, language)} ${english ? "reasoning" : "推理"}` : (english ? "model output" : "模型输出")}</small></article>
         <article className="usage-stat-card usage-stat-card--cached"><span>{english ? "Cached Token" : "缓存 Token"}{changeLabel(cachedChange) ? <em>{changeLabel(cachedChange)}</em> : null}</span><strong>{tokenValue(tokenSummary?.cachedInputTokens ?? 0)}</strong><small>{tokenSummary ? `${Math.round(tokenSummary.cacheHitRate * 100)}% ${english ? "cache hit" : "缓存命中"}` : (english ? "cache reads" : "缓存读取")}</small></article>
@@ -503,7 +512,7 @@ export function UsageInsightsPanel({
       <div className="usage-insights-detail-grid">
         <article className="usage-daily-card">
           <header><span>{range === "today" || range === "24h" ? (english ? "HOURLY TREND" : "小时趋势") : range === "all" ? (english ? "MONTHLY HISTORY" : "月度历史") : (english ? "DAILY TREND" : "每日趋势")}</span><strong>{knownTokenData ? (chartMode === "cost" ? money(tokenSummary.cost.totalUsd) : compactNumber(tokenSummary.totalTokens, language)) : "—"}</strong></header>
-          {knownTokenData ? <div className={`usage-bars usage-bars--${tokenSeries.length > 40 ? "dense" : "regular"}`} role="img" aria-label={english ? `${rangeText} token usage trend` : `${rangeText} Token 用量趋势`}>
+          {knownTokenData ? <div className={`usage-bars usage-bars--${tokenSeries.length > 40 ? "dense" : "regular"}`} role="img" aria-label={chartMode === "cost" ? english ? `${rangeText} API-equivalent cost trend` : `${rangeText} API 等价费用趋势` : english ? `${rangeText} token usage trend` : `${rangeText} Token 用量趋势`}>
             {tokenSeries.map((point, index) => {
               const value = chartMode === "cost" ? point.costUsd : point.totalTokens;
               const height = chartMaximum > 0 ? Math.max(value > 0 ? 3 : 0, value / chartMaximum * 100) : 0;
@@ -518,7 +527,7 @@ export function UsageInsightsPanel({
 
         <article className="usage-hourly-card">
           <header><span><CalendarDots weight="duotone" />{english ? "WEEKDAY × HOUR" : "星期 × 小时"}</span><small>{rangeText} · {chartMode === "cost" ? (english ? "API equivalent" : "API 等价费用") : "Token"}</small></header>
-          {knownTokenData ? <div className="usage-hourly-matrix" role="img" aria-label={english ? "Hourly token activity heatmap" : "分时 Token 活跃热力图"}>{weekdayLabels.map((label, weekday) => <div className="usage-hour-row" key={label}><span>{label}</span><div>{heatmap.slice(weekday * 24, weekday * 24 + 24).map((cell) => { const value = chartMode === "cost" ? cell.costUsd : cell.tokens; return <i className={`usage-hour-cell usage-hour-cell--${heatLevel(value, heatMaximum)}`} key={cell.hour} title={`${label} ${String(cell.hour).padStart(2, "0")}:00 · ${chartMode === "cost" ? money(cell.costUsd) : compactNumber(cell.tokens, language)}`} />; })}</div></div>)}<div className="usage-hour-axis"><span>00</span><span>03</span><span>06</span><span>09</span><span>12</span><span>15</span><span>18</span><span>21</span></div></div> : <div className="usage-chart-empty usage-chart-empty--heat">{tokenLoading ? (english ? "Building hourly map…" : "正在生成分时图…") : (english ? "No hourly Token signal for this provider." : "该平台暂无分时 Token 信号。")}</div>}
+          {knownTokenData ? <div className="usage-hourly-matrix" role="img" aria-label={chartMode === "cost" ? english ? "Hourly API-equivalent cost heatmap" : "分时 API 等价费用热力图" : english ? "Hourly token activity heatmap" : "分时 Token 活跃热力图"}>{weekdayLabels.map((label, weekday) => <div className="usage-hour-row" key={label}><span>{label}</span><div>{heatmap.slice(weekday * 24, weekday * 24 + 24).map((cell) => { const value = chartMode === "cost" ? cell.costUsd : cell.tokens; return <i className={`usage-hour-cell usage-hour-cell--${heatLevel(value, heatMaximum)}`} key={cell.hour} title={`${label} ${String(cell.hour).padStart(2, "0")}:00 · ${chartMode === "cost" ? money(cell.costUsd) : compactNumber(cell.tokens, language)}`} />; })}</div></div>)}<div className="usage-hour-axis"><span>00</span><span>03</span><span>06</span><span>09</span><span>12</span><span>15</span><span>18</span><span>21</span></div></div> : <div className="usage-chart-empty usage-chart-empty--heat">{tokenLoading ? (english ? "Building hourly map…" : "正在生成分时图…") : (english ? "No hourly Token signal for this provider." : "该平台暂无分时 Token 信号。")}</div>}
         </article>
       </div>
 

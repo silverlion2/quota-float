@@ -1,4 +1,4 @@
-import type { AppDiagnostics, BarPlacement, CockpitRegion, CodexTokenUsageReport, CompactLayout, FocusPanelHistory, ProviderId, ProviderSnapshot, ResetForecast, RuntimeState, SnapshotCacheRead, SnapshotRefreshProgress, VolcengineDiagnostics, WidgetPreferences } from "../types";
+import type { AppDiagnostics, BarPlacement, CockpitRegion, CodexProfileStats, CodexTokenUsageReport, CompactLayout, FocusPanelHistory, ProviderId, ProviderSnapshot, ResetForecast, RuntimeState, SnapshotCacheRead, SnapshotRefreshProgress, VolcengineDiagnostics, WidgetPreferences } from "../types";
 import { EMPTY_RUNTIME_STATE, normalizeRuntimeState } from "./activity";
 import { DEFAULT_WIDGET_PREFERENCES } from "./preferences";
 import type { CodexExtensionsReport } from "./codexExtensions";
@@ -246,6 +246,12 @@ export async function fetchCodexTokenUsage(force = false, rebuild = false): Prom
   if (usesSyntheticData()) return mockCodexTokenUsage();
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<CodexTokenUsageReport>("get_codex_token_usage", { force, rebuild });
+}
+
+export async function fetchCodexProfileStats(): Promise<CodexProfileStats> {
+  if (usesSyntheticData()) return { fetchedAt: new Date().toISOString(), lifetimeTokens: 42_000_000_000, peakDailyTokens: 1_200_000_000, currentStreakDays: 8, longestStreakDays: 32, longestRunningTurnSeconds: 7_200, totalThreads: 1_600 };
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<CodexProfileStats>("get_codex_profile_stats");
 }
 
 export async function fetchCodexExtensions(): Promise<CodexExtensionsReport> {

@@ -44,9 +44,9 @@ export function FocusPanelApp() {
       }
       setValue({ preferences: normalizeWidgetPreferences(preferencesValue), history, snapshot });
       setError(null);
-    } catch (reason) {
+    } catch {
       if (generation !== reloadGeneration.current) return;
-      setError(reason instanceof Error ? reason.message : "Focus panel could not be refreshed.");
+      setError("refresh_failed");
     }
   }, []);
 
@@ -76,6 +76,11 @@ export function FocusPanelApp() {
 
   const preferences = value?.preferences;
   const language = preferences?.language === "en" ? "en" : "zh-CN";
+  const errorMessage = error === "refresh_failed"
+    ? value
+      ? language === "en" ? "Refresh failed. Showing the last local data." : "刷新失败，正在显示上次本地数据。"
+      : language === "en" ? "Local data could not be loaded. Retrying automatically." : "本地数据读取失败，将自动重试。"
+    : error;
   const resolvedAppearance = resolveAppearanceMode(preferences?.appearanceMode ?? "system", systemDark);
   useEffect(() => {
     document.documentElement.dataset.appearance = resolvedAppearance;
@@ -97,7 +102,8 @@ export function FocusPanelApp() {
         <div><small>QUOTA FLOAT · {language === "en" ? "DETACHED" : "独立面板"}</small><strong>{regionLabel}{value ? ` · ${value.snapshot.displayName}` : ""}</strong></div>
         <button type="button" aria-label={language === "en" ? "Close detached panel" : "关闭独立面板"} title={language === "en" ? "Close" : "关闭"} onMouseDown={(event) => event.stopPropagation()} onClick={() => void closeFocusPanel()}><X /></button>
       </header>
-      <section className="focus-panel-body" aria-busy={!value && !error}>
+      <section className={`focus-panel-body${value && error ? " focus-panel-body--warning" : ""}`} aria-busy={!value && !error}>
+        {value && error ? <p className="focus-panel-warning" role="status">{errorMessage}</p> : null}
         {value && target ? (
           <CockpitDashboard
             snapshot={value.snapshot}
@@ -109,7 +115,7 @@ export function FocusPanelApp() {
             onFocusRegion={() => undefined}
             detached
           />
-        ) : error ? <p className="focus-panel-message" role="alert">{error}</p> : <p className="focus-panel-message" role="status">{language === "en" ? "Loading local quota data…" : "正在读取本地额度数据…"}</p>}
+        ) : error ? <p className="focus-panel-message" role="alert">{errorMessage}</p> : <p className="focus-panel-message" role="status">{language === "en" ? "Loading local quota data…" : "正在读取本地额度数据…"}</p>}
       </section>
     </main>
   );

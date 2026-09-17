@@ -4,6 +4,7 @@ import {
   applyAppData,
   createSnapshotRefreshRequestId,
   fetchCodexResetForecast,
+  fetchCodexProfileStats,
   fetchSnapshots,
   fetchSnapshotsProgressively,
   fetchCodexTokenUsage,
@@ -62,6 +63,7 @@ describe("widget transitions", () => {
     const snapshots = await fetchSnapshots(true, ["codex"]);
     const cached = await readCachedSnapshots(["codex"]);
     const forecast = await fetchCodexResetForecast();
+    const profile = await fetchCodexProfileStats();
     const usage = await fetchCodexTokenUsage(true, true);
     const extensions = await fetchCodexExtensions();
     const diagnostics = await getVolcengineDiagnostics();
@@ -71,6 +73,7 @@ describe("widget transitions", () => {
     expect(snapshots[0]).toMatchObject({ provider: "codex", displayName: "CODEX", plan: "PRO" });
     expect(cached).toMatchObject({ freshness: "fresh", snapshots: [{ provider: "codex" }] });
     expect(forecast).toMatchObject({ confidence: "low", sourceCount: 3 });
+    expect(profile).toMatchObject({ lifetimeTokens: 42_000_000_000, peakDailyTokens: 1_200_000_000 });
     expect(usage.buckets.length).toBeGreaterThan(0);
     expect(extensions).toMatchObject({ status: "ok", entries: [{ name: "example-docs" }, { name: "example-browser" }, { name: "example-review" }, { name: "example-design@local" }] });
     expect(diagnostics).toMatchObject({ authenticated: true, profileName: "coding-plan_personal" });
@@ -81,6 +84,11 @@ describe("widget transitions", () => {
   it("reads extensions through a native command without passing local paths", async () => {
     await fetchCodexExtensions();
     expect(api.invoke).toHaveBeenCalledWith("fetch_codex_extensions");
+  });
+
+  it("reads account Profile stats only through the native bridge", async () => {
+    await fetchCodexProfileStats();
+    expect(api.invoke).toHaveBeenCalledWith("get_codex_profile_stats");
   });
 
   it("passes the monitor work area to the Rust expansion command", async () => {

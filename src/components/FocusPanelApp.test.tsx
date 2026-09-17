@@ -55,6 +55,21 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("detached focus panel cache isolation", () => {
+  it("keeps cached data with a safe visible error, then clears it on recovery", async () => {
+    let notify: (() => void) | undefined;
+    bridge.getPreferences.mockResolvedValue({ ...DEFAULT_WIDGET_PREFERENCES, language: "en" });
+    bridge.listenFocusPanelUpdates.mockImplementation(async (callback: () => void) => { notify = callback; return () => undefined; });
+    bridge.readCachedSnapshots.mockResolvedValue({ snapshots: [cachedSnapshot], freshness: "stale", oldestAgeSeconds: 90 });
+    render(<FocusPanelApp />);
+    expect(await screen.findByText(/snapshot:stale:Cached quota data/)).toBeInTheDocument();
+    bridge.readCachedSnapshots.mockRejectedValueOnce(new Error("sensitive diagnostic details"));
+    act(() => notify?.());
+    expect(await screen.findByRole("status")).toHaveTextContent("Refresh failed. Showing the last local data.");
+    expect(screen.getByText(/snapshot:stale:Cached quota data/)).toBeInTheDocument();
+    expect(screen.queryByText(/sensitive diagnostic/)).not.toBeInTheDocument();
+    act(() => notify?.());
+    await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
+  });
   it("shows stale last-known-good data for a paused provider without starting a refresh", async () => {
     bridge.readCachedSnapshots.mockResolvedValue({ snapshots: [cachedSnapshot], freshness: "stale", oldestAgeSeconds: 90 } satisfies SnapshotCacheRead);
     render(<FocusPanelApp />);

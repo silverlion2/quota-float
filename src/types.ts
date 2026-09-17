@@ -197,6 +197,16 @@ export interface CodexTokenUsageReport {
   buckets: CodexTokenUsageBucket[];
 }
 
+export interface CodexProfileStats {
+  fetchedAt: string;
+  lifetimeTokens: number | null;
+  peakDailyTokens: number | null;
+  currentStreakDays?: number | null;
+  longestStreakDays?: number | null;
+  longestRunningTurnSeconds?: number | null;
+  totalThreads?: number | null;
+}
+
 export interface SavedLayout {
   id: string;
   name: string;

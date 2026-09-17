@@ -2,18 +2,131 @@ use std::{fs, path::PathBuf};
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION};
+use serde::Serialize;
 use serde_json::Value;
+use sha2::{Digest, Sha256};
+use std::sync::Mutex;
 
 use crate::models::{ProviderSnapshot, UsageWindow};
 
 const USAGE_URL: &str = "https://chatgpt.com/backend-api/wham/usage";
 const CREDITS_URL: &str = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits";
+const PROFILE_URL: &str = "https://chatgpt.com/backend-api/wham/profiles/me";
 const MAX_RESPONSE_BYTES: u64 = 1024 * 1024;
 const MAX_AUTH_BYTES: u64 = 256 * 1024;
 
 struct Auth {
     access_token: String,
     account_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexProfileStats {
+    pub fetched_at: String,
+    pub lifetime_tokens: Option<u64>,
+    pub peak_daily_tokens: Option<u64>,
+    pub current_streak_days: Option<u64>,
+    pub longest_streak_days: Option<u64>,
+    pub longest_running_turn_seconds: Option<u64>,
+    pub total_threads: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexProfileError {
+    message: String,
+    clear_cached: bool,
+}
+
+fn profile_identity(auth: &Auth) -> String {
+    // This ephemeral fingerprint never leaves Rust or reaches disk. Token
+    // rotation conservatively invalidates cached UI values as well as a switch.
+    format!(
+        "{:x}",
+        Sha256::digest(
+            format!(
+                "{}:{}",
+                auth.account_id.as_deref().unwrap_or(""),
+                auth.access_token
+            )
+            .as_bytes()
+        )
+    )
+}
+
+fn profile_identity_changed(identity: &Mutex<Option<String>>, auth: &Auth) -> bool {
+    let Ok(previous) = identity.lock() else {
+        return true;
+    };
+    previous.as_ref() != Some(&profile_identity(auth))
+}
+
+fn parse_profile_stats(value: &Value) -> Result<CodexProfileStats, &'static str> {
+    if value
+        .pointer("/metadata/stats_error")
+        .and_then(Value::as_str)
+        .is_some_and(|error| !error.trim().is_empty())
+    {
+        return Err("Codex Profile statistics are temporarily unavailable.");
+    }
+    let stats = value
+        .get("stats")
+        .filter(|stats| stats.is_object())
+        .ok_or("Codex Profile statistics are unavailable.")?;
+    Ok(CodexProfileStats {
+        fetched_at: chrono::Utc::now().to_rfc3339(),
+        lifetime_tokens: integer(stats, &["lifetime_tokens"]),
+        peak_daily_tokens: integer(stats, &["peak_daily_tokens"]),
+        current_streak_days: integer(stats, &["current_streak_days"]),
+        longest_streak_days: integer(stats, &["longest_streak_days"]),
+        longest_running_turn_seconds: integer(stats, &["longest_running_turn_sec"]),
+        total_threads: integer(stats, &["total_threads"]),
+    })
+}
+
+pub async fn fetch_profile_stats(
+    client: &reqwest::Client,
+    identity: &Mutex<Option<String>>,
+) -> Result<CodexProfileStats, CodexProfileError> {
+    let auth = load_auth().map_err(|message| CodexProfileError {
+        message: message.into(),
+        clear_cached: true,
+    })?;
+    let changed = profile_identity_changed(identity, &auth);
+    let failure = |message: &str| CodexProfileError {
+        message: message.into(),
+        clear_cached: changed,
+    };
+    let response = client
+        .get(PROFILE_URL)
+        .headers(headers(&auth).map_err(|message| CodexProfileError {
+            message: message.into(),
+            clear_cached: true,
+        })?)
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await
+        .map_err(|_| failure("Codex Profile could not be refreshed."))?;
+    if !response.status().is_success() {
+        let status = response.status();
+        return Err(CodexProfileError {
+            message: safe_http_failure(status).1.into(),
+            clear_cached: changed
+                || status == reqwest::StatusCode::UNAUTHORIZED
+                || status == reqwest::StatusCode::FORBIDDEN,
+        });
+    }
+    let value = limited_json(response)
+        .await
+        .map_err(|_| failure("Codex Profile response is unavailable."))?;
+    let stats = parse_profile_stats(&value).map_err(failure)?;
+    // Only a successful result can own cached UI values. Failed overlapping
+    // requests for a new account must all continue to invalidate the old one.
+    if let Ok(mut previous) = identity.lock() {
+        *previous = Some(profile_identity(&auth));
+    }
+    Ok(stats)
 }
 
 fn auth_path() -> Option<PathBuf> {
@@ -477,6 +590,84 @@ pub async fn fetch_snapshot(client: &reqwest::Client) -> ProviderSnapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn profile_cache_identity_changes_for_switches_and_token_rotation() {
+        let identity = Mutex::new(None);
+        let mut auth = Auth {
+            access_token: "synthetic-token-a".into(),
+            account_id: Some("synthetic-account-a".into()),
+        };
+        assert!(profile_identity_changed(&identity, &auth));
+        *identity.lock().unwrap() = Some(profile_identity(&auth));
+        assert!(!profile_identity_changed(&identity, &auth));
+        auth.account_id = Some("synthetic-account-b".into());
+        assert!(profile_identity_changed(&identity, &auth));
+        // B1 and B2 both fail: neither may claim A's last successful result.
+        assert!(profile_identity_changed(&identity, &auth));
+        *identity.lock().unwrap() = Some(profile_identity(&auth));
+        assert!(!profile_identity_changed(&identity, &auth));
+        auth.access_token = "synthetic-token-b".into();
+        assert!(profile_identity_changed(&identity, &auth));
+        assert!(!identity
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .contains("synthetic"));
+    }
+
+    #[test]
+    fn profile_lifetime_uses_account_counter_without_summing_local_or_daily_usage() {
+        let profile = parse_profile_stats(&serde_json::json!({
+            "stats": {"lifetime_tokens": 42_000_000_000_u64, "peak_daily_tokens": 1_200_000_000_u64,
+                "daily_usage_buckets": [{"tokens": 10}, {"tokens": 20}]},
+            "metadata": {"stats_error": null}, "email": "not exported"
+        }))
+        .unwrap();
+        assert_eq!(profile.lifetime_tokens, Some(42_000_000_000));
+        assert_eq!(profile.peak_daily_tokens, Some(1_200_000_000));
+        assert!(!serde_json::to_string(&profile)
+            .unwrap()
+            .contains("not exported"));
+        let missing =
+            parse_profile_stats(&serde_json::json!({"stats": {"lifetime_tokens": null}})).unwrap();
+        assert_eq!(missing.lifetime_tokens, None);
+        let zero =
+            parse_profile_stats(&serde_json::json!({"stats": {"lifetime_tokens": 0}})).unwrap();
+        assert_eq!(zero.lifetime_tokens, Some(0));
+    }
+
+    #[test]
+    fn profile_errors_do_not_expose_raw_metadata_or_invent_zero_usage() {
+        assert!(parse_profile_stats(&serde_json::json!({})).is_err());
+        let error = parse_profile_stats(&serde_json::json!({"stats": {"lifetime_tokens": 42}, "metadata": {"stats_error": "sensitive provider diagnostic"}})).unwrap_err();
+        assert!(!error.contains("sensitive"));
+        let invalid = parse_profile_stats(
+            &serde_json::json!({"stats": {"lifetime_tokens": -1, "peak_daily_tokens": "unknown"}}),
+        )
+        .unwrap();
+        assert_eq!(invalid.lifetime_tokens, None);
+        assert_eq!(invalid.peak_daily_tokens, None);
+    }
+
+    #[tokio::test]
+    #[ignore = "Opt-in read-only check against the locally signed-in Codex Profile"]
+    async fn live_profile_stats_probe() {
+        let client = reqwest::Client::builder()
+            .user_agent(concat!("QuotaFloat/", env!("CARGO_PKG_VERSION")))
+            .redirect(reqwest::redirect::Policy::none())
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+            .unwrap();
+        let result = fetch_profile_stats(&client, &Mutex::new(None))
+            .await
+            .expect("read-only Profile stats request");
+        println!(
+            "Profile aggregate: lifetime={:?}, peak_daily={:?}",
+            result.lifetime_tokens, result.peak_daily_tokens
+        );
+    }
 
     #[test]
     fn parses_snake_and_camel_case_window_shapes() {
