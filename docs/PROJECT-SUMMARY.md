@@ -99,4 +99,4 @@ npm run tauri dev
 - 使用真实 Mac artifact 验证透明背景、边缘展开、置顶、锁定和菜单栏行为；Windows 结果不能替代 macOS 运行验证。
 - 平台应用或 CLI 更新后优先验证适配器解析与失败降级，不对缺失字段猜测额度。
 - 提交、推送、打包、签名、标签和发布均是独立授权边界，不由路线图或测试结果自动触发。
-- 日常发布优先通过 GitHub Actions `Release` 手动入口先运行 `publish=false` dry run，再通过受保护的 `release` Environment 批准 `publish=true`；本地脚本保留为回退路径。
+- 日常发布优先用 `npm run publish:release -- patch --yes`，正式流程本身包含验证，无需重复 dry run。双平台并行打包、单步骤生成清单、Windows 升级测试与 macOS 重叠；断线用 `--resume` 恢复，公开文件自动下载验签并记录耗时。具体实现与待实测提速见 [发布性能记录](RELEASE-PERFORMANCE-2026-09-19.md)；本地发布脚本保留为回退路径。

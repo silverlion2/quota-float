@@ -32,18 +32,33 @@ async function prepareDraft(releases) {
 }
 
 describe("shared release draft workflow", () => {
-  it("creates one draft before the matrix and passes its explicit ID and shared notes", () => {
+  it("builds both platforms independently against one draft without concurrent manifest writers", () => {
     expect(job("create-draft")).toContain("needs: [verify, create-release-ref]");
     expect(job("create-draft")).toContain("needs.verify.result == 'success'");
     expect(job("create-draft")).toContain("inputs.publish && needs.create-release-ref.result == 'success'");
     expect(job("create-draft")).not.toContain("matrix:");
-    expect(job("publish-draft")).toContain("needs: [verify, create-release-ref, create-draft]");
-    expect(job("publish-draft")).toContain("needs.create-draft.result == 'success'");
-    expect(job("publish-draft")).toContain("max-parallel: 1");
-    expect(job("publish-draft")).toContain("releaseId: ${{ needs.create-draft.outputs.release_id }}");
-    expect(job("publish-draft")).toContain("releaseBody: ${{ needs.create-draft.outputs.release_body }}");
-    expect(job("publish-draft")).not.toContain("generateReleaseNotes");
+    for (const platform of ["publish-windows", "publish-macos"]) {
+      expect(job(platform)).toContain("needs: [verify, create-release-ref, create-draft]");
+      expect(job(platform)).toContain("needs.create-draft.result == 'success'");
+      expect(job(platform)).toContain("includeUpdaterJson: false");
+      expect(job(platform)).toContain("shared-key: publish-draft");
+      expect(job(platform)).toContain("releaseId: ${{ needs.create-draft.outputs.release_id }}");
+      expect(job(platform)).toContain("releaseBody: ${{ needs.create-draft.outputs.release_body }}");
+      expect(job(platform)).not.toContain("generateReleaseNotes");
+    }
+    expect(workflow).not.toContain("max-parallel:");
     expect(workflow.match(/repos\.createRelease\(/g)).toHaveLength(1);
+  });
+
+  it("starts upgrade smoke after Windows while the single manifest writer waits for both platforms", () => {
+    expect(job("upgrade-smoke")).toContain("needs: [verify, publish-windows]");
+    expect(job("upgrade-smoke")).not.toContain("needs.publish-macos");
+    expect(job("upgrade-smoke")).toContain('-CandidateReleaseId "${{ needs.publish-windows.outputs.release_id }}"');
+    expect(job("assemble-updater")).toContain("needs.publish-windows.result == 'success' && needs.publish-macos.result == 'success'");
+    expect(job("assemble-updater")).toContain("scripts/assemble-updater.mjs");
+    for (const prerequisite of ["publish-windows", "publish-macos", "assemble-updater", "upgrade-smoke"]) {
+      expect(job("finalize")).toContain(`needs.${prerequisite}.result == 'success'`);
+    }
   });
 
   it("creates the shared draft at the verified SHA with common notes", async () => {

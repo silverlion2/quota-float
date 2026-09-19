@@ -71,11 +71,18 @@ function Assert-AppLaunch([string]$Executable, [string]$Label) {
   }
 }
 
-$allReleases = @(Invoke-GitHubJson "repos/$Repository/releases?per_page=100")
 if ($CandidateReleaseId -gt 0) {
   $candidate = Invoke-GitHubJson "repos/$Repository/releases/$CandidateReleaseId"
+  if ($candidate.id -ne $CandidateReleaseId) {
+    throw "The prepared candidate release identity changed."
+  }
 } else {
-  $candidate = $allReleases | Where-Object { $_.tag_name -eq $CurrentTag } | Select-Object -First 1
+  $allReleases = @(Invoke-GitHubJson "repos/$Repository/releases?per_page=100")
+  $matches = @($allReleases | Where-Object { $_.tag_name -eq $CurrentTag })
+  if ($matches.Count -ne 1) {
+    throw "Expected exactly one release candidate for $CurrentTag, including drafts; found $($matches.Count)."
+  }
+  $candidate = $matches[0]
 }
 if (-not $candidate) { throw "Release candidate $CurrentTag was not found, including drafts." }
 if ($candidate.tag_name -ne $CurrentTag) {

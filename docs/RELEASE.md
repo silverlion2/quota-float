@@ -32,6 +32,17 @@ npm run publish:release -- patch --dry-run
 
 只检查本地分支、工作区和目标版本且完全不访问网络时，使用 `--plan`。不必在每次正式发布前先跑一次远端 dry run；`--yes` 的正式工作流本身会先经过相同验证 gate，再进行第一次远端写入，从而避免重复测试和构建。
 
+网络中断后恢复同一次运行：
+
+```bash
+npm run publish:release -- --resume
+npm run publish:release -- --resume 123456789 --record output/release-resume.json
+```
+
+脚本在触发前将仓库、源码提交、目标版本、发布模式写入 `output/release-resume.json`，取得运行 ID 后再更新。每次运行另存 `output/release-runs/<RUN_ID>.json`。恢复只读取和验证既有运行，不再次递增版本、创建标签或触发发布。没有本地记录时，新流程的运行标题带版本请求及 `publish=true/false`，可用运行 ID 恢复；旧流程标题未携带模式时需要原恢复记录。触发响应不明确或出现多个匹配运行时停止并保留记录，不猜测、更不自动再次触发。
+
+公开后自动下载六项资产，核对 SHA-256、更新清单的全部平台条目，以及两份更新包的 Ed25519/Blake2b 签名和可信注释签名。公钥取自发布提交的 Tauri 配置，而非当前工作区。下载与验证记录位于 `output/release-runs/<RUN_ID>-artifacts/`，总报告为 `output/release-runs/<RUN_ID>-verification.json`。
+
 也可以在 GitHub 仓库打开 **Actions → Release → Run workflow** 手动触发：
 
 1. Branch 选择 `main`。
@@ -43,9 +54,10 @@ npm run publish:release -- patch --dry-run
 - 验证 `main`、版本、变更列表、前端测试/构建和 Rust 测试。
 - 确认验证后 `main` 未变化，再创建 release commit 与 tag，并通过一次 atomic push 同时写入远端。
 - 创建 release ref 时直接同步已测试过的机械版本文件，不再重复安装 Rust/Linux 桌面依赖或执行第二次 Rust 编译检查。
-- Windows/macOS 并行构建草稿产物；Windows Defender 扫描实际待发布的 Windows executable 与 installer，不重复编译预检包。
+- 先创建绑定精确发布提交的唯一共享草稿，再以独立的 Windows/macOS job 并行构建和上传各自安装包与签名；Windows Defender 扫描实际待发布的 Windows executable 与 installer，不重复编译预检包。
+- 两个平台不各自写 `latest.json`。`assemble-updater` 等双平台成功后统一生成一次完整清单，拒绝错误版本、草稿身份或缺失/重复资产；安全重跑仅替换该草稿的清单。
 - 检查 `latest.json`、Windows installer/签名、macOS DMG/updater archive/签名齐全。
-- Stable 版本在 Release 仍为草稿时执行 Windows previous-public-to-draft-candidate upgrade smoke；记录被安装候选的 Release ID、asset ID 与 SHA-256，并在公开前重新下载核对，确保通过测试的就是将公开的同一份 installer。
+- Stable 版本在 Windows job 完成扫描后即可执行 previous-public-to-draft-candidate upgrade smoke，与 macOS 构建重叠；候选绑定明确的草稿 Release ID，记录被安装候选的 asset ID 与 SHA-256，并在公开前重新下载核对，确保通过测试的就是将公开的同一份 installer。公开操作仍等待双平台、清单和升级测试全部成功。
 - 上述门槛通过后才将草稿 Release 转为公开；随后执行非阻断的公开分发可达性与资产一致性检查，不再次安装软件。
 
 同一时间只允许一个 Release workflow 运行。GitHub Actions 使用默认 `GITHUB_TOKEN` 创建的 commit/tag 不依赖第二条 tag workflow 被触发，后续构建和发布都在当前 workflow 内继续。
@@ -61,7 +73,7 @@ npm run release -- patch
 
 脚本会校验版本、测试并构建，随后创建 release commit 与 `v*` tag，并在获得授权后推送 `main` 和 tag。外部推送的 tag 仍兼容 `.github/workflows/release.yml`；它会验证 tag/版本、构建 Windows/macOS 草稿产物、执行 Defender 扫描和 Stable 草稿候选升级烟测，检查附件与候选身份一致后才公开 Release。
 
-工作流完成后必须检查公开 Release、完整产物和所有 job 的最终结论。当前流程及授权边界见 [GITHUB-RELEASE-CHECKLIST.md](GITHUB-RELEASE-CHECKLIST.md)；最近一次完整证据见 [RELEASE-0.3.5.md](RELEASE-0.3.5.md)。
+工作流完成后必须检查公开 Release、完整产物和所有 job 的最终结论。当前流程及授权边界见 [GITHUB-RELEASE-CHECKLIST.md](GITHUB-RELEASE-CHECKLIST.md)；最近一次完整发布证据见 [RELEASE-0.3.19.md](RELEASE-0.3.19.md)，本次提速的基线与实现范围见 [性能记录](RELEASE-PERFORMANCE-2026-09-19.md)。
 
 ### GitHub 配置
 
@@ -73,6 +85,8 @@ npm run release -- patch
 ## CI 与构建
 
 `.github/workflows/ci.yml` 会在 push/PR 时执行：
+
+先判断完整变更范围。仅 README、CHANGELOG 和 `docs/` 下的 Markdown 变更保留原检查 job 的成功结果，但不安装依赖或编译；混合变更、配置/工作流/脚本变更、无法解析的基准和空差异均执行全套。PR 使用合并基准，push 覆盖本次全部提交，改名检查两侧。手动触发 CI 始终跑全套；同一分支的旧普通 CI 可被新提交取消，Release 不受该取消策略影响。
 
 - 前端测试、前端构建、npm audit。
 - Windows 桌面测试和 Tauri build。

@@ -8,7 +8,9 @@
 npm run publish:release -- patch --yes
 ```
 
-命令会检查干净且同步的 `main`、GitHub CLI 登录态、重复 tag 和并发 Release workflow；随后触发一次 `publish=true` 工作流，自动等待，并验证全部 job、Defender、公开状态、六类附件以及远端 refs。它不会暂存或提交业务代码。如已保护 `release` Environment，仍需在第一次远端写入前批准 deployment。
+命令会检查干净且同步的 `main`、实际 GitHub API 访问、重复 tag 和并发 Release workflow；随后触发一次 `publish=true` 工作流，自动等待，并验证全部 job、Defender、公开状态、六类附件以及远端 refs。它不会暂存或提交业务代码。如已保护 `release` Environment，仍需在第一次远端写入前批准 deployment。
+
+断线后运行 `npm run publish:release -- --resume`，或指定 `--resume RUN_ID --record PATH`，读取保存的仓库/提交/版本/模式记录并继续观察同一次运行。恢复不会创建新版本或重新触发发布；无法确认远端状态时报告未知并保留恢复记录。公开产物自动下载、核对哈希并验证更新签名，报告保存在 `output/release-runs/`。若 main 已前进，恢复会确认发布提交仍是 main 的祖先，并在报告中注明。
 
 可选的只读远端预演为 `npm run publish:release -- patch --dry-run`。正式工作流本身先执行同一验证 gate，因此日常发布不需要先预演再重复正式运行。
 
@@ -16,7 +18,7 @@ npm run publish:release -- patch --yes
 
 `version` 支持 `patch`、`minor`、`major`、`beta`、`stable` 或明确的 `x.y.z[-beta.n]`。工作流会拒绝非 `main` 手动运行、旧版本、重复 tag、没有新增 commit、验证后发生变化的 `main`，以及缺少任一平台产物的发布。
 
-在线流程使用 atomic push 同时提交 release commit/tag；Windows/macOS 各构建一次，先上传为 draft，Windows Defender 扫描实际待发布文件。Stable 版本会在草稿仍未公开时，将上一公开稳定版升级到该草稿中的确切 Windows installer，并记录 Release ID、asset ID 与 SHA-256；只有升级通过且公开前再次确认仍为同一资产，才会公开 Release。GitHub API 只向具备 push access 的令牌返回草稿，因此 `upgrade-smoke` job 局部声明 `contents: write`，但脚本本身只执行读取与下载。公开后另有一个非阻断的分发可达性检查。创建 release ref 时不再重复安装 Rust/Linux 桌面依赖或执行第二次 Rust 编译检查。
+在线流程使用 atomic push 同时提交 release commit/tag；Windows/macOS 并行构建并上传到同一个草稿，Windows Defender 扫描实际待发布文件。单独的 `assemble-updater` 等两平台成功后一次生成清单。Stable 升级测试在 Windows 完成扫描后即可开始，无需等待 macOS；它将上一公开稳定版升级到明确草稿 ID 中的确切 Windows installer，并记录 Release ID、asset ID 与 SHA-256。只有双平台、清单、升级全部通过且公开前再次确认仍为同一资产，才会公开 Release。GitHub API 只向具备 push access 的令牌返回草稿，因此 `upgrade-smoke` job 局部声明 `contents: write`，但脚本本身只执行读取与下载。公开后另有一个非阻断的分发可达性检查。创建 release ref 时不再重复安装 Rust/Linux 桌面依赖或执行第二次 Rust 编译检查。
 
 ## 本地发布回退
 
@@ -53,7 +55,7 @@ npm run release -- patch --no-push
 
 ## 发布前只需确认
 
-- Git、Node.js 20+、Rust stable 和 npm 依赖可用。
+- Git、符合 `.node-version` / `package.json` 的 Node.js、Rust stable 和 npm 依赖可用。
 - GitHub Actions 已启用。
 - 仓库 Secrets 已配置 `TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。
 - 准备发布的代码已经合入并推送到 `main`。
@@ -71,7 +73,7 @@ macOS Universal target 会由 GitHub Actions 自动安装，本地 Windows 不�
 - macOS updater archive 及 `.sig`。
 - `latest.json`。
 - 根据提交自动生成的版本说明。
-- `verify`、Defender 检查、全部平台 `publish-draft`、Stable 草稿 `upgrade-smoke` 和 `finalize` job 均成功；可选的 `post-release-distribution` 结果也应人工复核。
+- `verify`、共享草稿、`publish-windows`（含 Defender）、`publish-macos`、`assemble-updater`、Stable 草稿 `upgrade-smoke` 和 `finalize` job 均成功；可选的 `post-release-distribution` 结果也应人工复核。
 - Release 不是 draft；Beta tag 应为 prerelease，Stable tag 不应为 prerelease。
 
 每次发布应在项目内保存一份简短 evidence record，记录 release/tag/commit、工作流链接、产物清单、自动化结果以及仍待完成的手动平台验证。格式可参考 [RELEASE-0.2.24.md](RELEASE-0.2.24.md)。

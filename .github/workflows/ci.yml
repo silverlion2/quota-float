@@ -3,25 +3,58 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  frontend:
+  changes:
     runs-on: ubuntu-latest
+    outputs:
+      scope: ${{ steps.scope.outputs.scope }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Classify the complete change set
+        id: scope
+        run: node scripts/ci-scope.mjs
+
+  frontend:
+    needs: changes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Documentation-only check completed
+        if: needs.changes.outputs.scope == 'docs'
+        run: echo "Documentation-only change; native compilation is unnecessary."
+      - uses: actions/checkout@v7
+        if: needs.changes.outputs.scope != 'docs'
       - uses: actions/setup-node@v7
+        if: needs.changes.outputs.scope != 'docs'
         with:
           node-version-file: .node-version
           cache: npm
       - run: npm ci
+        if: needs.changes.outputs.scope != 'docs'
       - run: npm run version:check
+        if: needs.changes.outputs.scope != 'docs'
       - run: npm test
+        if: needs.changes.outputs.scope != 'docs'
       - run: npm run build
+        if: needs.changes.outputs.scope != 'docs'
       - run: npm run check:bundle
+        if: needs.changes.outputs.scope != 'docs'
       - run: npm audit --audit-level=high
+        if: needs.changes.outputs.scope != 'docs'
 
   desktop:
-    needs: frontend
+    needs: [changes, frontend]
     strategy:
       fail-fast: false
       matrix:
@@ -38,29 +71,39 @@ jobs:
             artifact-path: src-tauri/target/universal-apple-darwin/release/bundle/**
     runs-on: ${{ matrix.os }}
     steps:
+      - name: Documentation-only check completed
+        if: needs.changes.outputs.scope == 'docs'
+        run: echo "Documentation-only change; native compilation is unnecessary."
       - uses: actions/checkout@v7
+        if: needs.changes.outputs.scope != 'docs'
       - uses: actions/setup-node@v7
+        if: needs.changes.outputs.scope != 'docs'
         with:
           node-version-file: .node-version
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
+        if: needs.changes.outputs.scope != 'docs'
       - name: Install macOS universal targets
-        if: runner.os == 'macOS'
+        if: needs.changes.outputs.scope != 'docs' && (runner.os == 'macOS')
         run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
       - uses: Swatinem/rust-cache@v2
+        if: needs.changes.outputs.scope != 'docs'
         with:
           workspaces: src-tauri
       - run: npm ci
+        if: needs.changes.outputs.scope != 'docs'
       - run: cargo test --manifest-path src-tauri/Cargo.toml
+        if: needs.changes.outputs.scope != 'docs'
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+        if: needs.changes.outputs.scope != 'docs'
       - name: Build isolated synthetic-data native E2E binary
-        if: runner.os == 'Windows'
+        if: needs.changes.outputs.scope != 'docs' && (runner.os == 'Windows')
         run: npm run test:e2e:build
       - name: Run native WebView critical-path smoke tests
-        if: runner.os == 'Windows'
+        if: needs.changes.outputs.scope != 'docs' && (runner.os == 'Windows')
         run: npm run test:e2e
       - name: Archive native UI screenshots
-        if: always() && runner.os == 'Windows'
+        if: needs.changes.outputs.scope != 'docs' && (always() && runner.os == 'Windows')
         uses: actions/upload-artifact@v4
         with:
           name: quota-float-native-ui
@@ -68,8 +111,9 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
       - run: ${{ matrix.build-command }}
+        if: needs.changes.outputs.scope != 'docs'
       - name: Verify Windows artifacts with Microsoft Defender
-        if: runner.os == 'Windows'
+        if: needs.changes.outputs.scope != 'docs' && (runner.os == 'Windows')
         shell: powershell
         run: |
           $installer = Get-ChildItem "src-tauri/target/release/bundle/nsis" -Filter "*x64-setup.exe" |
@@ -79,6 +123,7 @@ jobs:
             $installer
           )
       - uses: actions/upload-artifact@v4
+        if: needs.changes.outputs.scope != 'docs'
         with:
           name: ${{ matrix.artifact-name }}
           path: ${{ matrix.artifact-path }}

@@ -1,6 +1,6 @@
 name: Release
 
-run-name: Release ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+run-name: Release ${{ inputs.version || github.ref_name }} (publish=${{ github.event_name != 'workflow_dispatch' || inputs.publish }})
 
 on:
   workflow_dispatch:
@@ -212,21 +212,14 @@ jobs:
             core.setOutput("release_id", String(release.id));
             core.info(`Both platform builders will upload to draft ${release.id} for ${tag}.`);
 
-  publish-draft:
+  publish-windows:
     if: ${{ always() && needs.create-draft.result == 'success' }}
     needs: [verify, create-release-ref, create-draft]
     permissions:
       contents: write
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      matrix:
-        include:
-          - platform: windows-latest
-            args: "--bundles nsis --config src-tauri/tauri.release.conf.json"
-          - platform: macos-latest
-            args: "--target universal-apple-darwin --bundles app,dmg --config src-tauri/tauri.release.conf.json"
-    runs-on: ${{ matrix.platform }}
+    runs-on: windows-latest
+    outputs:
+      release_id: ${{ needs.create-draft.outputs.release_id }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -237,15 +230,13 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install macOS universal targets
-        if: runner.os == 'macOS'
-        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          # Retain the pre-split cache namespace; OS/toolchain isolation is automatic.
+          shared-key: publish-draft
       - run: npm ci
       - name: Configure optional platform code signing
-        if: runner.os == 'Windows'
         shell: pwsh
         env:
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
@@ -283,8 +274,80 @@ jobs:
             }
           } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath 'src-tauri/tauri.release.conf.json' -Encoding utf8NoBOM
           Write-Host 'Configured Authenticode with the imported project certificate.'
+      - name: Verify the checked-out release ref
+        shell: bash
+        run: npm run version:check -- --tag "${{ needs.verify.outputs.tag }}"
+      - name: Build and upload draft release artifacts
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          releaseId: ${{ needs.create-draft.outputs.release_id }}
+          tagName: ${{ needs.verify.outputs.tag }}
+          releaseName: Quota Float ${{ needs.verify.outputs.tag }}
+          releaseBody: ${{ needs.create-draft.outputs.release_body }}
+          releaseDraft: true
+          prerelease: ${{ contains(needs.verify.outputs.tag, '-') }}
+          includeUpdaterJson: false
+          args: "--bundles nsis --config src-tauri/tauri.release.conf.json"
+      - name: Scan the exact Windows release artifacts with Microsoft Defender
+        shell: powershell
+        run: |
+          $installer = Get-ChildItem "src-tauri/target/release/bundle/nsis" -Filter "*x64-setup.exe" |
+            Select-Object -ExpandProperty FullName -First 1
+          ./scripts/verify-windows-defender.ps1 -EnableRealTimeProtection -Path @(
+            "src-tauri/target/release/quota-float.exe",
+            $installer
+          )
+      - name: Verify Authenticode when configured
+        shell: powershell
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE)) {
+            exit 0
+          }
+          $installer = Get-ChildItem 'src-tauri/target/release/bundle/nsis' -Filter '*x64-setup.exe' |
+            Select-Object -ExpandProperty FullName -First 1
+          foreach ($artifact in @('src-tauri/target/release/quota-float.exe', $installer)) {
+            $signature = Get-AuthenticodeSignature -FilePath $artifact
+            if ($signature.Status -ne 'Valid') {
+              throw "Invalid Authenticode signature for ${artifact}: $($signature.StatusMessage)"
+            }
+          }
+
+  publish-macos:
+    if: ${{ always() && needs.create-draft.result == 'success' }}
+    needs: [verify, create-release-ref, create-draft]
+    permissions:
+      contents: write
+    runs-on: macos-latest
+    outputs:
+      release_id: ${{ needs.create-draft.outputs.release_id }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'push' && github.sha || needs.create-release-ref.outputs.release_sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install macOS universal targets
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          # Retain the pre-split cache namespace; OS/toolchain isolation is automatic.
+          shared-key: publish-draft
+      - run: npm ci
       - name: Configure optional macOS signing and notarization
-        if: runner.os == 'macOS'
         shell: bash
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -337,36 +400,9 @@ jobs:
           releaseBody: ${{ needs.create-draft.outputs.release_body }}
           releaseDraft: true
           prerelease: ${{ contains(needs.verify.outputs.tag, '-') }}
-          args: ${{ matrix.args }}
-      - name: Scan the exact Windows release artifacts with Microsoft Defender
-        if: runner.os == 'Windows'
-        shell: powershell
-        run: |
-          $installer = Get-ChildItem "src-tauri/target/release/bundle/nsis" -Filter "*x64-setup.exe" |
-            Select-Object -ExpandProperty FullName -First 1
-          ./scripts/verify-windows-defender.ps1 -EnableRealTimeProtection -Path @(
-            "src-tauri/target/release/quota-float.exe",
-            $installer
-          )
-      - name: Verify Authenticode when configured
-        if: runner.os == 'Windows'
-        shell: powershell
-        env:
-          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE)) {
-            exit 0
-          }
-          $installer = Get-ChildItem 'src-tauri/target/release/bundle/nsis' -Filter '*x64-setup.exe' |
-            Select-Object -ExpandProperty FullName -First 1
-          foreach ($artifact in @('src-tauri/target/release/quota-float.exe', $installer)) {
-            $signature = Get-AuthenticodeSignature -FilePath $artifact
-            if ($signature.Status -ne 'Valid') {
-              throw "Invalid Authenticode signature for ${artifact}: $($signature.StatusMessage)"
-            }
-          }
+          includeUpdaterJson: false
+          args: "--target universal-apple-darwin --bundles app,dmg --config src-tauri/tauri.release.conf.json"
       - name: Verify Developer ID signature and notarization when configured
-        if: runner.os == 'macOS'
         shell: bash
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -382,9 +418,36 @@ jobs:
             xcrun stapler validate "$app_path"
           fi
 
+  assemble-updater:
+    if: ${{ always() && needs.publish-windows.result == 'success' && needs.publish-macos.result == 'success' }}
+    needs: [verify, create-release-ref, create-draft, publish-windows, publish-macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'push' && github.sha || needs.create-release-ref.outputs.release_sha }}
+      - name: Write the updater manifest once from both verified platform builds
+        uses: actions/github-script@v7
+        env:
+          RELEASE_TAG: ${{ needs.verify.outputs.tag }}
+          RELEASE_SHA: ${{ github.event_name == 'push' && github.sha || needs.create-release-ref.outputs.release_sha }}
+          RELEASE_ID: ${{ needs.create-draft.outputs.release_id }}
+        with:
+          script: |
+            const { pathToFileURL } = require("node:url");
+            const { assembleUpdater } = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/assemble-updater.mjs`).href);
+            const result = await assembleUpdater({
+              github, owner: context.repo.owner, repo: context.repo.repo,
+              releaseId: Number(process.env.RELEASE_ID), tag: process.env.RELEASE_TAG,
+              releaseSha: process.env.RELEASE_SHA, serverUrl: process.env.GITHUB_SERVER_URL,
+            });
+            core.info(`Created updater manifest asset ${result.assetId} for ${result.manifest.version}.`);
+
   upgrade-smoke:
-    if: ${{ always() && needs.publish-draft.result == 'success' && !contains(needs.verify.outputs.tag, '-') }}
-    needs: [verify, publish-draft]
+    if: ${{ always() && needs.publish-windows.result == 'success' && !contains(needs.verify.outputs.tag, '-') }}
+    needs: [verify, publish-windows]
     runs-on: windows-latest
     # GitHub only exposes draft releases to tokens with push access. The script performs GET/download calls only.
     permissions:
@@ -403,14 +466,16 @@ jobs:
         shell: powershell
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./scripts/verify-windows-upgrade.ps1 -Repository "${{ github.repository }}" -CurrentTag "${{ needs.verify.outputs.tag }}"
+        run: ./scripts/verify-windows-upgrade.ps1 -Repository "${{ github.repository }}" -CurrentTag "${{ needs.verify.outputs.tag }}" -CandidateReleaseId "${{ needs.publish-windows.outputs.release_id }}"
 
   finalize:
-    needs: [verify, create-release-ref, create-draft, publish-draft, upgrade-smoke]
+    needs: [verify, create-release-ref, create-draft, publish-windows, publish-macos, assemble-updater, upgrade-smoke]
     if: >-
       ${{
         always() &&
-        needs.publish-draft.result == 'success' &&
+        needs.publish-windows.result == 'success' &&
+        needs.publish-macos.result == 'success' &&
+        needs.assemble-updater.result == 'success' &&
         (
           contains(needs.verify.outputs.tag, '-') ||
           needs.upgrade-smoke.result == 'success'

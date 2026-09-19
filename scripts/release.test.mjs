@@ -87,8 +87,10 @@ describe("release automation", () => {
 
   it("publishes a per-user NSIS updater on Windows", () => {
     const workflow = readFileSync(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
-    expect(workflow).toMatch(/platform: windows-latest\s+args: "--bundles nsis --config src-tauri\/tauri\.release\.conf\.json"/);
-    expect(workflow).toMatch(/platform: macos-latest\s+args: "--target universal-apple-darwin --bundles app,dmg --config src-tauri\/tauri\.release\.conf\.json"/);
+    expect(workflow).toContain('args: "--bundles nsis --config src-tauri/tauri.release.conf.json"');
+    expect(workflow).toContain("runs-on: windows-latest");
+    expect(workflow).toContain('args: "--target universal-apple-darwin --bundles app,dmg --config src-tauri/tauri.release.conf.json"');
+    expect(workflow).toContain("runs-on: macos-latest");
     expect(workflow).toMatch(/prerelease:.*contains\(needs\.verify\.outputs\.tag, '-'/);
     expect(workflow).toContain("verify-windows-upgrade.ps1");
     expect(workflow).toContain("Verify Authenticode when configured");
@@ -99,7 +101,7 @@ describe("release automation", () => {
   it("supports guarded online release preparation", () => {
     const workflow = readFileSync(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
     const releaseScript = readFileSync(new URL("./release.mjs", import.meta.url), "utf8");
-    const createReleaseRefJob = workflow.match(/\n  create-release-ref:\n[\s\S]*?\n  publish-draft:/)?.[0] ?? "";
+    const createReleaseRefJob = workflow.match(/\n  create-release-ref:\n[\s\S]*?\n  create-draft:/)?.[0] ?? "";
 
     expect(workflow).toContain("workflow_dispatch:");
     expect(workflow).toMatch(/publish:\s+description: Create the release commit\/tag and publish after verification\s+required: true\s+default: false/);
@@ -122,7 +124,8 @@ describe("release automation", () => {
     const ciConfig = JSON.parse(readFileSync(new URL("../src-tauri/tauri.ci.conf.json", import.meta.url), "utf8"));
 
     expect(releaseWorkflow).not.toContain("defender-preflight:");
-    expect(releaseWorkflow).toContain("publish-draft:");
+    expect(releaseWorkflow).toContain("publish-windows:");
+    expect(releaseWorkflow).toContain("publish-macos:");
     expect(releaseWorkflow).toContain("releaseDraft: true");
     expect(releaseWorkflow).toContain("verify-windows-defender.ps1 -EnableRealTimeProtection -Path");
     expect(releaseWorkflow).not.toContain("verify-windows-defender.ps1 -UpdateSignatures");
@@ -144,7 +147,7 @@ describe("release automation", () => {
     const finalizeJob = workflow.match(/\n  finalize:\n[\s\S]*?\n  post-release-distribution:/)?.[0] ?? "";
 
     expect(workflow.indexOf("\n  upgrade-smoke:")).toBeLessThan(workflow.indexOf("\n  finalize:"));
-    expect(upgradeJob).toContain("needs: [verify, publish-draft]");
+    expect(upgradeJob).toContain("needs: [verify, publish-windows]");
     expect(upgradeJob).not.toContain("needs.finalize");
     expect(upgradeJob).toContain("while the release is draft");
     expect(upgradeJob).toMatch(/GitHub only exposes draft releases[\s\S]*?permissions:\s+contents: write/);
@@ -157,6 +160,9 @@ describe("release automation", () => {
     expect(workflow).toMatch(/post-release-distribution:[\s\S]*?continue-on-error: true/);
 
     expect(upgradeScript).toContain("including drafts");
+    expect(upgradeJob).toContain('-CandidateReleaseId "${{ needs.publish-windows.outputs.release_id }}"');
+    expect(upgradeScript).toContain('if ($candidate.id -ne $CandidateReleaseId)');
+    expect(upgradeScript).toContain('if ($matches.Count -ne 1)');
     expect(upgradeScript).toContain('Invoke-GitHubJson "repos/$Repository/releases/latest"');
     expect(upgradeScript).toContain("the draft gate ran too late");
     expect(upgradeScript).toContain('Accept = "application/octet-stream"');
