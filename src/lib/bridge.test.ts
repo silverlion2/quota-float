@@ -98,6 +98,7 @@ describe("widget transitions", () => {
       compactLayout: "float",
       barEdge: "top",
       barOffset: 0.5,
+      compactProviderCount: 1,
     });
   });
 
@@ -107,6 +108,13 @@ describe("widget transitions", () => {
     const placement = expect.objectContaining({ compactLayout: "bar", barEdge: "right", barOffset: 0.75 });
     expect(api.invoke).toHaveBeenCalledWith("expand_widget", placement);
     expect(api.invoke).toHaveBeenCalledWith("collapse_widget", placement);
+  });
+
+  it("passes actual visible provider counts and clamps invalid geometry inputs", async () => {
+    await setWidgetExpanded(false, "bar", { edge: "left", offset: 0.5 }, 2);
+    expect(api.invoke).toHaveBeenLastCalledWith("collapse_widget", expect.objectContaining({ compactProviderCount: 2 }));
+    await setWidgetExpanded(true, "bottleneck", { edge: "right", offset: 0.5 }, 99);
+    expect(api.invoke).toHaveBeenLastCalledWith("expand_widget", expect.objectContaining({ compactProviderCount: 7 }));
   });
 
   it("returns the magnetic placement resolved by Rust after drag stability", async () => {

@@ -615,10 +615,21 @@ describe("QuotaCard platform ledger", () => {
 
     fireEvent.click(screen.getByRole("radio", { name: "QODER" }));
     expect(onSelectProvider).toHaveBeenCalledWith("qoder");
-    expect(screen.getByLabelText(/CODEX 74% left On track/i)).toHaveClass("quota-card--compact-bar", "quota-card--style-aurora");
+    expect(screen.getByLabelText(/CODEX 74% left Current/i)).toHaveClass("quota-card--compact-bar", "quota-card--style-aurora");
     expect(screen.getByRole("radiogroup", { name: "Choose provider" })).toHaveAttribute("aria-orientation", "horizontal");
     expect(screen.getByText("74%")).toBeInTheDocument();
-    expect(screen.getByText("On track")).toBeInTheDocument();
+    expect(screen.getByText("Current")).toBeInTheDocument();
+  });
+
+  it("shrinks when providers disappear and offers a keyboard-accessible detail action", () => {
+    const onHover = vi.fn();
+    const props = { snapshot: codex, edge: "right" as const, language: "en" as const, onSelectProvider: noop, onDrag: noop, onHover };
+    const { container, rerender } = render(<QuotaBar {...props} snapshots={[codex, qoder]} />);
+    expect(container.querySelector(".quota-bar")).toHaveStyle({ "--compact-height": "182px" });
+    rerender(<QuotaBar {...props} snapshots={[codex]} />);
+    expect(container.querySelector(".quota-bar")).toHaveStyle({ "--compact-height": "156px" });
+    fireEvent.click(screen.getByRole("button", { name: "Expand quota details" }));
+    expect(onHover).toHaveBeenCalledWith(true);
   });
 
   it.each([
@@ -643,7 +654,7 @@ describe("QuotaCard platform ledger", () => {
       />,
     );
 
-    const bar = screen.getByLabelText(/CODEX 74% left On track/i);
+    const bar = screen.getByLabelText(/CODEX 74% left Current/i);
     expect(bar).toHaveClass(`quota-bar--${edge}`, `quota-card--style-${colorTheme}`, `quota-card--theme-${resolvedAppearance}`);
     expect(bar).toHaveStyle({ "--bar-progress": "74%" });
     expect(screen.getByRole("radiogroup", { name: "Choose provider" })).toHaveAttribute("aria-orientation", "vertical");
@@ -697,7 +708,7 @@ describe("QuotaCard platform ledger", () => {
     act(() => vi.advanceTimersByTime(650));
     expect(onHover).not.toHaveBeenCalledWith(true);
 
-    fireEvent.mouseOver(screen.getByText("On track"));
+    fireEvent.mouseOver(screen.getByText("Current"));
     act(() => vi.advanceTimersByTime(649));
     expect(onHover).not.toHaveBeenCalledWith(true);
     act(() => vi.advanceTimersByTime(1));

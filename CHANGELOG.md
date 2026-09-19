@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Size magnetic Bar and Bottleneck widgets to the number of visible providers. A single-provider side Bar is now 64×156 logical pixels instead of 64×320, with matching native window bounds.
+- Preserve magnetic placement across provider-count changes, edge switches, expansion and DPI changes.
+- Refine compact readouts, keyboard access and data-status labels; tighten expanded Dashboard, Cockpit and Stacked layouts.
+- Prevent top Bottleneck quota values from truncating and retain production bundle budgets by removing superseded styles and consolidating native API chunks.
+
 ## 0.3.17 - 2026-09-17
 
 - Add custom local date ranges to Usage Insights, applying the same dates to Token totals, charts, filters, quota history and anonymized exports.

@@ -511,12 +511,14 @@ export function setWidgetExpanded(
   expanded: boolean,
   compactLayout: CompactLayout = "float",
   placement: BarPlacement = { edge: "top", offset: 0.5 },
+  compactProviderCount = 1,
 ): Promise<void> {
   if (!isTauri()) return Promise.resolve();
   return enqueueWidgetTransition(async () => {
     const { invoke } = await import("@tauri-apps/api/core");
     const workArea = await currentWorkArea();
-    const payload = { workArea, compactLayout, barEdge: placement.edge, barOffset: placement.offset };
+    const count = Number.isFinite(compactProviderCount) ? Math.max(1, Math.min(7, Math.floor(compactProviderCount))) : 1;
+    const payload = { workArea, compactLayout, barEdge: placement.edge, barOffset: placement.offset, compactProviderCount: count };
     await invoke(expanded ? "expand_widget" : "collapse_widget", payload);
   });
 }

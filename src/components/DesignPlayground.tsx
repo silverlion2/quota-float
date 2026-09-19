@@ -1,3 +1,4 @@
+import "./DesignPlayground.css";
 import { useMemo, useState, type CSSProperties } from "react";
 import type { BarEdge, ColorTheme, CompactLayout, DailyUsageSummary, ExpandedLayout, ProviderId, ProviderSnapshot, QuotaHistoryPoint, ResetForecast, ResolvedAppearance, WidgetPreferences } from "../types";
 import { QuotaBar, QuotaBottleneckBar, QuotaCard, QuotaOrb } from "./QuotaCard";
@@ -204,7 +205,8 @@ export function DesignPlayground() {
   };
 
   const activePreview = useMemo<ProviderSnapshot>(() => makePreview(previewMode), [previewMode]);
-  const activeSnapshots = useMemo(() => previewSnapshots(activePreview), [activePreview]);
+  const providerCount = Math.max(1, Math.min(7, Number(params.get("providers")) || 7));
+  const activeSnapshots = useMemo(() => previewSnapshots(activePreview).slice(0, providerCount), [activePreview, providerCount]);
   const displayedPreview = activeSnapshots.find((snapshot) => snapshot.provider === selectedProvider) ?? activePreview;
 
   const update = <K extends keyof Values>(key: K, value: Values[K]) => setValues((current) => ({ ...current, [key]: value }));
@@ -257,9 +259,9 @@ export function DesignPlayground() {
         <div className={previewMode === "orb" ? barLike ? `design-bar-frame design-bar-frame--${barEdge}` : "design-orb-frame" : "design-card-frame"}>
           {previewMode === "orb"
             ? compactLayout === "bar"
-              ? <QuotaBar snapshot={displayedPreview} snapshots={activeSnapshots} edge={barEdge} language="en" colorTheme={colorTheme} accentColor={activePreferences.accentColor} resolvedAppearance={resolvedAppearance} onSelectProvider={setSelectedProvider} onDrag={noop} onHover={noop} />
+              ? <QuotaBar snapshot={displayedPreview} snapshots={activeSnapshots} edge={barEdge} language={params.get("lang") === "zh" ? "zh-CN" : "en"} colorTheme={colorTheme} accentColor={activePreferences.accentColor} resolvedAppearance={resolvedAppearance} onSelectProvider={setSelectedProvider} onDrag={noop} onHover={noop} />
               : compactLayout === "bottleneck"
-                ? <QuotaBottleneckBar snapshot={displayedPreview} snapshots={activeSnapshots} edge={barEdge} language="en" colorTheme={colorTheme} accentColor={activePreferences.accentColor} resolvedAppearance={resolvedAppearance} onSelectProvider={setSelectedProvider} onDrag={noop} onHover={noop} />
+                ? <QuotaBottleneckBar snapshot={displayedPreview} snapshots={activeSnapshots} edge={barEdge} language={params.get("lang") === "zh" ? "zh-CN" : "en"} colorTheme={colorTheme} accentColor={activePreferences.accentColor} resolvedAppearance={resolvedAppearance} onSelectProvider={setSelectedProvider} onDrag={noop} onHover={noop} />
               : <QuotaOrb snapshot={activePreview} language="en" compactLayout={compactLayout} colorTheme={colorTheme} accentColor={activePreferences.accentColor} resolvedAppearance={resolvedAppearance} onDrag={() => {}} onHover={() => {}} />
             : <QuotaCard snapshot={displayedPreview} snapshots={activeSnapshots} preferences={activePreferences} resolvedAppearance={resolvedAppearance} history={previewHistory} dailyUsage={previewDailyUsage} resetForecast={previewResetForecast} onSelectProvider={setSelectedProvider} onLock={noop} onToggleStayExpanded={noop} onLanguage={noop} onDrag={noop} onHover={noop} consumingProviders={noConsumingProviders} initialShowCreditTip={showCreditTip} />}
         </div>

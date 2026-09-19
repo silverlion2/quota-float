@@ -21,7 +21,7 @@ Quota Float 是一款 Windows/macOS Tauri 桌面悬浮窗：它只读复用本�
 - 平台刷新按完成顺序渐进显示，慢平台不会延迟其他平台的可见结果；最终批次统一处理提醒和历史，避免重复副作用。Codex 项目筛选使用 Rust 内生成的不透明身份区分同名目录；本周/本月报告按需汇总至当前时间，导出不包含原始路径、项目身份或提示词。
 
 - 平台目录包含 Codex、Claude、Qoder、TRAE、WorkBuddy、火山方舟 Coding Plan 和 Google Antigravity。当前源码在 Windows 支持全部七个平台；macOS 支持 Codex、Claude、火山方舟和 Antigravity，Qoder、TRAE、WorkBuddy 的适配器在非 Windows 构建中返回未检测到。源码支持不等于近期真实账号实测，详细矩阵见 [PROVIDER-COMPATIBILITY.md](PROVIDER-COMPATIBILITY.md)。
-- 紧凑视图包括 Float、Ring、Bar 与 Bottleneck；Bar 和 Bottleneck 可磁吸顶部、左侧或右侧，顶部尺寸为 `400×38`，左右侧轨为 `64×320`。Bottleneck 为每个平台提取最低剩余额度周期并按风险排序，平台点击仍只改变当前选择。
+- 紧凑视图包括 Float、Ring、Bar 与 Bottleneck；Bar 和 Bottleneck 可磁吸顶部、左侧或右侧，尺寸随实际可见平台数量变化：单平台 Bar 顶部 `224×38`、侧栏 `64×156`，七平台为 `392×38` / `64×312`；Bottleneck 单平台 `196×38` / `64×100`，七平台 `400×38` / `64×292`（原生窗口另含每边 4px 安全边距）。Bottleneck 为每个平台提取最低剩余额度周期并按风险排序，平台点击仍只改变当前选择。
 - Bar 的边缘与沿边偏移会写入偏好、布局方案、导出文件和恢复备份；偏移采用 `0…1` 归一化值，可适配工作区与缩放变化。
 - 展开视图包括信息层级各自独立的 Dashboard、Cockpit、Provider Bar 与 Stacked，并从 Bar/Bottleneck 所在边缘向屏幕内侧展开；内容高度变化不会丢失边缘锚点。Cockpit 聚合额度环、近期趋势、节奏计划与 90 天热力图，三个区块可原位聚焦放大，也可拆成独立的原生置顶窗口。
 - 紧凑 Bar 的 Logo 区与 Bottleneck 的平台指标区保持纯平台切换，只有详情摘要区停留 650ms 才展开；Provider Bar 展开态保留右侧纵向平台列表并移除顶部横向快捷条，Cockpit 保留单一横向平台快切导航。

@@ -10,6 +10,7 @@ import { calculateQuotaPace, localDateKey, paceBaselineKey, trackedQuotaWindows,
 import { isRecentCodexReset, type RecentCodexReset } from "../lib/resetDetection";
 import { recentQuotaTrend, type QuotaTrendPoint } from "../lib/usageInsights";
 import type { BarEdge, CockpitRegion, ColorTheme, CompactLayout, DailyPaceBaseline, DailyUsageSummary, Language, ProviderId, ProviderSnapshot, QuotaHistoryPoint, ResetForecast, ResolvedAppearance, VolcengineDiagnostics, WidgetPreferences } from "../types";
+import { compactBarSize } from "../lib/compactGeometry";
 import { ProviderMark } from "./ProviderMark";
 import { ProviderLogoSlider } from "./ProviderLogoSlider";
 import { QuotaHistoryCurve } from "./QuotaHistoryCurve";
@@ -1215,14 +1216,18 @@ export const QuotaBar = memo(function QuotaBar({
       : "";
   const healthy = snapshot.status === "ok";
   const status = healthy
-    ? (activeLanguage === "en" ? "On track" : "正常")
+    ? remaining !== null && remaining <= 10 ? (activeLanguage === "en" ? "Low quota" : "额度低") : (activeLanguage === "en" ? "Current" : "已更新")
     : snapshot.status === "stale"
       ? (activeLanguage === "en" ? "Stale" : "过期")
-      : activeLanguage === "en" ? "Attention" : "需处理";
+      : snapshot.status === "loading" ? (activeLanguage === "en" ? "Loading" : "读取中")
+      : snapshot.status === "signed_out" ? (activeLanguage === "en" ? "Sign in" : "未登录")
+      : activeLanguage === "en" ? "Unavailable" : "不可用";
   const providers = snapshots.map((item) => ({ id: item.provider, label: item.displayName }));
+  const dimensions = compactBarSize("bar", edge, providers.length);
   const progress = remaining ?? (unlimited ? 100 : 0);
   const reset = quota ? compactResetTime(quota.window.resetsAt, now) : snapshot.balanceUnit ?? "—";
-  const freshness = compactFreshness(snapshot.updatedAt, now);
+  const freshnessValue = compactFreshness(snapshot.updatedAt, now);
+  const freshness = activeLanguage === "en" ? freshnessValue : freshnessValue === "now" ? "刚刚" : freshnessValue.replace("m", "分").replace("h", "时");
 
   const cancelHover = () => {
     if (hoverTimer.current !== null) {
@@ -1241,7 +1246,8 @@ export const QuotaBar = memo(function QuotaBar({
   return (
     <main
       className={`quota-bar quota-bar--${edge} quota-card--${snapshot.status} quota-card--${quotaTier(remaining)} quota-card--compact-bar quota-card--style-${colorTheme} quota-card--theme-${resolvedAppearance}`}
-      style={{ "--accent-color": accentColor, "--bar-progress": `${progress}%` } as CSSProperties}
+      data-provider-count={dimensions.count}
+      style={{ "--accent-color": accentColor, "--bar-progress": `${progress}%`, "--compact-width": `${dimensions.width}px`, "--compact-height": `${dimensions.height}px`, "--compact-count": dimensions.count } as CSSProperties}
       onMouseOver={(event) => {
         const target = event.target instanceof Element ? event.target : null;
         if (target?.closest(".provider-logo-slider")) {
@@ -1269,14 +1275,21 @@ export const QuotaBar = memo(function QuotaBar({
         orientation={edge === "top" ? "horizontal" : "vertical"}
       />
       <span className="bar-divider" aria-hidden="true" />
-      <section className="bar-metric">
+      <button type="button" className="bar-details"
+        aria-label={activeLanguage === "en" ? "Expand quota details" : "展开额度详情"}
+        title={`${status} · ${activeLanguage === "en" ? "Updated" : "更新于"} ${freshness}`}
+        onMouseDown={(event) => event.stopPropagation()}
+        onClick={() => { cancelHover(); onHover(true); }}
+      >
+      <span className="bar-metric">
         <strong>{snapshot.displayName}</strong>
         <b>{value}</b>
         {suffix ? <small>{suffix}</small> : null}
-      </section>
-      <span className="bar-reset" title={activeLanguage === "en" ? `Personal reset ${reset}` : `个人周期 ${reset}`}>{reset}</span>
-      <span className={`bar-status bar-status--${healthy ? "ok" : "attention"}`}><i />{status}</span>
-      <span className="bar-freshness" title={activeLanguage === "en" ? `Updated ${freshness}` : `更新于 ${freshness}`}>{freshness}</span>
+      </span>
+      <span className="bar-reset" title={activeLanguage === "en" ? `Personal reset ${reset}` : `个人周期 ${reset}`}><ClockCounterClockwise aria-hidden="true" />{reset}</span>
+      <span className={`bar-status bar-status--${healthy && (remaining === null || remaining > 10) ? "ok" : "attention"}`}><i /><span>{status}</span></span>
+      <span className="bar-freshness" title={activeLanguage === "en" ? `Updated ${freshness}` : `更新于 ${freshness}`}>{activeLanguage === "en" ? `Updated ${freshness}` : `更新 ${freshness}`}</span>
+      </button>
       <span className="bar-progress" aria-hidden="true"><i /></span>
     </main>
   );
@@ -1323,6 +1336,7 @@ export const QuotaBottleneckBar = memo(function QuotaBottleneckBar({
   const snapshotsByProvider = new Map(snapshots.map((item) => [item.provider, item]));
   const orderedSnapshots = sortedIds.map((provider) => snapshotsByProvider.get(provider)!).filter(Boolean);
   const lead = orderedSnapshots[0] ?? snapshot;
+  const dimensions = compactBarSize("bottleneck", edge, orderedSnapshots.length);
   const leadMetric = bottleneckMetric(lead, activeLanguage);
   const leadRemaining = snapshotRemainingPercent(lead);
   const expandLabel = activeLanguage === "en" ? "Expand bottleneck details" : "展开瓶颈详情";
@@ -1357,7 +1371,8 @@ export const QuotaBottleneckBar = memo(function QuotaBottleneckBar({
   return (
     <main
       className={`quota-bar quota-bottleneck-bar quota-bar--${edge} quota-card--${lead.status} quota-card--${quotaTier(leadRemaining)} quota-card--compact-bottleneck quota-card--style-${colorTheme} quota-card--theme-${resolvedAppearance}`}
-      style={{ "--accent-color": accentColor, "--bar-progress": `${leadMetric.progress}%`, "--bottleneck-count": orderedSnapshots.length } as CSSProperties}
+      data-provider-count={dimensions.count}
+      style={{ "--accent-color": accentColor, "--bar-progress": `${leadMetric.progress}%`, "--bottleneck-count": dimensions.count, "--compact-width": `${dimensions.width}px`, "--compact-height": `${dimensions.height}px`, "--compact-count": dimensions.count } as CSSProperties}
       onMouseOver={(event) => {
         const target = event.target instanceof Element ? event.target : null;
         if (target?.closest(".bottleneck-provider-list")) {

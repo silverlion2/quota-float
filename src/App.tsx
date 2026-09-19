@@ -693,7 +693,7 @@ export default function App() {
       // A native resize can move an expanded card under the pointer. Re-entry
       // must not send expand_widget again and reset its measured content height.
       if (!compact) return;
-      void setWidgetExpanded(true, preferences.compactLayout, { edge: preferences.barEdge, offset: preferences.barOffset })
+      void setWidgetExpanded(true, preferences.compactLayout, { edge: preferences.barEdge, offset: preferences.barOffset }, orderedSnapshots.length)
         .then(() => { if (hoverSequence.current === sequence) setCompact(false); })
         .catch(() => {
           setCompact(false);
@@ -710,10 +710,10 @@ export default function App() {
         if (hoverSequence.current !== sequence) return;
         setCompact(true);
         setCollapsing(false);
-        void setWidgetExpanded(false, preferences.compactLayout, { edge: preferences.barEdge, offset: preferences.barOffset }).catch(() => setOperationError("Widget collapse failed."));
+        void setWidgetExpanded(false, preferences.compactLayout, { edge: preferences.barEdge, offset: preferences.barOffset }, orderedSnapshots.length).catch(() => setOperationError("Widget collapse failed."));
       }, reducedMotion ? 0 : 120);
     }, 180);
-  }, [compact, preferences.barEdge, preferences.barOffset, preferences.compactLayout, preferences.stayExpanded, refresh]);
+  }, [compact, orderedSnapshots.length, preferences.barEdge, preferences.barOffset, preferences.compactLayout, preferences.stayExpanded, refresh]);
 
   useEffect(() => {
     if (!preferences.stayExpanded) return;
@@ -722,7 +722,7 @@ export default function App() {
     setCollapsing(false);
     setCompact(false);
     let cancelled = false;
-    void setWidgetExpanded(true, preferences.compactLayout, { edge: preferences.barEdge, offset: preferences.barOffset })
+    void setWidgetExpanded(true, preferences.compactLayout, { edge: preferences.barEdge, offset: preferences.barOffset }, orderedSnapshots.length)
       .then(async () => {
         if (cancelled) return;
         // Changing compact placement while pinned open also resets native
@@ -734,12 +734,12 @@ export default function App() {
       })
       .catch(() => { if (!cancelled) setOperationError("Widget expand failed."); });
     return () => { cancelled = true; };
-  }, [preferences.barEdge, preferences.barOffset, preferences.compactLayout, preferences.stayExpanded]);
+  }, [orderedSnapshots.length, preferences.barEdge, preferences.barOffset, preferences.compactLayout, preferences.stayExpanded]);
 
   useEffect(() => {
     if (!compact || preferences.stayExpanded) return;
-    void setWidgetExpanded(false, preferences.compactLayout, { edge: preferences.barEdge, offset: preferences.barOffset }).catch(() => setOperationError("Widget layout resize failed."));
-  }, [compact, preferences.barEdge, preferences.barOffset, preferences.compactLayout, preferences.stayExpanded]);
+    void setWidgetExpanded(false, preferences.compactLayout, { edge: preferences.barEdge, offset: preferences.barOffset }, orderedSnapshots.length).catch(() => setOperationError("Widget layout resize failed."));
+  }, [compact, orderedSnapshots.length, preferences.barEdge, preferences.barOffset, preferences.compactLayout, preferences.stayExpanded]);
 
   useEffect(() => {
     if (compact) return;

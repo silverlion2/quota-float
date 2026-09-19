@@ -78,7 +78,7 @@ Updater artifacts are signed with the project's Tauri update key. Windows Authen
 - Independent Float/Ring/Bar/Bottleneck compact layouts and Dashboard/Cockpit/Provider-bar/Stacked expanded layouts. Bottleneck shows every provider's tightest window in risk order. Cockpit combines the active quota ring, local trend, pace plan, and 90-day heatmap; each region can expand in place or detach into its own always-on-top window.
 - The compact Bar keeps provider-logo interaction in switch-only mode; dwelling on the metric area expands inward. Expanded layouts expose only one provider-navigation surface.
 - Detached Cockpit windows read the existing native snapshot cache and bounded local history; they do not receive credentials, prompts, or serialized quota payloads through their URL.
-- A magnetic Bar with a `400×38` top strip or `64×320` left/right rail, upright quota details, edge-aware inward expansion, and saved normalized placement.
+- A content-sized magnetic Bar: one provider uses a `224×38` top strip or `64×156` side rail; additional providers grow it one slot at a time. Bottleneck starts at `196×38` / `64×100`. Native windows include an additional 4px transparent inset on each side, preserve edge placement, and expand inward.
 - Rotating recovery points before updates plus one-file export/import for settings, layouts, and history.
 - Redacted diagnostic reports that exclude tokens, account IDs, local auth paths, and raw provider responses.
 - A Provider Health Center showing each local source, freshness, recovery state, and bounded history count.
