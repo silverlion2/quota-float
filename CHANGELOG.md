@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.19 - 2026-09-19
 
 - Ship the compact, provider-count-aware widgets and refined desktop layouts prepared in 0.3.18.
 - Create one shared release draft, serialize Windows and macOS uploads, and validate the complete updater manifest before publishing.
