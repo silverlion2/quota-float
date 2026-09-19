@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Ship the compact, provider-count-aware widgets and refined desktop layouts prepared in 0.3.18.
+- Create one shared release draft, serialize Windows and macOS uploads, and validate the complete updater manifest before publishing.
+- Require a completed Microsoft Defender custom scan of Windows release artifacts, including paths excluded by CI workspace settings; reject skipped scans.
+
 ## 0.3.18 - 2026-09-19
 
 - Size magnetic Bar and Bottleneck widgets to the number of visible providers. A single-provider side Bar is now 64×156 logical pixels instead of 64×320, with matching native window bounds.

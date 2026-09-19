@@ -128,7 +128,7 @@ jobs:
           echo "release_sha=$release_sha" >> "$GITHUB_OUTPUT"
           echo "Pushed $RELEASE_TAG at $release_sha."
 
-  publish-draft:
+  create-draft:
     if: >-
       ${{
         always() &&
@@ -141,8 +141,85 @@ jobs:
     needs: [verify, create-release-ref]
     permissions:
       contents: write
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.draft.outputs.release_id }}
+      release_body: ${{ steps.release_notes.outputs.result }}
+    steps:
+      - name: Generate release notes
+        id: release_notes
+        uses: actions/github-script@v7
+        env:
+          RELEASE_TAG: ${{ needs.verify.outputs.tag }}
+          RELEASE_SHA: ${{ github.event_name == 'push' && github.sha || needs.create-release-ref.outputs.release_sha }}
+          WINDOWS_PLATFORM_SIGNING: ${{ secrets.WINDOWS_CERTIFICATE != '' && secrets.WINDOWS_CERTIFICATE_PASSWORD != '' }}
+          MACOS_PLATFORM_SIGNING: ${{ secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.KEYCHAIN_PASSWORD != '' }}
+          MACOS_NOTARIZATION: ${{ secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
+        with:
+          result-encoding: string
+          script: |
+            const { data } = await github.rest.repos.generateReleaseNotes({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: process.env.RELEASE_TAG,
+              target_commitish: process.env.RELEASE_SHA,
+            });
+            const signing = [
+              `Windows Authenticode: ${process.env.WINDOWS_PLATFORM_SIGNING === "true" ? "verified by release CI" : "not configured"}`,
+              `macOS Developer ID: ${process.env.MACOS_PLATFORM_SIGNING === "true" ? "verified by release CI" : "not configured"}`,
+              `macOS notarization: ${process.env.MACOS_NOTARIZATION === "true" ? "validated by release CI" : "not configured"}`,
+            ];
+            return `${data.body}\n\n## Platform signing\n\n${signing.map((item) => `- ${item}`).join("\n")}\n\nTauri updater signatures are generated independently for both platforms.\n\n## Privacy\n\nQuota Float remains local-first: it reads existing local sign-in state only for quota requests and does not upload prompts, chats, raw quota responses, or local credentials.`;
+      - name: Prepare one shared release draft before parallel builds
+        id: draft
+        uses: actions/github-script@v7
+        env:
+          RELEASE_TAG: ${{ needs.verify.outputs.tag }}
+          RELEASE_SHA: ${{ github.event_name == 'push' && github.sha || needs.create-release-ref.outputs.release_sha }}
+          RELEASE_BODY: ${{ steps.release_notes.outputs.result }}
+        with:
+          script: |
+            const tag = process.env.RELEASE_TAG;
+            const sha = process.env.RELEASE_SHA;
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100,
+            });
+            const matches = releases.filter((release) => release.tag_name === tag);
+            if (matches.length > 1) {
+              core.setFailed(`Refusing to build ${tag}; multiple releases share this tag.`);
+              return;
+            }
+            let release = matches[0];
+            if (release && (!release.draft || release.target_commitish !== sha)) {
+              core.setFailed(`Refusing to reuse ${tag}; the existing release must be a draft for the exact verified commit.`);
+              return;
+            }
+            if (!release) {
+              const { data } = await github.rest.repos.createRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag_name: tag,
+                target_commitish: sha,
+                name: `Quota Float ${tag}`,
+                body: process.env.RELEASE_BODY,
+                draft: true,
+                prerelease: tag.includes("-"),
+              });
+              release = data;
+            }
+            core.setOutput("release_id", String(release.id));
+            core.info(`Both platform builders will upload to draft ${release.id} for ${tag}.`);
+
+  publish-draft:
+    if: ${{ always() && needs.create-draft.result == 'success' }}
+    needs: [verify, create-release-ref, create-draft]
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         include:
           - platform: windows-latest
@@ -244,30 +321,6 @@ jobs:
       - name: Verify the checked-out release ref
         shell: bash
         run: npm run version:check -- --tag "${{ needs.verify.outputs.tag }}"
-      - name: Generate release notes
-        id: release_notes
-        uses: actions/github-script@v7
-        env:
-          RELEASE_TAG: ${{ needs.verify.outputs.tag }}
-          RELEASE_SHA: ${{ github.event_name == 'push' && github.sha || needs.create-release-ref.outputs.release_sha }}
-          WINDOWS_PLATFORM_SIGNING: ${{ secrets.WINDOWS_CERTIFICATE != '' && secrets.WINDOWS_CERTIFICATE_PASSWORD != '' }}
-          MACOS_PLATFORM_SIGNING: ${{ secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.KEYCHAIN_PASSWORD != '' }}
-          MACOS_NOTARIZATION: ${{ secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
-        with:
-          result-encoding: string
-          script: |
-            const { data } = await github.rest.repos.generateReleaseNotes({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              tag_name: process.env.RELEASE_TAG,
-              target_commitish: process.env.RELEASE_SHA,
-            });
-            const signing = [
-              `Windows Authenticode: ${process.env.WINDOWS_PLATFORM_SIGNING === "true" ? "verified by release CI" : "not configured"}`,
-              `macOS Developer ID: ${process.env.MACOS_PLATFORM_SIGNING === "true" ? "verified by release CI" : "not configured"}`,
-              `macOS notarization: ${process.env.MACOS_NOTARIZATION === "true" ? "validated by release CI" : "not configured"}`,
-            ];
-            return `${data.body}\n\n## Platform signing\n\n${signing.map((item) => `- ${item}`).join("\n")}\n\nTauri updater signatures are generated independently for both platforms.\n\n## Privacy\n\nQuota Float remains local-first: it reads existing local sign-in state only for quota requests and does not upload prompts, chats, raw quota responses, or local credentials.`;
       - name: Build and upload draft release artifacts
         uses: tauri-apps/tauri-action@v0
         env:
@@ -278,9 +331,10 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
+          releaseId: ${{ needs.create-draft.outputs.release_id }}
           tagName: ${{ needs.verify.outputs.tag }}
           releaseName: Quota Float ${{ needs.verify.outputs.tag }}
-          releaseBody: ${{ steps.release_notes.outputs.result }}
+          releaseBody: ${{ needs.create-draft.outputs.release_body }}
           releaseDraft: true
           prerelease: ${{ contains(needs.verify.outputs.tag, '-') }}
           args: ${{ matrix.args }}
@@ -352,7 +406,7 @@ jobs:
         run: ./scripts/verify-windows-upgrade.ps1 -Repository "${{ github.repository }}" -CurrentTag "${{ needs.verify.outputs.tag }}"
 
   finalize:
-    needs: [verify, create-release-ref, publish-draft, upgrade-smoke]
+    needs: [verify, create-release-ref, create-draft, publish-draft, upgrade-smoke]
     if: >-
       ${{
         always() &&
@@ -374,6 +428,7 @@ jobs:
         uses: actions/github-script@v7
         env:
           RELEASE_TAG: ${{ needs.verify.outputs.tag }}
+          PREPARED_RELEASE_ID: ${{ needs.create-draft.outputs.release_id }}
           CANDIDATE_RELEASE_ID: ${{ needs.upgrade-smoke.outputs.candidate_release_id }}
           RELEASE_SHA: ${{ github.event_name == 'push' && github.sha || needs.create-release-ref.outputs.release_sha }}
           CANDIDATE_ASSET_ID: ${{ needs.upgrade-smoke.outputs.candidate_asset_id }}
@@ -389,11 +444,12 @@ jobs:
               repo: context.repo.repo,
               per_page: 100,
             });
-            const release = releases.find((candidate) => candidate.tag_name === tag);
-            if (!release) {
-              core.setFailed(`Refusing to publish ${tag}; no matching release draft was found.`);
+            const matches = releases.filter((candidate) => candidate.tag_name === tag);
+            if (matches.length !== 1 || String(matches[0].id) !== process.env.PREPARED_RELEASE_ID) {
+              core.setFailed(`Refusing to publish ${tag}; expected only the pre-created release draft.`);
               return;
             }
+            const release = matches[0];
             if (!release.draft) {
               core.setFailed(`${tag} is already public; refusing to overwrite it.`);
               return;
@@ -416,6 +472,43 @@ jobs:
             if (windowsInstallers.length !== 1) {
               core.setFailed(`Refusing to publish ${tag}; expected exactly one Windows installer, found ${windowsInstallers.length}.`);
               return;
+            }
+            const downloadText = async (asset) => {
+              const { data } = await github.request("GET /repos/{owner}/{repo}/releases/assets/{asset_id}", {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                asset_id: asset.id,
+                headers: { accept: "application/octet-stream" },
+              });
+              return Buffer.from(data).toString("utf8").trim();
+            };
+            const manifest = JSON.parse(await downloadText(release.assets.find((asset) => asset.name === "latest.json")));
+            const platforms = manifest.platforms;
+            const requiredPlatforms = ["windows-x86_64", "darwin-aarch64", "darwin-x86_64"];
+            if (manifest.version !== tag.slice(1) || !platforms ||
+                !requiredPlatforms.every((platform) => platforms[platform])) {
+              core.setFailed(`Refusing to publish ${tag}; updater version or required platform entries are incomplete.`);
+              return;
+            }
+            const serverUrl = process.env.GITHUB_SERVER_URL || "https://github.com";
+            const signatures = new Map();
+            for (const [platform, entry] of Object.entries(platforms)) {
+              const assetName = platform.startsWith("windows-") ? windowsInstallers[0].name
+                : platform.startsWith("darwin-") ? names.find((name) => /_universal\.app\.tar\.gz$/.test(name)) : null;
+              const signatureAsset = release.assets.find((asset) => asset.name === `${assetName}.sig`);
+              const expectedUrl = `${serverUrl}/${context.repo.owner}/${context.repo.repo}/releases/download/${encodeURIComponent(tag)}/${encodeURIComponent(assetName)}`;
+              if (!assetName || !signatureAsset || !entry || entry.url !== expectedUrl) {
+                core.setFailed(`Refusing to publish ${tag}; updater ${platform} does not point to its exact draft artifact.`);
+                return;
+              }
+              if (!signatures.has(signatureAsset.id)) {
+                signatures.set(signatureAsset.id, await downloadText(signatureAsset));
+              }
+              const signature = signatures.get(signatureAsset.id);
+              if (!signature || typeof entry.signature !== "string" || entry.signature.trim() !== signature) {
+                core.setFailed(`Refusing to publish ${tag}; updater ${platform} signature does not match its draft artifact.`);
+                return;
+              }
             }
             if (stable) {
               const expected = {

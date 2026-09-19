@@ -46,10 +46,13 @@ describe("one-command release publishing", () => {
         { name: 'publish-draft (macos-latest, "--target universal")', conclusion: "success", steps: [] },
         { name: "finalize", conclusion: "success" },
         { name: "upgrade-smoke", conclusion: "success" },
+        { name: "create-draft", conclusion: "success" },
       ],
     };
 
     expect(workflowVerificationErrors(run, { stable: true })).toEqual([]);
+    expect(workflowVerificationErrors({ ...run, jobs: run.jobs.filter((job) => job.name !== "create-draft") }, { stable: true }))
+      .toContain("create-draft did not succeed");
     run.jobs[2].steps[0].conclusion = "failure";
     expect(workflowVerificationErrors(run, { stable: true })).toContain("Microsoft Defender release scan did not succeed");
   });

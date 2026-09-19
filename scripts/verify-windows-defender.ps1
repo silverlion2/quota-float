@@ -11,6 +11,17 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
+function Assert-DefenderScanCompleted([string]$ScanOutput, [int]$ExitCode, [string]$ArtifactPath) {
+    if ($ExitCode -ne 0) {
+        throw "Microsoft Defender scan failed for '$ArtifactPath' with exit code $ExitCode."
+    }
+    if ([string]::IsNullOrWhiteSpace($ScanOutput) -or
+        $ScanOutput -match '(?i)\bskip(?:ped|ping)?\b' -or
+        $ScanOutput -notmatch '(?im)^\s*Scan finished\.?\s*$') {
+        throw "Microsoft Defender did not confirm a completed scan for '$ArtifactPath'."
+    }
+}
+
 if ($UpdateSignatures) {
     Write-Host "Updating Microsoft Defender signatures..."
     Update-MpSignature
@@ -44,20 +55,21 @@ if (-not $mpCmdRun) {
     throw "MpCmdRun.exe was not found."
 }
 
-$resolvedPaths = foreach ($candidate in $Path) {
+$resolvedPaths = @(foreach ($candidate in $Path) {
     (Resolve-Path -LiteralPath $candidate).Path
-}
+})
 
 foreach ($resolvedPath in $resolvedPaths) {
     $scanStarted = Get-Date
     Write-Host "Scanning $resolvedPath"
 
-    & $mpCmdRun -Scan -ScanType 3 -File $resolvedPath
+    # Custom scans with DisableRemediation ignore file exclusions (including CI
+    # workspace exclusions). Detections/errors return nonzero; no remediation occurs.
+    $scanLines = @(& $mpCmdRun -Scan -ScanType 3 -File $resolvedPath -DisableRemediation 2>&1)
     $scanExitCode = $LASTEXITCODE
-
-    if ($scanExitCode -ne 0) {
-        throw "Microsoft Defender scan failed for '$resolvedPath' with exit code $scanExitCode."
-    }
+    $scanOutput = $scanLines -join [Environment]::NewLine
+    Write-Host $scanOutput
+    Assert-DefenderScanCompleted $scanOutput $scanExitCode $resolvedPath
     if (-not (Test-Path -LiteralPath $resolvedPath)) {
         throw "Microsoft Defender removed '$resolvedPath' during the scan."
     }

@@ -76,7 +76,7 @@ export function workflowVerificationErrors(run, { stable }) {
     errors.push(`workflow=${run.status}/${run.conclusion ?? "unknown"}`);
   }
 
-  for (const name of ["verify", "create-release-ref", "finalize"]) {
+  for (const name of ["verify", "create-release-ref", "create-draft", "finalize"]) {
     const job = jobByName(run.jobs ?? [], name);
     if (!job || job.conclusion !== "success") errors.push(`${name} did not succeed`);
   }

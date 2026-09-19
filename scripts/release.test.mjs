@@ -8,17 +8,24 @@ describe("release automation", () => {
     const finalize = workflow.split("\n  finalize:")[1].split("\n  post-release-distribution:")[0];
     expect(finalize).toContain("RELEASE_SHA: ${{ github.event_name == 'push' && github.sha || needs.create-release-ref.outputs.release_sha }}");
     const script = finalize.split("          script: |\n")[1].split("\n").map((line) => line.replace(/^            /, "")).join("\n");
-    const assets = ["latest.json", "Quota.Float_x64-setup.exe", "Quota.Float_x64-setup.exe.sig", "Quota.Float_universal.dmg", "Quota.Float_universal.app.tar.gz", "Quota.Float_universal.app.tar.gz.sig"].map((name) => ({ name }));
+    const assets = ["latest.json", "Quota.Float_x64-setup.exe", "Quota.Float_x64-setup.exe.sig", "Quota.Float_universal.dmg", "Quota.Float_universal.app.tar.gz", "Quota.Float_universal.app.tar.gz.sig"].map((name, id) => ({ name, id }));
+    const manifest = { version: "0.3.12-beta.1", platforms: Object.fromEntries(
+      ["windows-x86_64", "darwin-aarch64", "darwin-x86_64"].map((platform) => [platform, {
+        url: `https://github.com/owner/repo/releases/download/v0.3.12-beta.1/${assets[platform.startsWith("windows") ? 1 : 4].name}`,
+        signature: "signature",
+      }]),
+    ) };
     let published;
     const github = {
       paginate: async () => [{ id: 42, tag_name: "v0.3.12-beta.1", draft: true, target_commitish: "dispatch-commit", assets }],
+      request: async (_route, args) => ({ data: Buffer.from(args.asset_id === 0 ? JSON.stringify(manifest) : "signature") }),
       rest: { repos: { listReleases: {}, updateRelease: async (args) => { published = args; return { data: { id: 42, html_url: "release" } }; } } },
     };
     const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
     await new AsyncFunction("github", "core", "context", "process", "require", script)(
       github, { setFailed: (message) => { throw new Error(message); }, setOutput: () => {}, info: () => {} },
       { repo: { owner: "owner", repo: "repo" } },
-      { env: { RELEASE_TAG: "v0.3.12-beta.1", RELEASE_SHA: "built-release-commit" } }, () => ({}),
+      { env: { RELEASE_TAG: "v0.3.12-beta.1", RELEASE_SHA: "built-release-commit", PREPARED_RELEASE_ID: "42" } }, () => ({}),
     );
     expect(published.target_commitish).toBe("built-release-commit");
     expect(published.draft).toBe(false);
