@@ -52,6 +52,7 @@ These are design references; no external application code or dependencies were a
   negative monitor origins and 100/125/150/200% DPI. This is not a new installed-app
   or multi-monitor Windows/macOS visual smoke test.
 
-Provider access and credential handling were not modified. No commit, push,
-installer replacement, tag or release was performed. Rollback is confined to this
-uncommitted UI/geometry change; there is no persisted preference schema migration.
+Provider access and credential handling were not modified. After the initial UI
+handoff, the user authorized push and publication; the changes shipped in
+[v0.3.19](RELEASE-0.3.19.md). The user's installed application was not replaced.
+There is no persisted preference schema migration.
