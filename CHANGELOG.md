@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.18 - 2026-09-19
 
 - Size magnetic Bar and Bottleneck widgets to the number of visible providers. A single-provider side Bar is now 64×156 logical pixels instead of 64×320, with matching native window bounds.
 - Preserve magnetic placement across provider-count changes, edge switches, expansion and DPI changes.
