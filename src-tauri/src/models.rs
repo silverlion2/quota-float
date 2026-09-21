@@ -341,9 +341,17 @@ impl WidgetPreferences {
         }
         if !matches!(
             self.compact_layout.as_str(),
-            "float" | "ring" | "bar" | "bottleneck"
+            "float" | "ring" | "bar" | "bottleneck" | "taskbar"
         ) {
             self.compact_layout = default_compact_layout();
+        }
+        if self.compact_layout == "taskbar" {
+            if cfg!(target_os = "windows") {
+                // Notification-area mode must always remain directly interactive when opened.
+                self.locked = false;
+            } else {
+                self.compact_layout = default_compact_layout();
+            }
         }
         if !matches!(self.bar_edge.as_str(), "top" | "left" | "right") {
             self.bar_edge = default_bar_edge();
@@ -618,6 +626,19 @@ mod tests {
         let normalized = preferences.normalized();
         assert_eq!(normalized.compact_layout, "bottleneck");
         assert_eq!(normalized.bar_edge, "right");
+
+        let preferences = WidgetPreferences {
+            compact_layout: "taskbar".into(),
+            locked: true,
+            ..Default::default()
+        };
+        let normalized = preferences.normalized();
+        if cfg!(target_os = "windows") {
+            assert_eq!(normalized.compact_layout, "taskbar");
+            assert!(!normalized.locked);
+        } else {
+            assert_eq!(normalized.compact_layout, "float");
+        }
 
         let preferences = WidgetPreferences {
             expanded_layout: "cockpit".into(),

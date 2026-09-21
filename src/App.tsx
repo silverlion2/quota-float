@@ -4,7 +4,7 @@ import { QuotaBar, QuotaBottleneckBar, QuotaCard, QuotaOrb } from "./components/
 import { EMPTY_UPDATE_STATE } from "./components/UpdatePanel";
 import type { UpdateViewState } from "./components/UpdatePanel";
 import type { ControlOperation, ControlOperationKind } from "./components/ControlCenter";
-import { applyAppData, createAutomaticBackup, createSnapshotRefreshRequestId, exportAppData, fetchCodexResetForecast, fetchSnapshotsProgressively, getAppDiagnostics, getAutostartEnabled, getPreferences, getRuntimeState, getVolcengineDiagnostics, importAppData, listenDesktopEvents, notifyFocusPanels, openExternalUrl, openFocusPanel, reconnectVolcengine, resizeWidgetToContent, restoreLatestBackup, sendDesktopNotification, setAlwaysOnTop, setAutostartEnabled, setWidgetExpanded, startDragging, updatePreferences, updateRuntimeState } from "./lib/bridge";
+import { applyAppData, createAutomaticBackup, createSnapshotRefreshRequestId, exportAppData, fetchCodexResetForecast, fetchSnapshotsProgressively, getAppDiagnostics, getAutostartEnabled, getPreferences, getRuntimeState, getVolcengineDiagnostics, importAppData, listenDesktopEvents, notifyFocusPanels, openExternalUrl, openFocusPanel, reconnectVolcengine, resizeWidgetToContent, restoreLatestBackup, sendDesktopNotification, setAlwaysOnTop, setAutostartEnabled, setWidgetExpanded, startDragging, syncTaskbarIndicator, updatePreferences, updateRuntimeState } from "./lib/bridge";
 import { appUpdateErrorMessage, cancelAppUpdateCheck, checkForAppUpdate, discardAppUpdate, downloadAppUpdate, installAppUpdate, openReleasePage, shouldInvalidateUpdateCheckOnChannelChange } from "./lib/appUpdate";
 import type { AppUpdateInfo } from "./lib/appUpdate";
 import { copy, nextLanguage, normalizeLanguage } from "./lib/i18n";
@@ -27,6 +27,7 @@ import { buildDiagnosticReport } from "./lib/diagnosticReport";
 import type { AppDiagnostics, CockpitRegion, ProviderId, ProviderSnapshot, ResetForecast, RuntimeState, VolcengineDiagnostics, WidgetPreferences } from "./types";
 
 const DEFAULT_PREFS = DEFAULT_WIDGET_PREFERENCES;
+const TASKBAR_OPEN_GRACE_MS = 750;
 const ControlCenter = lazy(() => import("./components/ControlCenter").then((module) => ({ default: module.ControlCenter })));
 type ActiveModal = "diagnostics" | "update" | "control";
 
@@ -34,6 +35,14 @@ function errorMessage(error: unknown, fallback: string): string {
   if (typeof error === "string" && error.trim()) return error;
   if (error instanceof Error && error.message.trim()) return error.message;
   return fallback;
+}
+
+function resizeRenderedWidget(selector = ".quota-card, .loading-card"): Promise<void> {
+  const card = document.querySelector<HTMLElement>(selector);
+  const height = card?.offsetHeight ?? 0;
+  return height > 0
+    ? resizeWidgetToContent(height, Number(card?.dataset.contentWidth) || undefined)
+    : Promise.resolve();
 }
 
 export default function App() {
@@ -68,6 +77,11 @@ export default function App() {
   const collapseTimer = useRef<number | null>(null);
   const collapseContentTimer = useRef<number | null>(null);
   const hoverSequence = useRef(0);
+  const widgetTransitionSequence = useRef(0);
+  const compactRef = useRef(true);
+  const taskbarOpenGraceUntil = useRef(0);
+  const taskbarShowPending = useRef(false);
+  const previousCompactLayout = useRef(preferences.compactLayout);
   const updateSequence = useRef(0);
   const updateStateRef = useRef<UpdateViewState>(EMPTY_UPDATE_STATE);
   const activeModalRef = useRef<ActiveModal | null>(null);
@@ -90,6 +104,18 @@ export default function App() {
   const controlOpen = activeModal === "control";
   updateStateRef.current = updateState;
   activeModalRef.current = activeModal;
+
+  const setCompactState = useCallback((value: boolean) => {
+    compactRef.current = value;
+    setCompact(value);
+  }, []);
+
+  const clearCollapseTimers = useCallback(() => {
+    for (const timer of [collapseTimer, collapseContentTimer]) {
+      if (timer.current !== null) window.clearTimeout(timer.current);
+      timer.current = null;
+    }
+  }, []);
 
   const openModal = useCallback((modal: ActiveModal) => {
     if (modal !== "update" && activeModalRef.current === "update" && updateStateRef.current.phase === "checking") {
@@ -405,15 +431,6 @@ export default function App() {
   }, [refresh]);
 
   useEffect(() => {
-    let cancelled = false;
-    let cleanup: () => void = () => {};
-    void listenDesktopEvents({ onPreferences: (value) => { const normalized = normalizeWidgetPreferences(value); ++preferenceSaveSequence.current; preferencesRef.current = normalized; confirmedPreferencesRef.current = normalized; setPreferences(normalized); }, onRefresh: () => void refresh(true), onUpdate: () => checkUpdate(true) }).then((value) => {
-      if (cancelled) value(); else cleanup = value;
-    }).catch(() => setOperationError("Desktop event listener failed to start."));
-    return () => { cancelled = true; cleanup(); };
-  }, [checkUpdate, refresh]);
-
-  useEffect(() => {
     const timer = window.setTimeout(() => checkUpdate(false), 12_000);
     return () => window.clearTimeout(timer);
   }, [checkUpdate]);
@@ -459,6 +476,22 @@ export default function App() {
   const current = visiblePinnedProvider
     ? orderedSnapshots.find((item) => item.provider === visiblePinnedProvider) ?? orderedSnapshots[0]
     : orderedSnapshots[activeIndex % Math.max(1, orderedSnapshots.length)];
+
+  useEffect(() => {
+    const previous = previousCompactLayout.current;
+    const taskbar = preferences.compactLayout === "taskbar";
+    previousCompactLayout.current = preferences.compactLayout;
+    if (taskbar || previous === "taskbar") {
+      void syncTaskbarIndicator(taskbar ? current?.provider ?? null : null).catch(() => {
+        if (taskbar) setOperationError("Taskbar indicator update failed.");
+      });
+    }
+    if (previous !== "taskbar" || taskbar || compactRef.current) return;
+    taskbarOpenGraceUntil.current = 0;
+    void setWidgetExpanded(true, preferences.compactLayout, { edge: preferences.barEdge, offset: preferences.barOffset }, orderedSnapshots.length)
+      .then(() => resizeRenderedWidget())
+      .catch(() => setOperationError("Widget layout resize failed."));
+  }, [current?.provider, orderedSnapshots.length, preferences, snapshots]);
 
   useEffect(() => {
     if (focusPanelNotificationTimer.current !== null) {
@@ -676,65 +709,155 @@ export default function App() {
   }, [autostartEnabled, beginControlOperation, finishControlOperation, isControlOperationCurrent, language]);
 
   const handleHover = useCallback((value: boolean) => {
-    if (collapseTimer.current !== null) {
-      window.clearTimeout(collapseTimer.current);
-      collapseTimer.current = null;
-    }
-    if (collapseContentTimer.current !== null) {
-      window.clearTimeout(collapseContentTimer.current);
-      collapseContentTimer.current = null;
-    }
+    clearCollapseTimers();
     setCollapsing(false);
     setHovered(value);
+    if (value && taskbarOpenGraceUntil.current === Infinity) {
+      taskbarOpenGraceUntil.current = Date.now() + TASKBAR_OPEN_GRACE_MS;
+    }
     if (!value && preferences.stayExpanded) return;
     if (value) void refresh();
     if (value) {
-      const sequence = ++hoverSequence.current;
+      ++hoverSequence.current;
       // A native resize can move an expanded card under the pointer. Re-entry
       // must not send expand_widget again and reset its measured content height.
-      if (!compact) return;
+      // Switch the DOM synchronously so a transient leave during the native
+      // move cannot strand an expanded window with only the compact hitbox.
+      if (!compactRef.current) return;
+      setCompactState(false);
+      const transition = ++widgetTransitionSequence.current;
       void setWidgetExpanded(true, preferences.compactLayout, { edge: preferences.barEdge, offset: preferences.barOffset }, orderedSnapshots.length)
-        .then(() => { if (hoverSequence.current === sequence) setCompact(false); })
         .catch(() => {
-          setCompact(false);
+          if (widgetTransitionSequence.current === transition) setCompactState(true);
           setOperationError("Widget expand failed.");
         });
       return;
     }
+    if (preferences.compactLayout === "taskbar" && taskbarOpenGraceUntil.current === Infinity) return;
     const sequence = ++hoverSequence.current;
+    const graceDelay = preferences.compactLayout === "taskbar"
+      ? Math.max(0, taskbarOpenGraceUntil.current - Date.now())
+      : 0;
     collapseTimer.current = window.setTimeout(() => {
       if (hoverSequence.current !== sequence) return;
       const reducedMotion = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       setCollapsing(!reducedMotion);
       collapseContentTimer.current = window.setTimeout(() => {
         if (hoverSequence.current !== sequence) return;
-        setCompact(true);
+        setCompactState(true);
         setCollapsing(false);
+        ++widgetTransitionSequence.current;
         void setWidgetExpanded(false, preferences.compactLayout, { edge: preferences.barEdge, offset: preferences.barOffset }, orderedSnapshots.length).catch(() => setOperationError("Widget collapse failed."));
       }, reducedMotion ? 0 : 120);
-    }, 180);
-  }, [compact, orderedSnapshots.length, preferences.barEdge, preferences.barOffset, preferences.compactLayout, preferences.stayExpanded, refresh]);
+    }, 180 + graceDelay);
+  }, [clearCollapseTimers, orderedSnapshots.length, preferences.barEdge, preferences.barOffset, preferences.compactLayout, preferences.stayExpanded, refresh, setCompactState]);
+
+  const handleTaskbarOpen = useCallback(() => {
+    const currentPreferences = preferencesRef.current;
+    if (currentPreferences.compactLayout !== "taskbar" || taskbarShowPending.current) return;
+    clearCollapseTimers();
+    ++hoverSequence.current;
+    const wasCompact = compactRef.current;
+    taskbarOpenGraceUntil.current = wasCompact ? Infinity : Date.now() + TASKBAR_OPEN_GRACE_MS;
+    taskbarShowPending.current = true;
+    setHovered(true);
+    setCollapsing(false);
+    setCompactState(false);
+    void refresh();
+    const transition = ++widgetTransitionSequence.current;
+    void setWidgetExpanded(true, "taskbar", { edge: currentPreferences.barEdge, offset: currentPreferences.barOffset }, snapshotsRef.current.length)
+      .then(async () => {
+        // The compact -> expanded render schedules its own first measurement.
+        // Repeated taskbar clicks do not re-render, so explicitly restore the
+        // measured size after native show/focus in that case.
+        if (wasCompact) return;
+        await resizeRenderedWidget();
+      })
+      .catch(() => {
+        if (widgetTransitionSequence.current === transition) {
+          taskbarOpenGraceUntil.current = 0;
+          setCompactState(true);
+        }
+        setOperationError("Widget expand failed.");
+      })
+      .finally(() => { taskbarShowPending.current = false; });
+  }, [clearCollapseTimers, refresh, setCompactState]);
+
+  const collapseTaskbarWidget = useCallback(() => {
+    const currentPreferences = preferencesRef.current;
+    if (currentPreferences.compactLayout !== "taskbar" || compactRef.current) return;
+    clearCollapseTimers();
+    ++hoverSequence.current;
+    taskbarOpenGraceUntil.current = 0;
+    setHovered(false);
+    setCollapsing(false);
+    setCompactState(true);
+    ++widgetTransitionSequence.current;
+    void setWidgetExpanded(false, "taskbar", { edge: currentPreferences.barEdge, offset: currentPreferences.barOffset }, snapshotsRef.current.length)
+      .catch(() => setOperationError("Widget collapse failed."));
+  }, [clearCollapseTimers, setCompactState]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || preferencesRef.current.compactLayout !== "taskbar" || compactRef.current) return;
+      const modal = activeModalRef.current;
+      if (modal) {
+        event.preventDefault();
+        if (modal === "update") handleUpdateClose();
+        else if (modal === "diagnostics") closeVolcengineDiagnostics();
+        else closeModal("control");
+        return;
+      }
+      event.preventDefault();
+      collapseTaskbarWidget();
+    };
+    const handleBlur = () => {
+      if (activeModalRef.current === null) collapseTaskbarWidget();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("blur", handleBlur);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("blur", handleBlur);
+    };
+  }, [closeModal, closeVolcengineDiagnostics, collapseTaskbarWidget, handleUpdateClose]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let cleanup: () => void = () => {};
+    void listenDesktopEvents({
+      onPreferences: (value) => {
+        const normalized = normalizeWidgetPreferences(value);
+        ++preferenceSaveSequence.current;
+        preferencesRef.current = normalized;
+        confirmedPreferencesRef.current = normalized;
+        setPreferences(normalized);
+      },
+      onRefresh: () => void refresh(true),
+      onUpdate: () => checkUpdate(true),
+      onShow: handleTaskbarOpen,
+    }).then((value) => {
+      if (cancelled) value(); else cleanup = value;
+    }).catch(() => setOperationError("Desktop event listener failed to start."));
+    return () => { cancelled = true; cleanup(); };
+  }, [checkUpdate, handleTaskbarOpen, refresh]);
 
   useEffect(() => {
     if (!preferences.stayExpanded) return;
-    if (collapseTimer.current !== null) window.clearTimeout(collapseTimer.current);
-    if (collapseContentTimer.current !== null) window.clearTimeout(collapseContentTimer.current);
+    clearCollapseTimers();
     setCollapsing(false);
-    setCompact(false);
+    setCompactState(false);
     let cancelled = false;
     void setWidgetExpanded(true, preferences.compactLayout, { edge: preferences.barEdge, offset: preferences.barOffset }, orderedSnapshots.length)
-      .then(async () => {
-        if (cancelled) return;
+      .then(() => {
+        if (cancelled) return undefined;
         // Changing compact placement while pinned open also resets native
         // geometry, even when the DOM's size did not change for ResizeObserver.
-        const card = document.querySelector<HTMLElement>(".quota-card");
-        const height = card?.offsetHeight ?? 0;
-        const width = Number(card?.dataset.contentWidth) || undefined;
-        if (height > 0) await resizeWidgetToContent(height, width);
+        return resizeRenderedWidget(".quota-card");
       })
       .catch(() => { if (!cancelled) setOperationError("Widget expand failed."); });
     return () => { cancelled = true; };
-  }, [orderedSnapshots.length, preferences.barEdge, preferences.barOffset, preferences.compactLayout, preferences.stayExpanded]);
+  }, [clearCollapseTimers, orderedSnapshots.length, preferences.barEdge, preferences.barOffset, preferences.compactLayout, preferences.stayExpanded, setCompactState]);
 
   useEffect(() => {
     if (!compact || preferences.stayExpanded) return;

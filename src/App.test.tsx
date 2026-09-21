@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_WIDGET_PREFERENCES } from "./lib/preferences";
 import { EMPTY_RUNTIME_STATE } from "./lib/activity";
-import { fetchCodexResetForecast, resizeWidgetToContent, setWidgetExpanded } from "./lib/bridge";
+import { fetchCodexResetForecast, resizeWidgetToContent, setWidgetExpanded, syncTaskbarIndicator } from "./lib/bridge";
 
 type Deferred<T> = { promise: Promise<T>; resolve: (value: T) => void; reject: (reason?: unknown) => void };
 
@@ -24,6 +24,9 @@ const testState = vi.hoisted(() => ({
   exportRequest: null as Deferred<string | null> | null,
   exportCalls: 0,
   preferenceWrites: [] as Array<Deferred<void>>,
+  initialPreferences: null as typeof DEFAULT_WIDGET_PREFERENCES | null,
+  widgetExpandRequest: null as Deferred<void> | null,
+  desktopHandlers: null as { onShow?: () => void } | null,
 }));
 
 vi.mock("./lib/appUpdate", () => ({
@@ -66,11 +69,14 @@ vi.mock("./lib/bridge", () => {
     }),
     getAppDiagnostics: vi.fn(async () => ({ appVersion: "test", platform: "windows", configDirectory: "redacted", preferencesBackupAvailable: false, runtimeBackupAvailable: false })),
     getAutostartEnabled: vi.fn(async () => false),
-    getPreferences: vi.fn(async () => ({ ...DEFAULT_WIDGET_PREFERENCES, language: "en" })),
+    getPreferences: vi.fn(async () => ({ ...(testState.initialPreferences ?? DEFAULT_WIDGET_PREFERENCES), language: "en" })),
     getRuntimeState: vi.fn(async () => structuredClone(EMPTY_RUNTIME_STATE)),
     getVolcengineDiagnostics: vi.fn(async () => null),
     importAppData: vi.fn(async () => null),
-    listenDesktopEvents: vi.fn(async () => () => undefined),
+    listenDesktopEvents: vi.fn(async (handlers: { onShow?: () => void }) => {
+      testState.desktopHandlers = handlers;
+      return () => undefined;
+    }),
     notifyFocusPanels: vi.fn(async () => undefined),
     openExternalUrl: vi.fn(async () => undefined),
     openFocusPanel: vi.fn(async () => undefined),
@@ -80,8 +86,9 @@ vi.mock("./lib/bridge", () => {
     sendDesktopNotification: vi.fn(async () => false),
     setAlwaysOnTop: vi.fn(async (alwaysOnTop: boolean) => ({ ...DEFAULT_WIDGET_PREFERENCES, alwaysOnTop })),
     setAutostartEnabled: vi.fn(async (enabled: boolean) => enabled),
-    setWidgetExpanded: vi.fn(async () => undefined),
+    setWidgetExpanded: vi.fn((expanded: boolean) => expanded && testState.widgetExpandRequest ? testState.widgetExpandRequest.promise : Promise.resolve()),
     startDragging: vi.fn(async () => null),
+    syncTaskbarIndicator: vi.fn(async () => undefined),
     updatePreferences: vi.fn(() => {
       const write = deferred<void>();
       testState.preferenceWrites.push(write);
@@ -132,6 +139,9 @@ beforeEach(() => {
   testState.exportRequest = null;
   testState.exportCalls = 0;
   testState.preferenceWrites = [];
+  testState.initialPreferences = null;
+  testState.widgetExpandRequest = null;
+  testState.desktopHandlers = null;
   vi.mocked(fetchCodexResetForecast).mockReset().mockResolvedValue(null);
 });
 
@@ -172,6 +182,71 @@ describe("App modal and preference lifecycle", () => {
     fireEvent.mouseEnter(screen.getByRole("main"));
     fireEvent.mouseEnter(screen.getByRole("main"));
     expect(setWidgetExpanded).toHaveBeenCalledTimes(calls);
+  });
+
+  it("keeps an expanded hitbox while the native transition is pending and coalesces re-entry", async () => {
+    testState.widgetExpandRequest = deferred<void>();
+    render(<App />);
+    vi.mocked(setWidgetExpanded).mockClear();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Expand widget" }));
+    const card = await screen.findByRole("main");
+    const calls = vi.mocked(setWidgetExpanded).mock.calls.filter(([expanded]) => expanded).length;
+    fireEvent.mouseEnter(card);
+    fireEvent.mouseEnter(card);
+
+    expect(vi.mocked(setWidgetExpanded).mock.calls.filter(([expanded]) => expanded)).toHaveLength(calls);
+    await act(async () => { testState.widgetExpandRequest!.resolve(); });
+    expect(screen.getByRole("button", { name: "App update" })).toBeInTheDocument();
+  });
+
+  it("returns to a retryable compact state when native expansion fails", async () => {
+    testState.widgetExpandRequest = deferred<void>();
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Expand widget" }));
+
+    await act(async () => { testState.widgetExpandRequest!.reject(new Error("native resize failed")); });
+
+    expect(await screen.findByRole("button", { name: "Expand widget" })).toBeInTheDocument();
+  });
+
+  it("opens taskbar mode from the native event, preserves modal edits on first Escape, then hides", async () => {
+    testState.initialPreferences = { ...DEFAULT_WIDGET_PREFERENCES, language: "en", compactLayout: "taskbar", stayExpanded: false, locked: false };
+    render(<App />);
+    await waitFor(() => expect(testState.desktopHandlers?.onShow).toBeTypeOf("function"));
+    vi.mocked(setWidgetExpanded).mockClear();
+
+    act(() => testState.desktopHandlers?.onShow?.());
+    await screen.findByRole("button", { name: "App update" });
+    expect(setWidgetExpanded).toHaveBeenCalledWith(true, "taskbar", expect.any(Object), 1);
+    expect(syncTaskbarIndicator).toHaveBeenCalledWith("codex");
+
+    fireEvent.click(screen.getByRole("button", { name: "Control center" }));
+    await screen.findByRole("dialog", { name: "Control center" });
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Control center" })).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "App update" })).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(setWidgetExpanded).toHaveBeenCalledWith(false, "taskbar", expect.any(Object), 1));
+    expect(await screen.findByRole("button", { name: "Expand widget" })).toBeInTheDocument();
+  });
+
+  it("allows a taskbar click to retry after native expansion fails", async () => {
+    testState.initialPreferences = { ...DEFAULT_WIDGET_PREFERENCES, language: "en", compactLayout: "taskbar", stayExpanded: false, locked: false };
+    testState.widgetExpandRequest = deferred<void>();
+    render(<App />);
+    await waitFor(() => expect(testState.desktopHandlers?.onShow).toBeTypeOf("function"));
+    vi.mocked(setWidgetExpanded).mockClear();
+
+    act(() => testState.desktopHandlers?.onShow?.());
+    await act(async () => { testState.widgetExpandRequest!.reject(new Error("native show failed")); });
+    expect(await screen.findByRole("button", { name: "Expand widget" })).toBeInTheDocument();
+
+    testState.widgetExpandRequest = null;
+    act(() => testState.desktopHandlers?.onShow?.());
+    await screen.findByRole("button", { name: "App update" });
+    expect(vi.mocked(setWidgetExpanded).mock.calls.filter(([expanded, layout]) => expanded && layout === "taskbar")).toHaveLength(2);
   });
 
   it("restores measured content height when compact placement changes while pinned open", async () => {

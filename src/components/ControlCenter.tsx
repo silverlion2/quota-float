@@ -180,6 +180,8 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
     barHint: "可磁吸顶部或左右边缘",
     bottleneck: "瓶颈",
     bottleneckHint: "按风险排列每个平台最紧张的窗口",
+    taskbar: "任务栏",
+    taskbarHint: "Windows 通知区域显示额度，点击展开",
     barEdge: "横条吸附边缘",
     barEdgeHint: "拖动横条靠近另一边缘也会更新此选项",
     top: "顶部",
@@ -216,6 +218,8 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
     barHint: "Magnetic top or side rail",
     bottleneck: "Bottleneck",
     bottleneckHint: "Risk-sorted tightest window for every provider",
+    taskbar: "Taskbar",
+    taskbarHint: "Quota in the Windows notification area; click to expand",
     barEdge: "Bar attachment edge",
     barEdgeHint: "Dragging the Bar near another edge updates this choice",
     top: "Top",
@@ -293,9 +297,10 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
                   ["ring", customizationLabels.ring, customizationLabels.ringHint],
                   ["bar", customizationLabels.bar, customizationLabels.barHint],
                   ["bottleneck", customizationLabels.bottleneck, customizationLabels.bottleneckHint],
-                ] as const).map(([id, label, hint]) => (
-                  <button key={id} type="button" role="radio" aria-checked={preferences.compactLayout === id} className={`layout-option layout-option--${id}${preferences.compactLayout === id ? " is-active" : ""}`} onClick={() => onPreferences({ ...preferences, compactLayout: id })}>
-                    <i aria-hidden="true">{id === "float" ? <span className="layout-float-value">67<small>%</small></span> : id === "ring" ? <span className="layout-ring-value">67<small>%</small></span> : id === "bottleneck" ? <><ProviderMark provider="claude" label="Claude" /><span className="layout-bar-value">18%</span><ProviderMark provider="codex" label="Codex" /><span className="layout-bar-value">74%</span></> : <><ProviderMark provider="codex" label="Codex" /><span className="layout-bar-value">74%</span></>}</i>
+                  ["taskbar", customizationLabels.taskbar, customizationLabels.taskbarHint],
+                ] as const).filter(([id]) => id !== "taskbar" || /windows|win32/i.test(diagnostics?.platform ?? navigator.platform)).map(([id, label, hint]) => (
+                  <button key={id} type="button" role="radio" aria-checked={preferences.compactLayout === id} className={`layout-option layout-option--${id}${preferences.compactLayout === id ? " is-active" : ""}`} onClick={() => onPreferences({ ...preferences, compactLayout: id, ...(id === "taskbar" ? { stayExpanded: false, locked: false } : {}) })}>
+                    <i aria-hidden="true">{id === "taskbar" ? <span className="layout-taskbar-value">74</span> : id === "float" ? <span className="layout-float-value">67<small>%</small></span> : id === "ring" ? <span className="layout-ring-value">67<small>%</small></span> : id === "bottleneck" ? <><ProviderMark provider="claude" label="Claude" /><span className="layout-bar-value">18%</span><ProviderMark provider="codex" label="Codex" /><span className="layout-bar-value">74%</span></> : <><ProviderMark provider="codex" label="Codex" /><span className="layout-bar-value">74%</span></>}</i>
                     <span><strong>{label}</strong><small>{hint}</small></span>
                   </button>
                 ))}
@@ -318,6 +323,9 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
               </div>
             </fieldset>
           </div>
+          {preferences.compactLayout === "taskbar" && <p className="taskbar-mode-hint">{zh
+            ? "显示当前平台最紧张周期的剩余百分比。悬停看状态，点击展开。若 Windows 隐藏图标，可从隐藏区域拖到任务栏。收起后仅保留图标；选择其他模式恢复桌面浮窗。"
+            : "Shows the active provider’s lowest remaining quota %. Hover for status; click for details. If Windows hides the icon, drag it out of overflow. Close details to leave only the icon; choose another mode here to restore the desktop widget."}</p>}
           {preferences.compactLayout === "bar" || preferences.compactLayout === "bottleneck" ? (
             <fieldset className="bar-edge-choice">
               <legend><span>{customizationLabels.barEdge}</span><small>{customizationLabels.barEdgeHint}</small></legend>

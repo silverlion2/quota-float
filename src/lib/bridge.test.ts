@@ -19,6 +19,7 @@ import {
   resizeWidgetToContent,
   setWidgetExpanded,
   startDragging,
+  syncTaskbarIndicator,
   updatePreferences,
   updateRuntimeState,
 } from "./bridge";
@@ -115,6 +116,13 @@ describe("widget transitions", () => {
     expect(api.invoke).toHaveBeenLastCalledWith("collapse_widget", expect.objectContaining({ compactProviderCount: 2 }));
     await setWidgetExpanded(true, "bottleneck", { edge: "right", offset: 0.5 }, 99);
     expect(api.invoke).toHaveBeenLastCalledWith("expand_widget", expect.objectContaining({ compactProviderCount: 7 }));
+  });
+
+  it("syncs only the active provider identity for the native taskbar indicator", async () => {
+    await syncTaskbarIndicator("codex");
+    await syncTaskbarIndicator(null);
+    expect(api.invoke).toHaveBeenNthCalledWith(1, "sync_taskbar_indicator", { provider: "codex" });
+    expect(api.invoke).toHaveBeenNthCalledWith(2, "sync_taskbar_indicator", { provider: null });
   });
 
   it("returns the magnetic placement resolved by Rust after drag stability", async () => {
@@ -324,5 +332,23 @@ describe("widget transitions", () => {
       .mockRejectedValueOnce(new Error("listener unavailable"));
     await expect(listenDesktopEvents({ onPreferences: vi.fn(), onRefresh: vi.fn(), onUpdate: vi.fn() })).rejects.toThrow("listener unavailable");
     expect(unlistenPreferences).toHaveBeenCalledOnce();
+  });
+
+  it("forwards taskbar open requests and removes every desktop listener", async () => {
+    const listeners = new Map<string, () => void>();
+    const unlisteners = [vi.fn(), vi.fn(), vi.fn(), vi.fn()];
+    events.listen.mockImplementation(async (eventName: string, handler: () => void) => {
+      listeners.set(eventName, handler);
+      return unlisteners[listeners.size - 1];
+    });
+    const onShow = vi.fn();
+
+    const cleanupListeners = await listenDesktopEvents({ onPreferences: vi.fn(), onRefresh: vi.fn(), onUpdate: vi.fn(), onShow });
+    listeners.get("taskbar-open-requested")?.();
+    cleanupListeners();
+
+    expect(onShow).toHaveBeenCalledOnce();
+    expect([...listeners.keys()]).toEqual(["preferences-changed", "refresh-requested", "update-check-requested", "taskbar-open-requested"]);
+    for (const unlisten of unlisteners) expect(unlisten).toHaveBeenCalledOnce();
   });
 });

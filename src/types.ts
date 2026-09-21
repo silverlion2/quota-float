@@ -2,7 +2,7 @@ export type ProviderId = "codex" | "claude" | "qoder" | "trae" | "workbuddy" | "
 export type SnapshotStatus = "ok" | "stale" | "loading" | "unavailable" | "signed_out";
 export type Language = "zh-CN" | "en";
 export type LayoutMode = "compact" | "standard" | "detailed";
-export type CompactLayout = "float" | "ring" | "bar" | "bottleneck";
+export type CompactLayout = "float" | "ring" | "bar" | "bottleneck" | "taskbar";
 export type BarEdge = "top" | "left" | "right";
 export interface BarPlacement {
   edge: BarEdge;

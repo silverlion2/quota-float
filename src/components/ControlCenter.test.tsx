@@ -62,13 +62,14 @@ function renderControlCenter(
   onRuntimeState = vi.fn(),
   state = runtimeState,
   operation: ControlOperation | null = null,
+  platform = "windows",
 ) {
   render(
     <ControlCenter
       preferences={preferences}
       runtimeState={state}
       snapshots={snapshots}
-      diagnostics={diagnostics}
+      diagnostics={{ ...diagnostics, platform }}
       language={preferences.language}
       onClose={vi.fn()}
       onRefresh={onRefresh}
@@ -87,6 +88,24 @@ function renderControlCenter(
 }
 
 describe("ControlCenter provider health", () => {
+  it("does not offer Windows taskbar mode on macOS", () => {
+    renderControlCenter(vi.fn(), vi.fn(), { ...DEFAULT_WIDGET_PREFERENCES, language: "en" }, vi.fn(), runtimeState, null, "macos");
+    expect(screen.queryByRole("radio", { name: /Taskbar/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /Float Compact/ })).toBeInTheDocument();
+  });
+  it("selects taskbar mode as an interactive flyout rather than a pinned desktop card", () => {
+    const onPreferences = vi.fn();
+    renderControlCenter(vi.fn(), onPreferences, { ...DEFAULT_WIDGET_PREFERENCES, language: "en", stayExpanded: true, locked: true });
+    fireEvent.click(screen.getByRole("radio", { name: /Taskbar Quota in the Windows/ }));
+    expect(onPreferences).toHaveBeenCalledWith(expect.objectContaining({ compactLayout: "taskbar", stayExpanded: false, locked: false }));
+  });
+
+  it("explains where Windows may hide the taskbar indicator and how to return", () => {
+    renderControlCenter(vi.fn(), vi.fn(), { ...DEFAULT_WIDGET_PREFERENCES, language: "en", compactLayout: "taskbar" });
+    expect(screen.getByRole("radio", { name: /Taskbar Quota in the Windows/ })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByText(/If Windows hides the icon/)).toHaveTextContent("choose another mode here");
+    expect(screen.queryByRole("radiogroup", { name: "Bar attachment edge" })).not.toBeInTheDocument();
+  });
   it("shows provider source, status, history, and recovery context", () => {
     renderControlCenter();
     fireEvent.click(screen.getByRole("button", { name: "Health" }));

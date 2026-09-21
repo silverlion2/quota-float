@@ -537,10 +537,17 @@ export function resizeWidgetToContent(contentHeight: number, contentWidth?: numb
   });
 }
 
+export async function syncTaskbarIndicator(provider: ProviderId | null): Promise<void> {
+  if (!isTauri()) return;
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("sync_taskbar_indicator", { provider });
+}
+
 export async function listenDesktopEvents(handlers: {
   onPreferences: (value: WidgetPreferences) => void;
   onRefresh: () => void;
   onUpdate: () => void;
+  onShow?: () => void;
 }): Promise<() => void> {
   if (!isTauri()) return () => undefined;
   const { listen } = await import("@tauri-apps/api/event");
@@ -549,6 +556,7 @@ export async function listenDesktopEvents(handlers: {
     unlisteners.push(await listen<WidgetPreferences>("preferences-changed", (event) => handlers.onPreferences(event.payload)));
     unlisteners.push(await listen("refresh-requested", handlers.onRefresh));
     unlisteners.push(await listen("update-check-requested", handlers.onUpdate));
+    if (handlers.onShow) unlisteners.push(await listen("taskbar-open-requested", handlers.onShow));
   } catch (error) {
     for (const unlisten of [...unlisteners].reverse()) unlisten();
     throw error;

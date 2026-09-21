@@ -374,6 +374,46 @@ describe("Quota Float desktop widget", () => {
     }
     await browser.keys(["Escape"]);
   });
+  it("opens and dismisses the Windows taskbar flyout through the native event bridge", async function () {
+    if (process.platform !== "win32") this.skip();
+    const original = await browser.tauri.execute(async (tauri) => tauri.core.invoke("get_preferences")) as Record<string, unknown>;
+    const visible = async () => browser.tauri.execute(async (tauri) => {
+      const windows = await tauri.core.invoke("plugin:wdio|get_window_states") as { label: string; is_visible: boolean }[];
+      return windows.find((window) => window.label === "widget")?.is_visible === true;
+    });
+    const emitNativeEvent = async (event: string, payload: unknown = null) => browser.tauri.execute(async (tauri, value) => {
+      await tauri.core.invoke("plugin:event|emit_to", { target: { kind: "AnyLabel", label: "widget" }, ...value });
+    }, { event, payload });
+    const apply = async (preferences: Record<string, unknown>) => {
+      await browser.tauri.execute(async (tauri, value) => {
+        await tauri.core.invoke("set_preferences", { preferences: value });
+      }, preferences);
+      await emitNativeEvent("preferences-changed", preferences);
+    };
+    try {
+      await apply({ ...original, compactLayout: "taskbar", stayExpanded: false, locked: false });
+      await browser.tauri.execute(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+      await browser.waitUntil(async () => !await visible(), { timeoutMsg: "Taskbar mode did not hide the desktop window" });
+      await browser.tauri.execute(async (tauri) => tauri.core.invoke("sync_taskbar_indicator", { provider: "codex" }));
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        await emitNativeEvent("taskbar-open-requested");
+        await browser.waitUntil(visible, { timeoutMsg: "Taskbar click event did not show the native flyout" });
+        await browser.$(".quota-card").waitForExist();
+        await browser.waitUntil(async () => browser.tauri.execute(() => {
+          const card = document.querySelector<HTMLElement>(".quota-card");
+          return !!card && card.offsetHeight <= innerHeight && card.offsetWidth <= innerWidth;
+        }), { timeoutMsg: "Taskbar flyout content was clipped after opening" });
+        if (attempt === 0) await browser.saveScreenshot("output/handoff/taskbar-flyout.png");
+        await browser.tauri.execute(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+        await browser.waitUntil(async () => !await visible(), { timeoutMsg: "Escape did not return the flyout to the taskbar" });
+      }
+    } finally {
+      await apply(original);
+      await browser.tauri.execute(async (tauri) => tauri.core.invoke("expand_widget", { compactLayout: "float" }));
+      await browser.waitUntil(visible, { timeoutMsg: "Returning to Float did not restore the native window" });
+    }
+  });
+
   it("shrinks single-provider layouts and restores full dialog width in the native viewport", async () => {
     const original = await browser.tauri.execute(async (tauri) => tauri.core.invoke("get_preferences"));
     const reloadPreferences = async (preferences: unknown) => {

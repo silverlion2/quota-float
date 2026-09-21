@@ -1141,6 +1141,8 @@ select:focus-visible {
 .layout-option--bar .layout-bar-value,
 .layout-option--bottleneck .layout-bar-value { font-size: 8px; font-style: normal; font-weight: 760; }
 .layout-option--bottleneck .layout-bar-value:first-of-type { color: #ffb17a; }
+.layout-taskbar-value { border-radius: 3px; background: #18394b; color: #fff; padding: 3px 5px; font: 800 16px/1 monospace; }
+.taskbar-mode-hint { margin: 8px 0 14px; color: inherit; opacity: .8; font-size: 11px; line-height: 1.6; }
 .bar-edge-choice { margin: 7px 0 0; padding: 8px; border: 1px solid rgba(35,73,119,.1); border-radius: 12px; background: color-mix(in srgb, var(--accent-color, #397ae0) 3%, rgba(255,255,255,.3)); }
 .bar-edge-choice legend { width: 100%; padding: 0 2px; }
 .bar-edge-choice legend span,

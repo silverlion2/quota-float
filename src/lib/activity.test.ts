@@ -3,6 +3,15 @@ import { canSendNotification, EMPTY_RUNTIME_STATE, isQuietHour, normalizeRuntime
 import { MAX_DAILY_OBSERVED_PERCENT } from "../types";
 import type { ProviderSnapshot } from "../types";
 
+it("retains taskbar presentation when a layout profile is exported and restored", () => {
+  const state = normalizeRuntimeState({ savedLayouts: [{
+    id: "taskbar", name: "Taskbar", createdAt: "2026-09-22T00:00:00Z",
+    layoutMode: "standard", compactLayout: "taskbar", expandedLayout: "dashboard", accentColor: "#397ae0",
+  }] });
+  expect(state.savedLayouts).toHaveLength(1);
+  expect(normalizeRuntimeState(JSON.parse(JSON.stringify(state))).savedLayouts[0].compactLayout).toBe("taskbar");
+});
+
 function snapshot(remainingPercent: number, status: ProviderSnapshot["status"] = "ok"): ProviderSnapshot {
   return {
     provider: "codex", displayName: "CODEX", plan: "PRO", shortWindow: null,

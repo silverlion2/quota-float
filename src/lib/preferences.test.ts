@@ -1,7 +1,19 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { normalizeWidgetPreferences } from "./preferences";
 
 describe("widget preference migration", () => {
+  it("preserves taskbar mode without allowing an unclickable flyout", () => {
+    vi.stubGlobal("navigator", { platform: "Win32" });
+    try {
+      expect(normalizeWidgetPreferences({ compactLayout: "taskbar", locked: true })).toEqual(expect.objectContaining({ compactLayout: "taskbar", locked: false }));
+    } finally { vi.unstubAllGlobals(); }
+  });
+  it("falls back to Float when importing a Windows taskbar profile on macOS", () => {
+    vi.stubGlobal("navigator", { platform: "MacIntel" });
+    try {
+      expect(normalizeWidgetPreferences({ compactLayout: "taskbar" }).compactLayout).toBe("float");
+    } finally { vi.unstubAllGlobals(); }
+  });
   it("fills new quality-of-life settings for legacy preferences", () => {
     const value = normalizeWidgetPreferences({ language: "en", providerOrder: ["qoder", "codex"] as never });
     expect(value.providerOrder).toEqual(["qoder", "codex", "claude", "trae", "workbuddy", "volcengine", "antigravity"]);

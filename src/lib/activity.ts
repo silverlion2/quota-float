@@ -109,7 +109,7 @@ function savedLayout(value: unknown): RuntimeState["savedLayouts"][number] | nul
   if (!candidate || typeof candidate.id !== "string" || candidate.id.length === 0 || candidate.id.length > 160
     || typeof candidate.name !== "string" || candidate.name.trim().length === 0 || !validDate(candidate.createdAt)) return null;
   const layoutMode = candidate.layoutMode === "compact" || candidate.layoutMode === "detailed" ? candidate.layoutMode : candidate.layoutMode === "standard" ? "standard" : null;
-  const compactLayout = candidate.compactLayout === "bottleneck" || candidate.compactLayout === "bar" || candidate.compactLayout === "ring" || candidate.compactLayout === "float"
+  const compactLayout = candidate.compactLayout === "taskbar" || candidate.compactLayout === "bottleneck" || candidate.compactLayout === "bar" || candidate.compactLayout === "ring" || candidate.compactLayout === "float"
     ? candidate.compactLayout
     : candidate.visualStyle === "island" ? "bar" : "float";
   const barEdge = candidate.barEdge === "left" || candidate.barEdge === "right" || candidate.barEdge === "top"

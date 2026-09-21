@@ -12,7 +12,7 @@ export default defineConfig({
       input: "index.html",
       output: {
         // These native bridge modules load together; one chunk avoids tiny-file overhead.
-        manualChunks: { "tauri-api": ["@tauri-apps/api/core", "@tauri-apps/api/window", "@tauri-apps/api/event", "@tauri-apps/api/app", "@tauri-apps/api/image"] },
+        manualChunks: { "tauri-api": ["@tauri-apps/api/core", "@tauri-apps/api/window", "@tauri-apps/api/event", "@tauri-apps/api/app", "@tauri-apps/api/image", "@tauri-apps/plugin-notification", "@tauri-apps/plugin-opener", "@tauri-apps/plugin-process", "@tauri-apps/plugin-updater"] },
       },
     },
   },

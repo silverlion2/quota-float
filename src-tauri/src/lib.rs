@@ -8,6 +8,7 @@ mod provider_registry;
 mod qoder;
 mod reset_forecast;
 mod storage;
+mod taskbar;
 mod trae;
 mod volcengine;
 mod workbuddy;
@@ -26,6 +27,7 @@ use models::{ProviderSnapshot, WidgetPreferences};
 use serde::{Deserialize, Serialize};
 use storage::{load_preferences, persist_preferences};
 use tauri::{
+    image::Image,
     menu::{CheckMenuItem, Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State, WindowEvent,
@@ -116,6 +118,7 @@ enum CompactMode {
     Float,
     Bar,
     Bottleneck,
+    Taskbar,
 }
 
 impl CompactMode {
@@ -164,6 +167,7 @@ fn compact_mode(compact_layout: Option<&str>) -> CompactMode {
     match compact_layout {
         Some("bottleneck") => CompactMode::Bottleneck,
         Some("bar" | "island") => CompactMode::Bar,
+        Some("taskbar") if cfg!(target_os = "windows") => CompactMode::Taskbar,
         _ => CompactMode::Float,
     }
 }
@@ -206,6 +210,7 @@ fn collapsed_physical_size(
             (196.0 + extra_providers * 34.0, BAR_TOP_LOGICAL_HEIGHT)
         }
         CompactMode::Bottleneck => (BAR_SIDE_LOGICAL_WIDTH, 100.0 + extra_providers * 32.0),
+        CompactMode::Taskbar => (COLLAPSED_LOGICAL_WIDTH, COLLAPSED_LOGICAL_HEIGHT),
     };
     PhysicalSize::new(
         widget_window_size(width, scale_factor, safe_inset),
@@ -228,9 +233,117 @@ struct AppState {
     simulate_short_window_for_testing: Mutex<bool>,
     geometry: Mutex<Option<WidgetGeometryState>>,
     drag_mode: Mutex<Option<WidgetMode>>,
+    tray_available: Mutex<bool>,
+    taskbar_anchor: Mutex<Option<PhysicalPosition<i32>>>,
+    taskbar_indicator: Mutex<Option<taskbar::TaskbarIndicator>>,
 }
 
 const SNAPSHOT_CACHE_TTL: Duration = Duration::from_secs(30);
+
+fn is_taskbar_layout(compact_layout: &str) -> bool {
+    cfg!(target_os = "windows") && compact_layout == "taskbar"
+}
+
+fn taskbar_layout_enabled(state: &AppState) -> bool {
+    state
+        .preferences
+        .lock()
+        .map(|preferences| is_taskbar_layout(&preferences.compact_layout))
+        .unwrap_or(false)
+}
+
+fn reset_tray_indicator(app: &AppHandle, state: &AppState) -> Result<(), String> {
+    let tray = app
+        .tray_by_id("main")
+        .ok_or_else(|| "notification-area icon unavailable".to_string())?;
+    if let Some(icon) = app.default_window_icon() {
+        tray.set_icon(Some(icon.clone()))
+            .map_err(|error| format!("failed to restore notification-area icon: {error}"))?;
+    }
+    tray.set_tooltip(Some("Quota Float"))
+        .map_err(|error| format!("failed to restore notification-area tooltip: {error}"))?;
+    if let Ok(mut current) = state.taskbar_indicator.lock() {
+        *current = None;
+    }
+    Ok(())
+}
+
+fn update_taskbar_indicator(
+    app: &AppHandle,
+    state: &AppState,
+    provider: Option<&str>,
+) -> Result<(), String> {
+    let preferences = state
+        .preferences
+        .lock()
+        .map_err(|_| "settings unavailable".to_string())?
+        .clone();
+    if !is_taskbar_layout(&preferences.compact_layout) {
+        return reset_tray_indicator(app, state);
+    }
+    let snapshots = state
+        .snapshot_cache
+        .lock()
+        .map_err(|_| "snapshot cache temporarily unavailable".to_string())?
+        .values
+        .iter()
+        .map(|entry| entry.snapshot.clone())
+        .collect::<Vec<_>>();
+    let indicator = taskbar::indicator(&snapshots, &preferences, provider);
+    if state
+        .taskbar_indicator
+        .lock()
+        .map(|current| current.as_ref() == Some(&indicator))
+        .unwrap_or(false)
+    {
+        return Ok(());
+    }
+    let tray = app
+        .tray_by_id("main")
+        .ok_or_else(|| "notification-area icon unavailable".to_string())?;
+    tray.set_icon(Some(Image::new_owned(
+        indicator.rgba.clone(),
+        indicator.width,
+        indicator.height,
+    )))
+    .map_err(|error| format!("failed to update notification-area icon: {error}"))?;
+    tray.set_tooltip(Some(indicator.tooltip.as_str()))
+        .map_err(|error| format!("failed to update notification-area tooltip: {error}"))?;
+    if let Ok(mut current) = state.taskbar_indicator.lock() {
+        *current = Some(indicator);
+    }
+    Ok(())
+}
+
+fn open_widget_from_native(app: &AppHandle) {
+    let (taskbar_mode, tray_available) = app
+        .try_state::<AppState>()
+        .map(|state| {
+            (
+                taskbar_layout_enabled(state.inner()),
+                state
+                    .tray_available
+                    .lock()
+                    .map(|available| *available)
+                    .unwrap_or(false),
+            )
+        })
+        .unwrap_or((false, false));
+    if let Some(window) = app.get_webview_window("widget") {
+        if taskbar_mode {
+            let _ = window.set_ignore_cursor_events(false);
+            let _ = window.set_skip_taskbar(tray_available);
+            // Showing first leaves a recoverable, interactive fallback if the webview has not
+            // registered its taskbar-open listener yet during startup.
+            let _ = window.show();
+            let _ = window.set_focus();
+            let _ = app.emit_to("widget", "taskbar-open-requested", ());
+        } else {
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+    }
+}
 
 #[derive(Clone)]
 struct CachedProviderSnapshot {
@@ -1381,10 +1494,119 @@ fn expand_widget(
     let window = app
         .get_webview_window("widget")
         .ok_or_else(|| "widget window missing".to_string())?;
+    let compact_mode = compact_mode(compact_layout.as_deref());
+    if compact_mode == CompactMode::Taskbar {
+        let current = current_widget_rect(&window)?;
+        let anchor = state
+            .taskbar_anchor
+            .lock()
+            .ok()
+            .and_then(|value| *value)
+            .or_else(|| {
+                work_area.map(|area| {
+                    PhysicalPosition::new(
+                        area.position.x + area.size.width as i32,
+                        area.position.y + area.size.height as i32,
+                    )
+                })
+            })
+            .unwrap_or_else(|| {
+                PhysicalPosition::new(
+                    current.position.x + current.size.width as i32,
+                    current.position.y + current.size.height as i32,
+                )
+            });
+        let monitor = window
+            .monitor_from_point(anchor.x as f64, anchor.y as f64)
+            .map_err(|_| "failed to read taskbar monitor".to_string())?
+            .or(window
+                .current_monitor()
+                .map_err(|_| "failed to read monitor".to_string())?);
+        let scale_factor = monitor
+            .as_ref()
+            .map(|item| item.scale_factor())
+            .unwrap_or(1.0);
+        let safe_inset = logical_to_physical(EDGE_SAFE_INSET_LOGICAL, scale_factor);
+        let expanded_size = PhysicalSize::new(
+            widget_window_size(EXPANDED_LOGICAL_WIDTH, scale_factor, safe_inset),
+            widget_window_size(EXPANDED_LOGICAL_HEIGHT, scale_factor, safe_inset),
+        );
+        let taskbar_bounds = taskbar::work_area_at(anchor.x, anchor.y)
+            .or_else(|| {
+                work_area.map(|area| taskbar::TaskbarWorkArea {
+                    x: area.position.x,
+                    y: area.position.y,
+                    width: area.size.width,
+                    height: area.size.height,
+                })
+            })
+            .or_else(|| {
+                monitor.as_ref().map(|item| taskbar::TaskbarWorkArea {
+                    x: item.position().x,
+                    y: item.position().y,
+                    width: item.size().width,
+                    height: item.size().height,
+                })
+            })
+            .ok_or_else(|| "taskbar work area unavailable".to_string())?;
+        let (x, y) = taskbar::popup_position(
+            anchor.x,
+            expanded_size.width,
+            expanded_size.height,
+            taskbar_bounds,
+            safe_inset as i32,
+        );
+        let anchor_size = safe_inset.saturating_mul(2).max(2);
+        let collapsed_rect = WidgetRect {
+            position: PhysicalPosition::new(
+                anchor.x - safe_inset as i32,
+                taskbar_bounds.y + taskbar_bounds.height as i32 - safe_inset as i32,
+            ),
+            size: PhysicalSize::new(anchor_size, anchor_size),
+        };
+        let expanded_rect = WidgetRect {
+            position: PhysicalPosition::new(x, y),
+            size: expanded_size,
+        };
+        if let Ok(mut geometry) = state.geometry.lock() {
+            *geometry = Some(WidgetGeometryState {
+                mode: WidgetMode::Expanded,
+                compact_mode,
+                compact_provider_count: self::compact_provider_count(compact_provider_count),
+                bar_placement: BarPlacement::default(),
+                dock: DockState {
+                    horizontal: Some(HorizontalDock::Right),
+                    vertical: Some(VerticalDock::Bottom),
+                },
+                collapsed_rect,
+                expanded_rect: Some(expanded_rect),
+                user_moved_expanded: false,
+            });
+        }
+        window
+            .set_ignore_cursor_events(false)
+            .map_err(|_| "failed to make taskbar details interactive".to_string())?;
+        let tray_available = state
+            .tray_available
+            .lock()
+            .map(|available| *available)
+            .unwrap_or(false);
+        let _ = window.set_skip_taskbar(tray_available);
+        window
+            .set_position(expanded_rect.position)
+            .map_err(|_| "failed to position taskbar details".to_string())?;
+        window
+            .set_size(expanded_size)
+            .map_err(|_| "failed to resize taskbar details".to_string())?;
+        window
+            .show()
+            .map_err(|_| "failed to show taskbar details".to_string())?;
+        let _ = window.set_focus();
+        return Ok(());
+    }
     let current = current_widget_rect(&window)?;
     let (monitor, scale_factor) = monitor_and_scale(&window)?;
     let safe_inset = logical_to_physical(EDGE_SAFE_INSET_LOGICAL, scale_factor);
-    let compact_mode = compact_mode(compact_layout.as_deref());
     let provider_count = self::compact_provider_count(compact_provider_count);
     let bar_placement = bar_placement(bar_edge.as_deref(), bar_offset);
     let collapsed_size = collapsed_physical_size(
@@ -2392,10 +2614,37 @@ fn collapse_widget(
     let window = app
         .get_webview_window("widget")
         .ok_or_else(|| "widget window missing".to_string())?;
+    let requested_mode = compact_mode(compact_layout.as_deref());
+    let tray_available = state
+        .tray_available
+        .lock()
+        .map(|available| *available)
+        .unwrap_or(false);
+    if requested_mode == CompactMode::Taskbar && tray_available {
+        let _ = window.set_ignore_cursor_events(false);
+        let _ = window.set_skip_taskbar(true);
+        if let Ok(mut geometry) = state.geometry.lock() {
+            if let Some(mut value) = *geometry {
+                value.mode = WidgetMode::Collapsed;
+                value.expanded_rect = None;
+                *geometry = Some(value);
+            }
+        }
+        return window
+            .hide()
+            .map_err(|_| "failed to hide taskbar details".to_string());
+    }
+    let compact_mode = if requested_mode == CompactMode::Taskbar {
+        // A missing tray must never make the application unreachable.
+        let _ = window.set_skip_taskbar(false);
+        CompactMode::Float
+    } else {
+        let _ = window.set_skip_taskbar(tray_available);
+        requested_mode
+    };
     let current = current_widget_rect(&window)?;
     let (monitor, scale_factor) = monitor_and_scale(&window)?;
     let safe_inset = logical_to_physical(EDGE_SAFE_INSET_LOGICAL, scale_factor);
-    let compact_mode = compact_mode(compact_layout.as_deref());
     let provider_count = self::compact_provider_count(compact_provider_count);
     let bar_placement = bar_placement(bar_edge.as_deref(), bar_offset);
     let collapsed_size = collapsed_physical_size(
@@ -2699,15 +2948,61 @@ fn get_preferences(state: State<'_, AppState>) -> Result<WidgetPreferences, Stri
 #[tauri::command]
 fn set_preferences(
     preferences: WidgetPreferences,
+    app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let preferences = preferences.normalized();
+    let previous_taskbar = taskbar_layout_enabled(state.inner());
     persist_preferences(&state.preferences_path, &preferences)?;
     *state
         .preferences
         .lock()
-        .map_err(|_| "settings unavailable".to_string())? = preferences;
+        .map_err(|_| "settings unavailable".to_string())? = preferences.clone();
+    if is_taskbar_layout(&preferences.compact_layout) {
+        let _ = apply_lock(&app, false);
+        if let Some(window) = app.get_webview_window("widget") {
+            let tray_available = state
+                .tray_available
+                .lock()
+                .map(|available| *available)
+                .unwrap_or(false);
+            let _ = window.set_skip_taskbar(tray_available);
+        }
+        let _ =
+            update_taskbar_indicator(&app, state.inner(), preferences.pinned_provider.as_deref());
+    } else {
+        let _ = reset_tray_indicator(&app, state.inner());
+        let _ = apply_lock(&app, preferences.locked);
+        if let Some(window) = app.get_webview_window("widget") {
+            let tray_available = state
+                .tray_available
+                .lock()
+                .map(|available| *available)
+                .unwrap_or(false);
+            let _ = window.set_skip_taskbar(tray_available);
+            if previous_taskbar {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }
+    }
     Ok(())
+}
+
+#[tauri::command]
+fn sync_taskbar_indicator(
+    provider: Option<String>,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    if provider.as_deref().is_some_and(|provider| {
+        !provider_registry::PROVIDERS
+            .iter()
+            .any(|candidate| candidate.id == provider)
+    }) {
+        return Err("unknown provider".into());
+    }
+    update_taskbar_indicator(&app, state.inner(), provider.as_deref())
 }
 
 #[tauri::command]
@@ -2885,14 +3180,19 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     #[cfg(debug_assertions)]
     let test_short_window_menu = test_short_window.clone();
     builder
+        .show_menu_on_left_click(false)
         .on_menu_event(move |app, event| match event.id.as_ref() {
             "show" => {
-                if let Some(window) = app.get_webview_window("widget") {
+                if app
+                    .try_state::<AppState>()
+                    .is_some_and(|state| taskbar_layout_enabled(state.inner()))
+                {
+                    open_widget_from_native(app);
+                } else if let Some(window) = app.get_webview_window("widget") {
                     if window.is_visible().unwrap_or(false) {
                         let _ = window.hide();
                     } else {
-                        let _ = window.show();
-                        let _ = window.set_focus();
+                        open_widget_from_native(app);
                     }
                 }
             }
@@ -2900,6 +3200,12 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
                 let _ = app.emit_to("widget", "refresh-requested", ());
             }
             "update" => {
+                if app
+                    .try_state::<AppState>()
+                    .is_some_and(|state| taskbar_layout_enabled(state.inner()))
+                {
+                    open_widget_from_native(app);
+                }
                 let _ = app.emit_to("widget", "update-check-requested", ());
             }
             "debug-short-window" =>
@@ -3023,10 +3329,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
-            if let Some(window) = app.get_webview_window("widget") {
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
+            open_widget_from_native(app);
         }))
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
@@ -3060,11 +3363,29 @@ pub fn run() {
                 simulate_short_window_for_testing: Mutex::new(false),
                 geometry: Mutex::new(None),
                 drag_mode: Mutex::new(None),
+                tray_available: Mutex::new(false),
+                taskbar_anchor: Mutex::new(None),
+                taskbar_indicator: Mutex::new(None),
             });
-            if setup_tray(app).is_err() {
+            let tray_available = setup_tray(app).is_ok();
+            if let Some(state) = app.try_state::<AppState>() {
+                if let Ok(mut available) = state.tray_available.lock() {
+                    *available = tray_available;
+                }
+            }
+            if !tray_available {
                 eprintln!("tray setup failed; enabling taskbar fallback");
                 if let Some(window) = app.get_webview_window("widget") {
                     let _ = window.set_skip_taskbar(false);
+                }
+            } else if is_taskbar_layout(&preferences.compact_layout) {
+                if let Some(state) = app.try_state::<AppState>() {
+                    let _ = update_taskbar_indicator(app.handle(), state.inner(), None);
+                }
+                if let Some(window) = app.get_webview_window("widget") {
+                    let _ = window.set_ignore_cursor_events(false);
+                    let _ = window.set_skip_taskbar(true);
+                    let _ = window.hide();
                 }
             }
             if preferences.locked {
@@ -3092,6 +3413,7 @@ pub fn run() {
             finish_widget_drag,
             get_preferences,
             set_preferences,
+            sync_taskbar_indicator,
             get_autostart_enabled,
             set_autostart_enabled,
             set_widget_locked,
@@ -3111,15 +3433,21 @@ pub fn run() {
         ])
         .on_tray_icon_event(|app, event| {
             if let TrayIconEvent::Click {
+                position,
                 button: MouseButton::Left,
                 button_state: MouseButtonState::Up,
                 ..
             } = event
             {
-                if let Some(window) = app.get_webview_window("widget") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
+                if let Some(state) = app.try_state::<AppState>() {
+                    if let Ok(mut anchor) = state.taskbar_anchor.lock() {
+                        *anchor = Some(PhysicalPosition::new(
+                            position.x.round() as i32,
+                            position.y.round() as i32,
+                        ));
+                    }
                 }
+                open_widget_from_native(app);
             }
         })
         .on_window_event(|window, event| {

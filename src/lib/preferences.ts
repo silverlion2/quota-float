@@ -87,9 +87,13 @@ export function normalizeWidgetPreferences(value: LegacyWidgetPreferences | null
   const requestedPinnedProvider = providerSet.has(candidate.pinnedProvider as ProviderId) ? candidate.pinnedProvider as ProviderId : null;
   const pinnedProvider = requestedPinnedProvider && !hiddenProviders.includes(requestedPinnedProvider) ? requestedPinnedProvider : null;
   const layoutMode = candidate.layoutMode === "compact" || candidate.layoutMode === "detailed" ? candidate.layoutMode : "standard";
-  const compactLayout = candidate.compactLayout === "bottleneck" || candidate.compactLayout === "bar" || candidate.compactLayout === "ring" || candidate.compactLayout === "float"
+  const requestedCompactLayout = candidate.compactLayout === "taskbar" || candidate.compactLayout === "bottleneck" || candidate.compactLayout === "bar" || candidate.compactLayout === "ring" || candidate.compactLayout === "float"
     ? candidate.compactLayout
     : candidate.visualStyle === "island" ? "bar" : "float";
+  // Imported Windows layouts must remain usable on another desktop platform,
+  // including before the native persisted normalization is reloaded.
+  const unsupportedTaskbar = typeof navigator !== "undefined" && /mac|linux|android|iphone|ipad/i.test(navigator.platform);
+  const compactLayout = requestedCompactLayout === "taskbar" && unsupportedTaskbar ? "float" : requestedCompactLayout;
   const barEdge = candidate.barEdge === "left" || candidate.barEdge === "right" || candidate.barEdge === "top"
     ? candidate.barEdge
     : "top";
@@ -111,7 +115,7 @@ export function normalizeWidgetPreferences(value: LegacyWidgetPreferences | null
     ? candidate.accentColor
     : DEFAULT_WIDGET_PREFERENCES.accentColor;
   return {
-    locked: booleanValue(candidate.locked, DEFAULT_WIDGET_PREFERENCES.locked),
+    locked: compactLayout === "taskbar" ? false : booleanValue(candidate.locked, DEFAULT_WIDGET_PREFERENCES.locked),
     alwaysOnTop: booleanValue(candidate.alwaysOnTop, DEFAULT_WIDGET_PREFERENCES.alwaysOnTop),
     stayExpanded: booleanValue(candidate.stayExpanded, DEFAULT_WIDGET_PREFERENCES.stayExpanded),
     pinnedProvider,

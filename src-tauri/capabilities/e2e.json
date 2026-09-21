@@ -4,6 +4,7 @@
   "description": "Test-only WebdriverIO capabilities, enabled only by tauri.e2e.conf.json",
   "windows": ["widget", "focus-panel-*"],
   "permissions": [
+    "core:event:allow-emit-to",
     "wdio:allow-execute",
     "wdio:allow-log-frontend",
     "wdio:allow-debug-plugin",
