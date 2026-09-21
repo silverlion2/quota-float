@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.20 - 2026-09-21
+
+- feat: add Windows taskbar quota mode and fix edge expansion
+- ci: parallelize release builds and add resumable verification
+- docs: record verified v0.3.19 desktop release
+
 ## 0.3.19 - 2026-09-19
 
 - Ship the compact, provider-count-aware widgets and refined desktop layouts prepared in 0.3.18.
