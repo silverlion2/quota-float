@@ -41,7 +41,7 @@ describe("shared release draft workflow", () => {
       expect(job(platform)).toContain("needs: [verify, create-release-ref, create-draft]");
       expect(job(platform)).toContain("needs.create-draft.result == 'success'");
       expect(job(platform)).toContain("includeUpdaterJson: false");
-      expect(job(platform)).toContain("shared-key: publish-draft");
+      expect(job(platform)).toContain("shared-key: desktop-native-v1");
       expect(job(platform)).toContain("releaseId: ${{ needs.create-draft.outputs.release_id }}");
       expect(job(platform)).toContain("releaseBody: ${{ needs.create-draft.outputs.release_body }}");
       expect(job(platform)).not.toContain("generateReleaseNotes");
@@ -71,6 +71,18 @@ describe("shared release draft workflow", () => {
       expect(source).toContain("cargo test --manifest-path src-tauri/Cargo.toml");
       expect(source).toContain("cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings");
       expect(source.slice(gate, build)).not.toContain("continue-on-error:");
+    }
+  });
+
+  it("shares only dependency caches from main with CI without bypassing native verification", () => {
+    const ci = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+    for (const source of [ci, job("publish-windows"), job("publish-macos")]) {
+      expect(source).toContain("shared-key: desktop-native-v1");
+      expect(source).toContain("save-if: ${{ github.ref == 'refs/heads/main' }}");
+      expect(source).not.toMatch(/cache-(all|workspace)-crates:\s*true/);
+      expect(source).not.toContain("cache-hit");
+      expect(source).toContain("cargo test --manifest-path src-tauri/Cargo.toml");
+      expect(source).toContain("cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings");
     }
   });
 

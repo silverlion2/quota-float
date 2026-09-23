@@ -233,8 +233,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-          # Retain the pre-split cache namespace; OS/toolchain isolation is automatic.
-          shared-key: publish-draft
+          # CI warms debug/test, Clippy and release dependencies in the same namespace.
+          # Bump this generation when adding profiles/features to avoid an incomplete exact hit.
+          shared-key: desktop-native-v1
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: npm ci
       - name: Configure optional platform code signing
         shell: pwsh
@@ -349,8 +351,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-          # Retain the pre-split cache namespace; OS/toolchain isolation is automatic.
-          shared-key: publish-draft
+          # CI warms debug/test, Clippy and release dependencies in the same namespace.
+          # Bump this generation when adding profiles/features to avoid an incomplete exact hit.
+          shared-key: desktop-native-v1
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: npm ci
       - name: Configure optional macOS signing and notarization
         shell: bash

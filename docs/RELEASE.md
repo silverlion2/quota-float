@@ -53,6 +53,7 @@ npm run publish:release -- --resume 123456789 --record output/release-resume.jso
 
 - 验证 `main`、版本、变更列表、前端测试/构建和 Rust 测试。
 - Windows/macOS 发布 job 各自在打包上传前运行原生测试与严格 Clippy；取消流程后，草稿创建、上传、清单组装、升级测试和公开步骤均不得继续。
+- 普通 CI 与发布构建共用 `desktop-native-v1` 依赖缓存，由 main 成功运行预热测试、Clippy 和打包依赖；应用本身仍重新编译并执行全部检查。新增编译 profile/features 时同步更新缓存代际，避免旧的精确命中长期遗漏新依赖。首次需预热，实际提速以随后发布计时为准，见 [缓存提速记录](RELEASE-PERFORMANCE-2026-09-23.md)。
 - 确认验证后 `main` 未变化，再创建 release commit 与 tag，并通过一次 atomic push 同时写入远端。
 - 创建 release ref 时直接同步已测试过的机械版本文件，不再重复安装 Rust/Linux 桌面依赖或执行第二次 Rust 编译检查。
 - 先创建绑定精确发布提交的唯一共享草稿，再以独立的 Windows/macOS job 并行构建和上传各自安装包与签名；Windows Defender 扫描实际待发布的 Windows executable 与 installer，不重复编译预检包。
