@@ -33,3 +33,13 @@ The workflow regression verifies the shared namespace, main-only writes, depende
 Local validation passed: 424 frontend/workflow tests in 51 files, 123 Rust tests (one existing opt-in test ignored), production build and unchanged bundle budgets, Rust fmt/check/strict all-target Clippy, version sync and diff checks. Actionlint 1.7.12 accepted both workflows (ShellCheck integration disabled because it is unavailable locally); release shell bodies were unchanged.
 
 The first run must warm the new cache. There is no measured new release duration yet: compare subsequent release reports against the baseline above, including cache restore/save time. Do not report all seven minutes of the Windows native gate as saved, since application compilation, test execution and linting remain.
+
+## Second simplification: seven jobs
+
+The manifest assembly and post-publication distribution checks now run as steps in `finalize`, reducing the workflow from nine jobs to seven. One runner checks out the exact release commit, assembles the updater manifest, verifies the gated assets and publishes, then performs the same non-blocking public distribution check. Native builders, Windows upgrade overlap, environment approval and cancellation guards stay intact.
+
+The assembly and publication steps use default success conditions with no `continue-on-error`; either failure stops the following publication path. Only the already-public distribution check retains its previous non-blocking behavior. This removes two runner allocations, not two verification gates. Assembly now waits for the required upgrade smoke as well as both platform builds; therefore net time savings depend on runner queue time and must be measured, not assumed.
+
+The local publishing helper accepts either a successful legacy `assemble-updater` job or the new successful assembly step. Missing, skipped, failed or cancelled assembly evidence still rejects verification, and old run recovery stays compatible.
+
+Second-pass validation: 425 frontend/workflow tests, 123 Rust tests with one existing opt-in test ignored, production build/budgets, fmt/check/Clippy and version checks passed. Actionlint accepted the seven-job workflow. The three moved JavaScript step bodies match the previous revision exactly; regression coverage checks ordering, failure blocking, exact checkout and legacy/new run evidence. This reorganization has not yet been exercised in a new public release.

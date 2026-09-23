@@ -212,4 +212,21 @@ describe("one-command release publishing", () => {
     expect(workflowVerificationErrors({ ...run, jobs: jobs.filter((job) => job.name !== "upgrade-smoke") }, { stable: true })).toContain("stable upgrade smoke did not succeed");
     expect(workflowVerificationErrors({ ...run, jobs: jobs.filter((job) => job.name !== "upgrade-smoke") }, { stable: false })).toEqual([]);
   });
+
+  it("accepts merged finalization only when its manifest assembly step succeeded", () => {
+    const jobs = ["verify", "create-release-ref", "create-draft", "publish-windows", "publish-macos", "finalize", "upgrade-smoke"]
+      .map((name) => ({ name, conclusion: "success", steps: name === "publish-windows"
+        ? [{ name: "Scan the exact Windows release artifacts with Microsoft Defender", conclusion: "success" }] : [] }));
+    const final = jobs.find((job) => job.name === "finalize");
+    const assembly = { name: "Write the updater manifest once from both verified platform builds", conclusion: "success" };
+    final.steps = [assembly];
+    const run = { status: "completed", conclusion: "success", jobs };
+    expect(workflowVerificationErrors(run, { stable: true })).toEqual([]);
+    for (const conclusion of ["failure", "skipped", "cancelled"]) {
+      assembly.conclusion = conclusion;
+      expect(workflowVerificationErrors(run, { stable: true })).toContain("assemble-updater did not succeed");
+    }
+    final.steps = [];
+    expect(workflowVerificationErrors(run, { stable: true })).toContain("assemble-updater did not succeed");
+  });
 });

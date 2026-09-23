@@ -50,13 +50,26 @@ describe("shared release draft workflow", () => {
     expect(workflow.match(/repos\.createRelease\(/g)).toHaveLength(1);
   });
 
-  it("starts upgrade smoke after Windows while the single manifest writer waits for both platforms", () => {
+  it("starts upgrade smoke after Windows and assembles the manifest before publishing in one final job", () => {
     expect(job("upgrade-smoke")).toContain("needs: [verify, publish-windows]");
     expect(job("upgrade-smoke")).not.toContain("needs.publish-macos");
     expect(job("upgrade-smoke")).toContain('-CandidateReleaseId "${{ needs.publish-windows.outputs.release_id }}"');
-    expect(job("assemble-updater")).toContain("needs.publish-windows.result == 'success' && needs.publish-macos.result == 'success'");
-    expect(job("assemble-updater")).toContain("scripts/assemble-updater.mjs");
-    for (const prerequisite of ["publish-windows", "publish-macos", "assemble-updater", "upgrade-smoke"]) {
+    expect(workflow).not.toContain("\n  assemble-updater:");
+    expect(workflow).not.toContain("\n  post-release-distribution:");
+    const final = job("finalize");
+    expect(final).toContain("scripts/assemble-updater.mjs");
+    const assembly = final.indexOf("- name: Write the updater manifest");
+    const publish = final.indexOf("- name: Verify the gated artifact set");
+    const distribution = final.indexOf("- name: Check the published asset inventory");
+    expect(assembly).toBeGreaterThan(-1);
+    expect(publish).toBeGreaterThan(assembly);
+    expect(distribution).toBeGreaterThan(publish);
+    expect(final.slice(0, distribution)).not.toContain("continue-on-error:");
+    expect(final.slice(assembly, distribution)).not.toContain("if:");
+    expect(final.slice(distribution)).toContain("continue-on-error: true");
+    expect(final.slice(distribution)).toContain("steps.publish.outputs.release_id");
+    expect(final).toContain("ref: ${{ github.event_name == 'push' && github.sha || needs.create-release-ref.outputs.release_sha }}");
+    for (const prerequisite of ["publish-windows", "publish-macos", "upgrade-smoke"]) {
       expect(job("finalize")).toContain(`needs.${prerequisite}.result == 'success'`);
     }
   });
@@ -87,7 +100,7 @@ describe("shared release draft workflow", () => {
   });
 
   it("prevents cancellation from reaching draft creation, artifact publication, or finalize", () => {
-    for (const name of ["create-draft", "publish-windows", "publish-macos", "assemble-updater", "upgrade-smoke", "finalize", "post-release-distribution"]) {
+    for (const name of ["create-draft", "publish-windows", "publish-macos", "upgrade-smoke", "finalize"]) {
       const header = job(name).split("\n    steps:")[0];
       expect(header).toMatch(/if:[\s\S]*always\(\)\s*&&\s*!cancelled\(\)/);
     }

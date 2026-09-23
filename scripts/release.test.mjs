@@ -5,7 +5,7 @@ import { assertVersionSync, buildChangelog, nextVersion, updateCargoLock, update
 describe("release automation", () => {
   it("publishes with the built release commit even when draft metadata points to the dispatch commit", async () => {
     const workflow = readFileSync(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
-    const finalize = workflow.split("\n  finalize:")[1].split("\n  post-release-distribution:")[0];
+    const finalize = workflow.split("      - name: Verify the gated artifact set and publish the draft\n")[1].split("\n      - name:")[0];
     expect(finalize).toContain("RELEASE_SHA: ${{ github.event_name == 'push' && github.sha || needs.create-release-ref.outputs.release_sha }}");
     const script = finalize.split("          script: |\n")[1].split("\n").map((line) => line.replace(/^            /, "")).join("\n");
     const assets = ["latest.json", "Quota.Float_x64-setup.exe", "Quota.Float_x64-setup.exe.sig", "Quota.Float_universal.dmg", "Quota.Float_universal.app.tar.gz", "Quota.Float_universal.app.tar.gz.sig"].map((name, id) => ({ name, id }));
@@ -144,7 +144,7 @@ describe("release automation", () => {
     const workflow = readFileSync(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
     const upgradeScript = readFileSync(new URL("./verify-windows-upgrade.ps1", import.meta.url), "utf8");
     const upgradeJob = workflow.match(/\n  upgrade-smoke:\n[\s\S]*?\n  finalize:/)?.[0] ?? "";
-    const finalizeJob = workflow.match(/\n  finalize:\n[\s\S]*?\n  post-release-distribution:/)?.[0] ?? "";
+    const finalizeJob = workflow.split("\n  finalize:\n")[1];
 
     expect(workflow.indexOf("\n  upgrade-smoke:")).toBeLessThan(workflow.indexOf("\n  finalize:"));
     expect(upgradeJob).toContain("needs: [verify, publish-windows]");
@@ -156,8 +156,7 @@ describe("release automation", () => {
     expect(finalizeJob).toContain("CANDIDATE_ASSET_ID");
     expect(finalizeJob).toContain("CANDIDATE_SHA256");
     expect(finalizeJob).toContain("the tested Windows installer digest changed");
-    expect(workflow).toContain("post-release-distribution:");
-    expect(workflow).toMatch(/post-release-distribution:[\s\S]*?continue-on-error: true/);
+    expect(finalizeJob).toMatch(/Check the published asset inventory[\s\S]*?continue-on-error: true/);
 
     expect(upgradeScript).toContain("including drafts");
     expect(upgradeJob).toContain('-CandidateReleaseId "${{ needs.publish-windows.outputs.release_id }}"');

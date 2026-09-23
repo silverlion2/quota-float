@@ -432,33 +432,6 @@ jobs:
             xcrun stapler validate "$app_path"
           fi
 
-  assemble-updater:
-    if: ${{ always() && !cancelled() && needs.publish-windows.result == 'success' && needs.publish-macos.result == 'success' }}
-    needs: [verify, create-release-ref, create-draft, publish-windows, publish-macos]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event_name == 'push' && github.sha || needs.create-release-ref.outputs.release_sha }}
-      - name: Write the updater manifest once from both verified platform builds
-        uses: actions/github-script@v7
-        env:
-          RELEASE_TAG: ${{ needs.verify.outputs.tag }}
-          RELEASE_SHA: ${{ github.event_name == 'push' && github.sha || needs.create-release-ref.outputs.release_sha }}
-          RELEASE_ID: ${{ needs.create-draft.outputs.release_id }}
-        with:
-          script: |
-            const { pathToFileURL } = require("node:url");
-            const { assembleUpdater } = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/assemble-updater.mjs`).href);
-            const result = await assembleUpdater({
-              github, owner: context.repo.owner, repo: context.repo.repo,
-              releaseId: Number(process.env.RELEASE_ID), tag: process.env.RELEASE_TAG,
-              releaseSha: process.env.RELEASE_SHA, serverUrl: process.env.GITHUB_SERVER_URL,
-            });
-            core.info(`Created updater manifest asset ${result.assetId} for ${result.manifest.version}.`);
-
   upgrade-smoke:
     if: ${{ always() && !cancelled() && needs.publish-windows.result == 'success' && !contains(needs.verify.outputs.tag, '-') }}
     needs: [verify, publish-windows]
@@ -483,13 +456,12 @@ jobs:
         run: ./scripts/verify-windows-upgrade.ps1 -Repository "${{ github.repository }}" -CurrentTag "${{ needs.verify.outputs.tag }}" -CandidateReleaseId "${{ needs.publish-windows.outputs.release_id }}"
 
   finalize:
-    needs: [verify, create-release-ref, create-draft, publish-windows, publish-macos, assemble-updater, upgrade-smoke]
+    needs: [verify, create-release-ref, create-draft, publish-windows, publish-macos, upgrade-smoke]
     if: >-
       ${{
         always() && !cancelled() &&
         needs.publish-windows.result == 'success' &&
         needs.publish-macos.result == 'success' &&
-        needs.assemble-updater.result == 'success' &&
         (
           contains(needs.verify.outputs.tag, '-') ||
           needs.upgrade-smoke.result == 'success'
@@ -502,6 +474,25 @@ jobs:
       release_url: ${{ steps.publish.outputs.release_url }}
       release_id: ${{ steps.publish.outputs.release_id }}
     steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'push' && github.sha || needs.create-release-ref.outputs.release_sha }}
+      - name: Write the updater manifest once from both verified platform builds
+        uses: actions/github-script@v7
+        env:
+          RELEASE_TAG: ${{ needs.verify.outputs.tag }}
+          RELEASE_SHA: ${{ github.event_name == 'push' && github.sha || needs.create-release-ref.outputs.release_sha }}
+          RELEASE_ID: ${{ needs.create-draft.outputs.release_id }}
+        with:
+          script: |
+            const { pathToFileURL } = require("node:url");
+            const { assembleUpdater } = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/scripts/assemble-updater.mjs`).href);
+            const result = await assembleUpdater({
+              github, owner: context.repo.owner, repo: context.repo.repo,
+              releaseId: Number(process.env.RELEASE_ID), tag: process.env.RELEASE_TAG,
+              releaseSha: process.env.RELEASE_SHA, serverUrl: process.env.GITHUB_SERVER_URL,
+            });
+            core.info(`Created updater manifest asset ${result.assetId} for ${result.manifest.version}.`);
       - name: Verify the gated artifact set and publish the draft
         id: publish
         uses: actions/github-script@v7
@@ -642,20 +633,12 @@ jobs:
             core.setOutput("release_url", published.html_url);
             core.setOutput("release_id", String(published.id));
             core.info(`Published ${tag} with ${names.length} verified assets: ${published.html_url}`);
-
-  post-release-distribution:
-    needs: [verify, finalize, upgrade-smoke]
-    if: ${{ always() && !cancelled() && needs.finalize.result == 'success' }}
-    continue-on-error: true
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
       - name: Check the published asset inventory and tested installer distribution
+        continue-on-error: true
         uses: actions/github-script@v7
         env:
           RELEASE_TAG: ${{ needs.verify.outputs.tag }}
-          RELEASE_ID: ${{ needs.finalize.outputs.release_id }}
+          RELEASE_ID: ${{ steps.publish.outputs.release_id }}
           CANDIDATE_ASSET_ID: ${{ needs.upgrade-smoke.outputs.candidate_asset_id }}
           CANDIDATE_SHA256: ${{ needs.upgrade-smoke.outputs.candidate_sha256 }}
         with:

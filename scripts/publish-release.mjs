@@ -89,7 +89,11 @@ export function workflowVerificationErrors(run, { stable }) {
   const windowsJob = jobByName(run.jobs ?? [], "publish-windows") ?? publishJobs.find((job) => job.name.includes("windows-latest"));
   const macJob = jobByName(run.jobs ?? [], "publish-macos") ?? publishJobs.find((job) => job.name.includes("macos-latest"));
   if (jobByName(run.jobs ?? [], "publish-windows") || jobByName(run.jobs ?? [], "publish-macos")) {
-    if (jobByName(run.jobs ?? [], "assemble-updater")?.conclusion !== "success") errors.push("assemble-updater did not succeed");
+    // Older runs used a separate job; current runs assemble before publishing in finalize.
+    const assembly = jobByName(run.jobs ?? [], "assemble-updater") ??
+      jobByName(run.jobs ?? [], "finalize")?.steps?.find((step) =>
+        step.name === "Write the updater manifest once from both verified platform builds");
+    if (assembly?.conclusion !== "success") errors.push("assemble-updater did not succeed");
   }
   if (!windowsJob || windowsJob.conclusion !== "success") errors.push("Windows publish job did not succeed");
   if (!macJob || macJob.conclusion !== "success") errors.push("macOS publish job did not succeed");

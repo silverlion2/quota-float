@@ -18,7 +18,7 @@ npm run publish:release -- patch --yes
 
 `version` 支持 `patch`、`minor`、`major`、`beta`、`stable` 或明确的 `x.y.z[-beta.n]`。工作流会拒绝非 `main` 手动运行、旧版本、重复 tag、没有新增 commit、验证后发生变化的 `main`，以及缺少任一平台产物的发布。
 
-在线流程使用 atomic push 同时提交 release commit/tag；Windows/macOS 并行构建并上传到同一个草稿，Windows Defender 扫描实际待发布文件。单独的 `assemble-updater` 等两平台成功后一次生成清单。Stable 升级测试在 Windows 完成扫描后即可开始，无需等待 macOS；它将上一公开稳定版升级到明确草稿 ID 中的确切 Windows installer，并记录 Release ID、asset ID 与 SHA-256。只有双平台、清单、升级全部通过且公开前再次确认仍为同一资产，才会公开 Release。GitHub API 只向具备 push access 的令牌返回草稿，因此 `upgrade-smoke` job 局部声明 `contents: write`，但脚本本身只执行读取与下载。公开后另有一个非阻断的分发可达性检查。创建 release ref 时不再重复安装 Rust/Linux 桌面依赖或执行第二次 Rust 编译检查。
+在线流程使用 atomic push 同时提交 release commit/tag；Windows/macOS 并行构建并上传到同一个草稿，Windows Defender 扫描实际待发布文件。`finalize` 等双平台及所需升级测试通过后，依次生成清单、核对并公开、检查分发，三步共用一个 runner，整个流程共 7 个 job。Stable 升级测试在 Windows 完成扫描后即可开始，无需等待 macOS；它将上一公开稳定版升级到明确草稿 ID 中的确切 Windows installer，并记录 Release ID、asset ID 与 SHA-256。只有双平台、清单、升级全部通过且公开前再次确认仍为同一资产，才会公开 Release。GitHub API 只向具备 push access 的令牌返回草稿，因此 `upgrade-smoke` job 局部声明 `contents: write`，但脚本本身只执行读取与下载。公开后的分发可达性检查仍为非阻断步骤。创建 release ref 时不再重复安装 Rust/Linux 桌面依赖或执行第二次 Rust 编译检查。
 
 ## 本地发布回退
 
@@ -73,7 +73,7 @@ macOS Universal target 会由 GitHub Actions 自动安装，本地 Windows 不�
 - macOS updater archive 及 `.sig`。
 - `latest.json`。
 - 根据提交自动生成的版本说明。
-- `verify`、共享草稿、`publish-windows`（含 Defender）、`publish-macos`、`assemble-updater`、Stable 草稿 `upgrade-smoke` 和 `finalize` job 均成功；可选的 `post-release-distribution` 结果也应人工复核。
+- `verify`、手动正式发布的 `create-release-ref`、`create-draft`、`publish-windows`（含 Defender）、`publish-macos`、Stable 草稿 `upgrade-smoke` 和 `finalize` 均成功；`finalize` 内清单生成与公开步骤必须成功，非阻断的分发检查结果也应人工复核。旧发布记录仍按独立的 `assemble-updater` / `post-release-distribution` job 复核。
 - Release 不是 draft；Beta tag 应为 prerelease，Stable tag 不应为 prerelease。
 
 每次发布应在项目内保存一份简短 evidence record，记录 release/tag/commit、工作流链接、产物清单、自动化结果以及仍待完成的手动平台验证。格式可参考 [RELEASE-0.2.24.md](RELEASE-0.2.24.md)。

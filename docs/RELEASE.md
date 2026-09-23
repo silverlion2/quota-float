@@ -57,7 +57,7 @@ npm run publish:release -- --resume 123456789 --record output/release-resume.jso
 - 确认验证后 `main` 未变化，再创建 release commit 与 tag，并通过一次 atomic push 同时写入远端。
 - 创建 release ref 时直接同步已测试过的机械版本文件，不再重复安装 Rust/Linux 桌面依赖或执行第二次 Rust 编译检查。
 - 先创建绑定精确发布提交的唯一共享草稿，再以独立的 Windows/macOS job 并行构建和上传各自安装包与签名；Windows Defender 扫描实际待发布的 Windows executable 与 installer，不重复编译预检包。
-- 两个平台不各自写 `latest.json`。`assemble-updater` 等双平台成功后统一生成一次完整清单，拒绝错误版本、草稿身份或缺失/重复资产；安全重跑仅替换该草稿的清单。
+- 两个平台不各自写 `latest.json`。`finalize` 在双平台及所需升级测试成功后，依次生成完整清单、核对产物并公开、检查公开分发；这三个步骤共用一个 runner，发布任务从 9 个减至 7 个。清单生成失败即停止，仍拒绝错误版本、草稿身份或缺失/重复资产；安全重跑仅替换该草稿的清单。
 - 检查 `latest.json`、Windows installer/签名、macOS DMG/updater archive/签名齐全。
 - Stable 版本在 Windows job 完成扫描后即可执行 previous-public-to-draft-candidate upgrade smoke，与 macOS 构建重叠；候选绑定明确的草稿 Release ID，记录被安装候选的 asset ID 与 SHA-256，并在公开前重新下载核对，确保通过测试的就是将公开的同一份 installer。公开操作仍等待双平台、清单和升级测试全部成功。
 - 上述门槛通过后才将草稿 Release 转为公开；随后执行非阻断的公开分发可达性与资产一致性检查，不再次安装软件。
