@@ -2,7 +2,7 @@
   "name": "quota-float",
   "description": "Local-first desktop quota monitor for Codex, Claude, Qoder, TRAE, WorkBuddy, Volcengine Ark Coding Plan, and Google Antigravity. Built with Tauri for Windows and macOS.",
   "private": true,
-  "version": "0.3.20",
+  "version": "0.3.21",
   "type": "module",
   "packageManager": "npm@11.9.0",
   "engines": {

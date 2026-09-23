@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.21 - 2026-09-23
 
 - Prevent the edge bar's details panel from briefly oversizing: wait for native expansion before measuring, widen before remeasuring, and apply Windows position and size together.
 - Ignore stale expanded-size requests after collapse; retain settings while the pointer leaves and keep keyboard navigation open without latching mouse clicks.
