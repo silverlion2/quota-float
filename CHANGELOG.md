@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.22 - 2026-09-23
 
 - Require platform-native tests and strict Clippy before uploading Windows/macOS release packages; honor workflow cancellation throughout the release chain.
 - Isolate parallel extension-inventory test fixtures with unique sequence IDs and update the taskbar pixel test for Rust 1.98 Clippy.
