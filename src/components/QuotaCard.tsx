@@ -762,7 +762,13 @@ export const QuotaCard = memo(function QuotaCard({
       data-provider-list={providerListExpanded ? "expanded" : "collapsed"}
       style={{ "--accent-color": preferences.accentColor, "--widget-content-width": `${contentWidth}px` } as CSSProperties}
       onMouseEnter={() => onHover(true)}
-      onMouseLeave={() => onHover(false)}
+      onMouseLeave={(event) => { if (!event.currentTarget.querySelector(":focus-visible")) onHover(false); }}
+      onFocusCapture={(event) => {
+        if (!(event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) && event.target.matches(":focus-visible")) onHover(true);
+      }}
+      onBlurCapture={(event) => {
+        if (!(event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) && !event.currentTarget.matches(":hover")) onHover(false);
+      }}
       onMouseDown={(event) => { if (event.button === 0) void onDrag(); }}
     >
       <div className="aurora" aria-hidden="true" />

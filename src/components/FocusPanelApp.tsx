@@ -1,4 +1,4 @@
-import { DotsSix, X } from "@phosphor-icons/react";
+import { DotsSixVertical, X } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { resolveAppearanceMode, systemPrefersDark } from "../lib/appearance";
 import { closeFocusPanel, getPreferences, listenFocusPanelUpdates, readCachedSnapshots, readFocusPanelHistory, startFocusPanelDragging } from "../lib/bridge";
@@ -98,7 +98,7 @@ export function FocusPanelApp() {
       style={{ "--accent-color": preferences?.accentColor ?? "#397ae0" } as CSSProperties}
     >
       <header className="focus-panel-header" onMouseDown={(event) => { if (event.button === 0) void startFocusPanelDragging(); }}>
-        <DotsSix aria-hidden="true" />
+        <DotsSixVertical aria-hidden="true" />
         <div><small>QUOTA FLOAT · {language === "en" ? "DETACHED" : "独立面板"}</small><strong>{regionLabel}{value ? ` · ${value.snapshot.displayName}` : ""}</strong></div>
         <button type="button" aria-label={language === "en" ? "Close detached panel" : "关闭独立面板"} title={language === "en" ? "Close" : "关闭"} onMouseDown={(event) => event.stopPropagation()} onClick={() => void closeFocusPanel()}><X /></button>
       </header>

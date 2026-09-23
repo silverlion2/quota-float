@@ -121,6 +121,21 @@ describe("QuotaCard platform ledger", () => {
     consumingProviders: new Set<string>(),
   };
 
+  it("keeps keyboard interaction open when the pointer leaves and releases it when focus exits", () => {
+    const onHover = vi.fn();
+    const { container } = render(<><QuotaCard {...adaptiveProps} onHover={onHover} /><button>Outside widget</button></>);
+    const tab = screen.getByRole("tab", { name: "Quota" });
+    act(() => tab.focus());
+    expect(onHover).toHaveBeenLastCalledWith(true);
+    onHover.mockClear();
+    fireEvent.mouseLeave(container.querySelector(".quota-card")!);
+    expect(onHover).not.toHaveBeenCalledWith(false);
+    act(() => screen.getByRole("button", { name: "Control center" }).focus());
+    expect(onHover).not.toHaveBeenCalled();
+    act(() => screen.getByRole("button", { name: "Outside widget" }).focus());
+    expect(onHover).toHaveBeenLastCalledWith(false);
+  });
+
   it.each(["dashboard", "provider-bar", "stacked", "cockpit"] as const)("reclaims single-provider space in %s and allows manual expansion", (expandedLayout) => {
     const { container } = render(<QuotaCard {...adaptiveProps} preferences={{ ...preferences, expandedLayout }} />);
     expect(screen.getByText("Reset forecast & consumption plan")).toBeVisible();

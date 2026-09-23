@@ -18,7 +18,7 @@ const bridge = vi.hoisted(() => ({
 
 vi.mock("../lib/bridge", () => bridge);
 // This suite verifies cache/history behavior; avoid loading the full icon catalog.
-vi.mock("@phosphor-icons/react", () => ({ DotsSix: () => null, X: () => null }));
+vi.mock("@phosphor-icons/react", () => ({ DotsSixVertical: () => null, X: () => null }));
 vi.mock("./QuotaCard", () => ({
   CockpitDashboard: ({ snapshot }: { snapshot: ProviderSnapshot }) => <div>snapshot:{snapshot.status}:{snapshot.message}</div>,
 }));

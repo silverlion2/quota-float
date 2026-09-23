@@ -111,7 +111,7 @@ vi.mock("./components/ControlCenter", () => ({
 vi.mock("./components/QuotaCard", () => {
   const compact = ({ onHover }: { onHover: (value: boolean) => void }) => <button type="button" onClick={() => onHover(true)}>Expand widget</button>;
   const card = (props: any) => (
-    <main className="quota-card" data-content-width={props.controlOpen || props.updateOpen ? 552 : 400} onMouseEnter={() => props.onHover(true)}>
+    <main className="quota-card" data-content-width={props.controlOpen || props.updateOpen ? 552 : 400} onMouseEnter={() => props.onHover(true)} onMouseLeave={() => props.onHover(false)}>
       <button type="button" aria-label="App update" onClick={props.onUpdateOpen}>Update</button>
       <button type="button" aria-label="Control center" onClick={props.onControlOpen}>Control</button>
       <button type="button" onClick={() => props.onPreferences({ ...props.preferences, accentColor: "#112233" })}>Save first</button>
@@ -132,7 +132,10 @@ vi.mock("./components/QuotaCard", () => {
 
 import App from "./App";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 beforeEach(() => {
   testState.updateCheck = deferred<null>();
@@ -198,6 +201,102 @@ describe("App modal and preference lifecycle", () => {
     expect(vi.mocked(setWidgetExpanded).mock.calls.filter(([expanded]) => expanded)).toHaveLength(calls);
     await act(async () => { testState.widgetExpandRequest!.resolve(); });
     expect(screen.getByRole("button", { name: "App update" })).toBeInTheDocument();
+  });
+
+  it("waits for native expansion before measuring the detail panel", async () => {
+    testState.widgetExpandRequest = deferred<void>();
+    let measuredHeight = 900;
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(() => measuredHeight);
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    render(<App />);
+    vi.mocked(resizeWidgetToContent).mockClear();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Expand widget" }));
+    act(() => { for (const frame of frames.splice(0)) frame(0); });
+    expect(resizeWidgetToContent).not.toHaveBeenCalled();
+
+    measuredHeight = 448;
+    await act(async () => { testState.widgetExpandRequest!.resolve(); });
+    act(() => { for (const frame of frames.splice(0)) frame(16); });
+    expect(resizeWidgetToContent).toHaveBeenCalledTimes(1);
+    expect(resizeWidgetToContent).toHaveBeenCalledWith(448, 400);
+  });
+
+  it("widens before measuring new content and accepts a native-clamped width", async () => {
+    let viewportWidth = 400;
+    let measuredHeight = 360;
+    vi.spyOn(window, "innerWidth", "get").mockImplementation(() => viewportWidth);
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(() => measuredHeight);
+    await renderExpandedApp();
+    await waitFor(() => expect(resizeWidgetToContent).toHaveBeenLastCalledWith(360, 400));
+    vi.mocked(resizeWidgetToContent).mockClear();
+    measuredHeight = 700;
+    vi.mocked(resizeWidgetToContent).mockImplementationOnce(async () => {
+      viewportWidth = 500;
+      measuredHeight = 448;
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Control center" }));
+
+    await waitFor(() => expect(resizeWidgetToContent).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(resizeWidgetToContent).mock.calls).toEqual([
+      [360, 552],
+      [448, 552],
+    ]);
+  });
+
+  it("ignores an old width request after the layout closes and reopens", async () => {
+    let viewportWidth = 400;
+    let measuredHeight = 360;
+    vi.spyOn(window, "innerWidth", "get").mockImplementation(() => viewportWidth);
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(() => measuredHeight);
+    await renderExpandedApp();
+    await waitFor(() => expect(resizeWidgetToContent).toHaveBeenLastCalledWith(360, 400));
+    vi.mocked(resizeWidgetToContent).mockClear();
+    const first = deferred<void>();
+    const latest = deferred<void>();
+    vi.mocked(resizeWidgetToContent)
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => latest.promise);
+
+    fireEvent.click(screen.getByRole("button", { name: "Control center" }));
+    await waitFor(() => expect(resizeWidgetToContent).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Close control" }));
+    await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, 30)); });
+    fireEvent.click(screen.getByRole("button", { name: "Control center" }));
+    await waitFor(() => expect(resizeWidgetToContent).toHaveBeenCalledTimes(2));
+
+    measuredHeight = 700;
+    await act(async () => {
+      first.resolve();
+      await new Promise((resolve) => window.setTimeout(resolve, 30));
+    });
+    expect(resizeWidgetToContent).toHaveBeenCalledTimes(2);
+
+    viewportWidth = 552;
+    measuredHeight = 448;
+    await act(async () => { latest.resolve(); });
+    await waitFor(() => expect(resizeWidgetToContent).toHaveBeenLastCalledWith(448, 552));
+  });
+
+  it("keeps an active modal open when the pointer leaves the widget", async () => {
+    await renderExpandedApp();
+    fireEvent.click(screen.getByRole("button", { name: "Control center" }));
+    await screen.findByRole("dialog", { name: "Control center" });
+    vi.mocked(setWidgetExpanded).mockClear();
+    vi.useFakeTimers();
+    try {
+      fireEvent.mouseLeave(screen.getByRole("main"));
+      act(() => { vi.advanceTimersByTime(500); });
+      expect(screen.getByRole("dialog", { name: "Control center" })).toBeInTheDocument();
+      expect(vi.mocked(setWidgetExpanded).mock.calls.some(([expanded]) => !expanded)).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("returns to a retryable compact state when native expansion fails", async () => {

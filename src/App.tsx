@@ -37,14 +37,6 @@ function errorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-function resizeRenderedWidget(selector = ".quota-card, .loading-card"): Promise<void> {
-  const card = document.querySelector<HTMLElement>(selector);
-  const height = card?.offsetHeight ?? 0;
-  return height > 0
-    ? resizeWidgetToContent(height, Number(card?.dataset.contentWidth) || undefined)
-    : Promise.resolve();
-}
-
 export default function App() {
   const [snapshots, setSnapshots] = useState<ProviderSnapshot[]>([]);
   const [recentCodexReset, setRecentCodexReset] = useState<RecentCodexReset | null>(null);
@@ -54,6 +46,7 @@ export default function App() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [hovered, setHovered] = useState(false);
   const [compact, setCompact] = useState(true);
+  const [nativeExpandedReady, setNativeExpandedReady] = useState(false);
   const [providerListPreference, setProviderListPreference] = useState<boolean | null>(null);
   const [collapsing, setCollapsing] = useState(false);
   const [consumingProviders, setConsumingProviders] = useState<Set<string>>(() => new Set());
@@ -106,9 +99,14 @@ export default function App() {
   activeModalRef.current = activeModal;
 
   const setCompactState = useCallback((value: boolean) => {
+    setNativeExpandedReady(false);
     compactRef.current = value;
     setCompact(value);
   }, []);
+
+  const finishWidgetExpand = (transition: number) => {
+    if (widgetTransitionSequence.current === transition && !compactRef.current) setNativeExpandedReady(true);
+  };
 
   const clearCollapseTimers = useCallback(() => {
     for (const timer of [collapseTimer, collapseContentTimer]) {
@@ -488,8 +486,10 @@ export default function App() {
     }
     if (previous !== "taskbar" || taskbar || compactRef.current) return;
     taskbarOpenGraceUntil.current = 0;
+    setCompactState(false);
+    const transition = ++widgetTransitionSequence.current;
     void setWidgetExpanded(true, preferences.compactLayout, { edge: preferences.barEdge, offset: preferences.barOffset }, orderedSnapshots.length)
-      .then(() => resizeRenderedWidget())
+      .then(() => finishWidgetExpand(transition))
       .catch(() => setOperationError("Widget layout resize failed."));
   }, [current?.provider, orderedSnapshots.length, preferences, snapshots]);
 
@@ -710,12 +710,12 @@ export default function App() {
 
   const handleHover = useCallback((value: boolean) => {
     clearCollapseTimers();
+    if (!value && (preferences.stayExpanded || activeModalRef.current !== null)) return;
     setCollapsing(false);
     setHovered(value);
     if (value && taskbarOpenGraceUntil.current === Infinity) {
       taskbarOpenGraceUntil.current = Date.now() + TASKBAR_OPEN_GRACE_MS;
     }
-    if (!value && preferences.stayExpanded) return;
     if (value) void refresh();
     if (value) {
       ++hoverSequence.current;
@@ -727,6 +727,7 @@ export default function App() {
       setCompactState(false);
       const transition = ++widgetTransitionSequence.current;
       void setWidgetExpanded(true, preferences.compactLayout, { edge: preferences.barEdge, offset: preferences.barOffset }, orderedSnapshots.length)
+        .then(() => finishWidgetExpand(transition))
         .catch(() => {
           if (widgetTransitionSequence.current === transition) setCompactState(true);
           setOperationError("Widget expand failed.");
@@ -766,13 +767,7 @@ export default function App() {
     void refresh();
     const transition = ++widgetTransitionSequence.current;
     void setWidgetExpanded(true, "taskbar", { edge: currentPreferences.barEdge, offset: currentPreferences.barOffset }, snapshotsRef.current.length)
-      .then(async () => {
-        // The compact -> expanded render schedules its own first measurement.
-        // Repeated taskbar clicks do not re-render, so explicitly restore the
-        // measured size after native show/focus in that case.
-        if (wasCompact) return;
-        await resizeRenderedWidget();
-      })
+      .then(() => finishWidgetExpand(transition))
       .catch(() => {
         if (widgetTransitionSequence.current === transition) {
           taskbarOpenGraceUntil.current = 0;
@@ -848,13 +843,9 @@ export default function App() {
     setCollapsing(false);
     setCompactState(false);
     let cancelled = false;
+    const transition = ++widgetTransitionSequence.current;
     void setWidgetExpanded(true, preferences.compactLayout, { edge: preferences.barEdge, offset: preferences.barOffset }, orderedSnapshots.length)
-      .then(() => {
-        if (cancelled) return undefined;
-        // Changing compact placement while pinned open also resets native
-        // geometry, even when the DOM's size did not change for ResizeObserver.
-        return resizeRenderedWidget(".quota-card");
-      })
+      .then(() => { if (!cancelled) finishWidgetExpand(transition); })
       .catch(() => { if (!cancelled) setOperationError("Widget expand failed."); });
     return () => { cancelled = true; };
   }, [clearCollapseTimers, orderedSnapshots.length, preferences.barEdge, preferences.barOffset, preferences.compactLayout, preferences.stayExpanded, setCompactState]);
@@ -865,19 +856,50 @@ export default function App() {
   }, [compact, orderedSnapshots.length, preferences.barEdge, preferences.barOffset, preferences.compactLayout, preferences.stayExpanded]);
 
   useEffect(() => {
-    if (compact) return;
+    if (compact || !nativeExpandedReady) return;
     const card = document.querySelector<HTMLElement>(".quota-card, .loading-card");
     if (!card) return;
+    let disposed = false;
     let animationFrame: number | null = null;
     let lastHeight = 0;
     let lastWidth: number | undefined;
+    let widthRequest: { width: number; complete: boolean } | undefined;
     const syncSize = () => {
+      if (disposed) return;
       animationFrame = null;
-      const contentHeight = card.offsetHeight;
       // Use the layout's requested window width, not the current viewport width:
       // a narrow native viewport must still be able to grow for an open dialog.
       const contentWidth = Number(card.dataset.contentWidth) || undefined;
-      if (contentHeight <= 0 || (Math.abs(contentHeight - lastHeight) < 1 && contentWidth === lastWidth)) return;
+      if (contentWidth && contentWidth > window.innerWidth + 1) {
+        // A work area narrower than the requested layout makes the exact width
+        // unreachable. Measure once at the native-clamped width after the grow
+        // request instead of retrying forever.
+        if (widthRequest?.width !== contentWidth || !widthRequest.complete) {
+          if (widthRequest?.width === contentWidth) return;
+          const request = { width: contentWidth, complete: false };
+          widthRequest = request;
+          // Preserve the last stable height while widening. Measuring the newly
+          // revealed content in the old narrow viewport produces a transient,
+          // over-tall window and moves an edge-anchored panel twice.
+          const preservedHeight = lastHeight || Math.max(1, window.innerHeight - 8);
+          void resizeWidgetToContent(preservedHeight, contentWidth)
+            .then(() => {
+              if (disposed || widthRequest !== request) return;
+              request.complete = true;
+              scheduleSync();
+            })
+            .catch(() => {
+              if (disposed || widthRequest !== request) return;
+              widthRequest = undefined;
+              setOperationError("Widget resize failed.");
+            });
+          return;
+        }
+      } else {
+        widthRequest = undefined;
+      }
+      const contentHeight = card.offsetHeight;
+      if (contentHeight <= 0 || (contentHeight === lastHeight && contentWidth === lastWidth)) return;
       lastHeight = contentHeight;
       lastWidth = contentWidth;
       void resizeWidgetToContent(contentHeight, contentWidth).catch(() => setOperationError("Widget resize failed."));
@@ -892,11 +914,12 @@ export default function App() {
     const layoutObserver = new MutationObserver(scheduleSync);
     layoutObserver.observe(card, { attributes: true, attributeFilter: ["data-content-width"] });
     return () => {
+      disposed = true;
       resizeObserver?.disconnect();
       layoutObserver.disconnect();
       if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);
     };
-  }, [compact, Boolean(current)]);
+  }, [compact, nativeExpandedReady, Boolean(current)]);
 
   if (!current) return <div className="loading-card" aria-label={t.loadingQuota}><span /><span /><span /></div>;
 

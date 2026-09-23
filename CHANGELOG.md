@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Prevent the edge bar's details panel from briefly oversizing: wait for native expansion before measuring, widen before remeasuring, and apply Windows position and size together.
+- Ignore stale expanded-size requests after collapse; retain settings while the pointer leaves and keep keyboard navigation open without latching mouse clicks.
+- Improve expanded-panel text, contrast, control sizes and provider labels; keep Insights at a stable height with internal scrolling and readable filters.
+
 ## 0.3.20 - 2026-09-21
 
 - feat: add Windows taskbar quota mode and fix edge expansion

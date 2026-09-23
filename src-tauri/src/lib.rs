@@ -77,7 +77,7 @@ impl DockState {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 struct WidgetRect {
     position: PhysicalPosition<i32>,
     size: PhysicalSize<u32>,
@@ -1448,6 +1448,71 @@ fn current_widget_rect(window: &tauri::WebviewWindow) -> Result<WidgetRect, Stri
     })
 }
 
+fn should_resize_expanded(mode: Option<WidgetMode>) -> bool {
+    mode == Some(WidgetMode::Expanded)
+}
+
+#[cfg(target_os = "windows")]
+fn set_widget_rect(window: &tauri::WebviewWindow, rect: WidgetRect) -> Result<(), String> {
+    if current_widget_rect(window).is_ok_and(|current| current == rect) {
+        return Ok(());
+    }
+
+    #[link(name = "user32")]
+    extern "system" {
+        fn SetWindowPos(
+            window: isize,
+            insert_after: isize,
+            x: i32,
+            y: i32,
+            width: i32,
+            height: i32,
+            flags: u32,
+        ) -> i32;
+    }
+
+    // Tauri's Windows position and size setters each issue an asynchronous SetWindowPos.
+    // Submit one synchronous WINDOWPOS instead: Windows marshals it to the HWND owner when
+    // needed, and WebView2 sees a single move/resize without an intermediate hit-test region.
+    const SWP_NOZORDER: u32 = 0x0004;
+    const SWP_NOACTIVATE: u32 = 0x0010;
+    let hwnd = window
+        .hwnd()
+        .map_err(|_| "failed to read native widget handle".to_string())?;
+    let updated = unsafe {
+        SetWindowPos(
+            hwnd.0 as isize,
+            0,
+            rect.position.x,
+            rect.position.y,
+            rect.size.width.min(i32::MAX as u32) as i32,
+            rect.size.height.min(i32::MAX as u32) as i32,
+            SWP_NOZORDER | SWP_NOACTIVATE,
+        )
+    };
+    if updated == 0 {
+        Err(format!(
+            "failed to update widget geometry: {}",
+            std::io::Error::last_os_error()
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn set_widget_rect(window: &tauri::WebviewWindow, rect: WidgetRect) -> Result<(), String> {
+    if current_widget_rect(window).is_ok_and(|current| current == rect) {
+        return Ok(());
+    }
+    window
+        .set_position(rect.position)
+        .map_err(|_| "failed to position widget".to_string())?;
+    window
+        .set_size(rect.size)
+        .map_err(|_| "failed to resize widget".to_string())
+}
+
 fn monitor_and_scale(
     window: &tauri::WebviewWindow,
 ) -> Result<(Option<tauri::Monitor>, f64), String> {
@@ -1592,12 +1657,7 @@ fn expand_widget(
             .map(|available| *available)
             .unwrap_or(false);
         let _ = window.set_skip_taskbar(tray_available);
-        window
-            .set_position(expanded_rect.position)
-            .map_err(|_| "failed to position taskbar details".to_string())?;
-        window
-            .set_size(expanded_size)
-            .map_err(|_| "failed to resize taskbar details".to_string())?;
+        set_widget_rect(&window, expanded_rect)?;
         window
             .show()
             .map_err(|_| "failed to show taskbar details".to_string())?;
@@ -1621,9 +1681,27 @@ fn expand_widget(
         widget_window_size(EXPANDED_LOGICAL_HEIGHT, scale_factor, safe_inset),
     );
     let Some(monitor) = monitor else {
-        window
-            .set_size(expanded_size)
-            .map_err(|_| "failed to resize widget".to_string())?;
+        let collapsed_rect = WidgetRect {
+            position: current.position,
+            size: collapsed_size,
+        };
+        let expanded_rect = WidgetRect {
+            position: current.position,
+            size: expanded_size,
+        };
+        if let Ok(mut geometry) = state.geometry.lock() {
+            *geometry = Some(WidgetGeometryState {
+                mode: WidgetMode::Expanded,
+                compact_mode,
+                compact_provider_count: provider_count,
+                bar_placement,
+                dock: DockState::default(),
+                collapsed_rect,
+                expanded_rect: Some(expanded_rect),
+                user_moved_expanded: false,
+            });
+        }
+        set_widget_rect(&window, expanded_rect)?;
         return Ok(());
     };
     let threshold = logical_to_physical(SNAP_THRESHOLD_LOGICAL, scale_factor) as i32;
@@ -1683,12 +1761,7 @@ fn expand_widget(
         });
     }
 
-    window
-        .set_position(expanded_rect.position)
-        .map_err(|_| "failed to position widget".to_string())?;
-    window
-        .set_size(expanded_size)
-        .map_err(|_| "failed to resize widget".to_string())
+    set_widget_rect(&window, expanded_rect)
 }
 
 #[tauri::command]
@@ -1699,6 +1772,10 @@ fn resize_expanded_widget(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
+    let previous = state.geometry.lock().ok().and_then(|value| *value);
+    if !should_resize_expanded(previous.map(|geometry| geometry.mode)) {
+        return Ok(());
+    }
     let window = app
         .get_webview_window("widget")
         .ok_or_else(|| "widget window missing".to_string())?;
@@ -1728,8 +1805,6 @@ fn resize_expanded_widget(
         active_bounds.map(|bounds| bounds.size.height),
     );
     let expanded_size = PhysicalSize::new(expanded_width, expanded_height);
-    let previous = state.geometry.lock().ok().and_then(|value| *value);
-
     let next_position = match (previous, active_bounds) {
         (Some(geometry), Some(bounds)) if geometry.user_moved_expanded => clamp_position_to_bounds(
             current.position,
@@ -1757,12 +1832,13 @@ fn resize_expanded_widget(
         (_, None) => current.position,
     };
 
-    window
-        .set_position(next_position)
-        .map_err(|_| "failed to position widget".to_string())?;
-    window
-        .set_size(expanded_size)
-        .map_err(|_| "failed to resize widget".to_string())?;
+    set_widget_rect(
+        &window,
+        WidgetRect {
+            position: next_position,
+            size: expanded_size,
+        },
+    )?;
 
     if let (Ok(mut value), Some(mut geometry)) = (state.geometry.lock(), previous) {
         geometry.mode = WidgetMode::Expanded;
@@ -2001,6 +2077,13 @@ mod geometry_tests {
             bounds.position.y + bounds.size.height as i32 - rect.size.height as i32 + safe_inset;
         assert!(rect.position.x >= min_x && rect.position.x <= max_x.max(min_x));
         assert!(rect.position.y >= min_y && rect.position.y <= max_y.max(min_y));
+    }
+
+    #[test]
+    fn content_resize_only_runs_while_native_geometry_is_expanded() {
+        assert!(!should_resize_expanded(None));
+        assert!(!should_resize_expanded(Some(WidgetMode::Collapsed)));
+        assert!(should_resize_expanded(Some(WidgetMode::Expanded)));
     }
 
     #[test]
@@ -2654,14 +2737,31 @@ fn collapse_widget(
         safe_inset,
         provider_count,
     );
+    let previous = state.geometry.lock().ok().and_then(|value| *value);
     let Some(monitor) = monitor else {
-        window
-            .set_size(collapsed_size)
-            .map_err(|_| "failed to resize widget".to_string())?;
+        let collapsed_rect = WidgetRect {
+            position: current.position,
+            size: collapsed_size,
+        };
+        if let Ok(mut geometry) = state.geometry.lock() {
+            *geometry = Some(WidgetGeometryState {
+                mode: WidgetMode::Collapsed,
+                compact_mode,
+                compact_provider_count: provider_count,
+                bar_placement,
+                dock: previous
+                    .filter(|value| value.compact_mode == compact_mode)
+                    .map(|value| value.dock)
+                    .unwrap_or_default(),
+                collapsed_rect,
+                expanded_rect: None,
+                user_moved_expanded: false,
+            });
+        }
+        set_widget_rect(&window, collapsed_rect)?;
         return Ok(());
     };
     let threshold = logical_to_physical(SNAP_THRESHOLD_LOGICAL, scale_factor) as i32;
-    let previous = state.geometry.lock().ok().and_then(|value| *value);
     let (bounds_position, bounds_size) = work_area
         .map(|area| {
             (
@@ -2724,12 +2824,7 @@ fn collapse_widget(
             user_moved_expanded: false,
         });
     }
-    window
-        .set_size(collapsed_size)
-        .map_err(|_| "failed to resize widget".to_string())?;
-    window
-        .set_position(collapsed_rect.position)
-        .map_err(|_| "failed to position widget".to_string())
+    set_widget_rect(&window, collapsed_rect)
 }
 
 #[tauri::command]

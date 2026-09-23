@@ -507,34 +507,34 @@ export async function startDragging(): Promise<BarPlacement | null> {
   });
 }
 
+function invokeWidgetTransition(command: string, payload: Record<string, unknown>): Promise<void> {
+  if (!isTauri()) return Promise.resolve();
+  return enqueueWidgetTransition(async () => {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke(command, { ...payload, workArea: await currentWorkArea() });
+  });
+}
+
 export function setWidgetExpanded(
   expanded: boolean,
   compactLayout: CompactLayout = "float",
   placement: BarPlacement = { edge: "top", offset: 0.5 },
   compactProviderCount = 1,
 ): Promise<void> {
-  if (!isTauri()) return Promise.resolve();
-  return enqueueWidgetTransition(async () => {
-    const { invoke } = await import("@tauri-apps/api/core");
-    const workArea = await currentWorkArea();
-    const count = Number.isFinite(compactProviderCount) ? Math.max(1, Math.min(7, Math.floor(compactProviderCount))) : 1;
-    const payload = { workArea, compactLayout, barEdge: placement.edge, barOffset: placement.offset, compactProviderCount: count };
-    await invoke(expanded ? "expand_widget" : "collapse_widget", payload);
+  const count = Number.isFinite(compactProviderCount) ? Math.max(1, Math.min(7, Math.floor(compactProviderCount))) : 1;
+  return invokeWidgetTransition(expanded ? "expand_widget" : "collapse_widget", {
+    compactLayout, barEdge: placement.edge, barOffset: placement.offset, compactProviderCount: count,
   });
 }
 
 // contentWidth is the total logical window width, including its transparent inset.
 // contentHeight remains the measured card height; native sizing adds vertical insets.
 export function resizeWidgetToContent(contentHeight: number, contentWidth?: number): Promise<void> {
-  if (!isTauri() || !Number.isFinite(contentHeight) || contentHeight <= 0) return Promise.resolve();
-  return enqueueWidgetTransition(async () => {
-    const { invoke } = await import("@tauri-apps/api/core");
-    const workArea = await currentWorkArea();
-    const width = contentWidth !== undefined && Number.isFinite(contentWidth) && contentWidth > 0
-      ? { contentWidth }
-      : {};
-    await invoke("resize_expanded_widget", { contentHeight, ...width, workArea });
-  });
+  if (!Number.isFinite(contentHeight) || contentHeight <= 0) return Promise.resolve();
+  const width = contentWidth !== undefined && Number.isFinite(contentWidth) && contentWidth > 0
+    ? { contentWidth }
+    : {};
+  return invokeWidgetTransition("resize_expanded_widget", { contentHeight, ...width });
 }
 
 export async function syncTaskbarIndicator(provider: ProviderId | null): Promise<void> {
