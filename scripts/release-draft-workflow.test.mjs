@@ -61,6 +61,26 @@ describe("shared release draft workflow", () => {
     }
   });
 
+  it("runs native tests and strict clippy on both release builders before packaging", () => {
+    for (const platform of ["publish-windows", "publish-macos"]) {
+      const source = job(platform);
+      const gate = source.indexOf("- name: Verify native tests and warnings on the release platform");
+      const build = source.indexOf("- name: Build and upload draft release artifacts");
+      expect(gate).toBeGreaterThan(-1);
+      expect(build).toBeGreaterThan(gate);
+      expect(source).toContain("cargo test --manifest-path src-tauri/Cargo.toml");
+      expect(source).toContain("cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings");
+      expect(source.slice(gate, build)).not.toContain("continue-on-error:");
+    }
+  });
+
+  it("prevents cancellation from reaching draft creation, artifact publication, or finalize", () => {
+    for (const name of ["create-draft", "publish-windows", "publish-macos", "assemble-updater", "upgrade-smoke", "finalize", "post-release-distribution"]) {
+      const header = job(name).split("\n    steps:")[0];
+      expect(header).toMatch(/if:[\s\S]*always\(\)\s*&&\s*!cancelled\(\)/);
+    }
+  });
+
   it("creates the shared draft at the verified SHA with common notes", async () => {
     const { createRelease, status } = await prepareDraft([]);
     expect(createRelease).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({

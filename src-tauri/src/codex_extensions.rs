@@ -544,8 +544,11 @@ mod tests {
     use super::*;
     use std::{
         fs,
+        sync::atomic::{AtomicU64, Ordering},
         time::{SystemTime, UNIX_EPOCH},
     };
+
+    static FIXTURE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
     struct Fixture {
         root: PathBuf,
@@ -557,12 +560,16 @@ mod tests {
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_nanos();
+            let sequence = FIXTURE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
             let root = env::temp_dir().join(format!(
-                "quota-float-codex-{}-{}",
+                "quota-float-codex-{}-{}-{}",
                 std::process::id(),
-                nonce
+                nonce,
+                sequence,
             ));
-            fs::create_dir_all(&root).unwrap();
+            // Parallel tests can observe the same coarse system-clock tick on
+            // macOS. Never silently share a fixture root in that case.
+            fs::create_dir(&root).unwrap();
             Self { root }
         }
         fn write(&self, relative: &str, content: &str) {

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Require platform-native tests and strict Clippy before uploading Windows/macOS release packages; honor workflow cancellation throughout the release chain.
+- Isolate parallel extension-inventory test fixtures with unique sequence IDs and update the taskbar pixel test for Rust 1.98 Clippy.
+
 ## 0.3.21 - 2026-09-23
 
 - Prevent the edge bar's details panel from briefly oversizing: wait for native expansion before measuring, widen before remeasuring, and apply Windows position and size together.

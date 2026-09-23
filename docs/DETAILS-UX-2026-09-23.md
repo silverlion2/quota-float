@@ -46,3 +46,11 @@ For all nine detail openings (three each at Top/Left/Right), the expanded viewpo
 Evidence: `output/details-frontend-final.log`, `output/details-rust-*.log`, `output/details-production-bundle.log`, `output/details-native-e2e.log`, `output/handoff/edge-details-traces.json`, `edge-details-{top,left,right}.png`, and `insights-stable-native.png`. Browser light-settings, dark-dashboard, and Insights screenshots also live in `output/handoff/`.
 
 Limits: the initial native default size still converges once to the content size; this regression specifically rules out erroneous oversizing and re-shrinking. Automated input and this Windows display do not replace a physical-pointer, mixed-DPI/multi-monitor, or macOS visual acceptance matrix. The synchronous combined rectangle update is Windows-specific. Updater signatures are separate from operating-system code signing.
+
+## Release follow-up
+
+Source CI on Rust 1.98 flagged the pre-existing taskbar test's constant `chunks_exact`, and one parallel macOS extension fixture returned zero entries. Local Rust was 1.97. The fixture used only PID and wall-clock nanoseconds; it now also uses an atomic sequence and exclusive directory creation to prevent collisions at a shared clock tick. The pixel assertion uses `as_chunks` without changing its coverage.
+
+Release run `35867444003` was canceled after these source-CI failures, but its `always()` job conditions let all nine jobs finish and publish v0.3.21. This is recorded as a canceled workflow with a public release, not a fully successful release gate. The follow-up adds `!cancelled()` to those conditions and platform-native tests/strict Clippy before package upload. GitHub documents this cancellation behavior in its [workflow cancellation reference](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-cancellation).
+
+The follow-up passed 423 frontend/workflow tests, 123 Windows Rust tests (one opt-in probe ignored), strict Clippy, format/check, production build, bundle budgets and version checks. The extension module also passed eight consecutive runs with 16 test threads. Runtime UI code is unchanged from the 13-case native E2E candidate; the additional Rust changes are test-only.

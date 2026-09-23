@@ -131,7 +131,7 @@ jobs:
   create-draft:
     if: >-
       ${{
-        always() &&
+        always() && !cancelled() &&
         needs.verify.result == 'success' &&
         (
           github.event_name == 'push' ||
@@ -213,7 +213,7 @@ jobs:
             core.info(`Both platform builders will upload to draft ${release.id} for ${tag}.`);
 
   publish-windows:
-    if: ${{ always() && needs.create-draft.result == 'success' }}
+    if: ${{ always() && !cancelled() && needs.create-draft.result == 'success' }}
     needs: [verify, create-release-ref, create-draft]
     permissions:
       contents: write
@@ -277,6 +277,11 @@ jobs:
       - name: Verify the checked-out release ref
         shell: bash
         run: npm run version:check -- --tag "${{ needs.verify.outputs.tag }}"
+      - name: Verify native tests and warnings on the release platform
+        shell: bash
+        run: |
+          cargo test --manifest-path src-tauri/Cargo.toml
+          cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
       - name: Build and upload draft release artifacts
         uses: tauri-apps/tauri-action@v0
         env:
@@ -322,7 +327,7 @@ jobs:
           }
 
   publish-macos:
-    if: ${{ always() && needs.create-draft.result == 'success' }}
+    if: ${{ always() && !cancelled() && needs.create-draft.result == 'success' }}
     needs: [verify, create-release-ref, create-draft]
     permissions:
       contents: write
@@ -384,6 +389,11 @@ jobs:
       - name: Verify the checked-out release ref
         shell: bash
         run: npm run version:check -- --tag "${{ needs.verify.outputs.tag }}"
+      - name: Verify native tests and warnings on the release platform
+        shell: bash
+        run: |
+          cargo test --manifest-path src-tauri/Cargo.toml
+          cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
       - name: Build and upload draft release artifacts
         uses: tauri-apps/tauri-action@v0
         env:
@@ -419,7 +429,7 @@ jobs:
           fi
 
   assemble-updater:
-    if: ${{ always() && needs.publish-windows.result == 'success' && needs.publish-macos.result == 'success' }}
+    if: ${{ always() && !cancelled() && needs.publish-windows.result == 'success' && needs.publish-macos.result == 'success' }}
     needs: [verify, create-release-ref, create-draft, publish-windows, publish-macos]
     runs-on: ubuntu-latest
     permissions:
@@ -446,7 +456,7 @@ jobs:
             core.info(`Created updater manifest asset ${result.assetId} for ${result.manifest.version}.`);
 
   upgrade-smoke:
-    if: ${{ always() && needs.publish-windows.result == 'success' && !contains(needs.verify.outputs.tag, '-') }}
+    if: ${{ always() && !cancelled() && needs.publish-windows.result == 'success' && !contains(needs.verify.outputs.tag, '-') }}
     needs: [verify, publish-windows]
     runs-on: windows-latest
     # GitHub only exposes draft releases to tokens with push access. The script performs GET/download calls only.
@@ -472,7 +482,7 @@ jobs:
     needs: [verify, create-release-ref, create-draft, publish-windows, publish-macos, assemble-updater, upgrade-smoke]
     if: >-
       ${{
-        always() &&
+        always() && !cancelled() &&
         needs.publish-windows.result == 'success' &&
         needs.publish-macos.result == 'success' &&
         needs.assemble-updater.result == 'success' &&
@@ -631,7 +641,7 @@ jobs:
 
   post-release-distribution:
     needs: [verify, finalize, upgrade-smoke]
-    if: ${{ always() && needs.finalize.result == 'success' }}
+    if: ${{ always() && !cancelled() && needs.finalize.result == 'success' }}
     continue-on-error: true
     runs-on: ubuntu-latest
     permissions:

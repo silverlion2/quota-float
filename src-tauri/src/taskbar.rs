@@ -454,7 +454,12 @@ mod tests {
         assert!(indicator.tooltip.contains("Balance: 12.50 credits"));
         assert!(indicator.tooltip.contains("Status: up to date"));
         assert_eq!(indicator.rgba.len(), (ICON_SIZE * ICON_SIZE * 4) as usize);
-        assert!(indicator.rgba.chunks_exact(4).any(|pixel| pixel[3] == 255));
+        assert!(indicator
+            .rgba
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .any(|pixel| pixel[3] == 255));
     }
 
     #[test]
