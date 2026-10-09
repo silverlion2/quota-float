@@ -222,8 +222,37 @@ describe("App modal and preference lifecycle", () => {
     measuredHeight = 448;
     await act(async () => { testState.widgetExpandRequest!.resolve(); });
     act(() => { for (const frame of frames.splice(0)) frame(16); });
+    expect(resizeWidgetToContent).not.toHaveBeenCalled();
+    act(() => { for (const frame of frames.splice(0)) frame(32); });
+    expect(resizeWidgetToContent).not.toHaveBeenCalled();
+    act(() => { for (const frame of frames.splice(0)) frame(48); });
     expect(resizeWidgetToContent).toHaveBeenCalledTimes(1);
     expect(resizeWidgetToContent).toHaveBeenCalledWith(448, 400);
+  });
+
+  it("does not submit a transient full-width card height before layout settles", async () => {
+    vi.mocked(resizeWidgetToContent).mockClear();
+    testState.widgetExpandRequest = deferred<void>();
+    let measuredHeight = 462;
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(() => measuredHeight);
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(392);
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => { frames.push(callback); return frames.length; });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Expand widget" }));
+    await act(async () => { testState.widgetExpandRequest!.resolve(); });
+
+    act(() => { for (const frame of frames.splice(0)) frame(16); });
+    expect(resizeWidgetToContent).not.toHaveBeenCalled();
+    act(() => { for (const frame of frames.splice(0)) frame(32); });
+    expect(resizeWidgetToContent).not.toHaveBeenCalled();
+    measuredHeight = 452;
+    act(() => { for (const frame of frames.splice(0)) frame(48); });
+    expect(resizeWidgetToContent).not.toHaveBeenCalled();
+    act(() => { for (const frame of frames.splice(0)) frame(64); });
+    expect(resizeWidgetToContent).not.toHaveBeenCalled();
+    act(() => { for (const frame of frames.splice(0)) frame(80); });
+    expect(resizeWidgetToContent).toHaveBeenCalledExactlyOnceWith(452, 400);
   });
 
   it("widens before measuring new content and accepts a native-clamped width", async () => {

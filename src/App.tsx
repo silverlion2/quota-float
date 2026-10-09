@@ -864,6 +864,7 @@ export default function App() {
     let lastHeight = 0;
     let lastWidth: number | undefined;
     let widthRequest: { width: number; complete: boolean } | undefined;
+    let measurement: { height: number; cardWidth: number; contentWidth: number | undefined; frames: number } | undefined;
     const syncSize = () => {
       if (disposed) return;
       animationFrame = null;
@@ -899,7 +900,24 @@ export default function App() {
         widthRequest = undefined;
       }
       const contentHeight = card.offsetHeight;
-      if (contentHeight <= 0 || (contentHeight === lastHeight && contentWidth === lastWidth)) return;
+      if (contentHeight <= 0 || (contentHeight === lastHeight && contentWidth === lastWidth)) {
+        measurement = undefined;
+        return;
+      }
+      const cardWidth = card.offsetWidth;
+      // WebView2 can retain the first full-width grid height for two frames
+      // after expansion. Submit only a settled layout, so that stale height
+      // cannot briefly oversize and move an edge-anchored native window.
+      if (!measurement || measurement.height !== contentHeight || measurement.cardWidth !== cardWidth || measurement.contentWidth !== contentWidth) {
+        measurement = { height: contentHeight, cardWidth, contentWidth, frames: 1 };
+      } else {
+        measurement.frames += 1;
+      }
+      if (measurement.frames < 3) {
+        scheduleSync();
+        return;
+      }
+      measurement = undefined;
       lastHeight = contentHeight;
       lastWidth = contentWidth;
       void resizeWidgetToContent(contentHeight, contentWidth).catch(() => setOperationError("Widget resize failed."));

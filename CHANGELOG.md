@@ -4,6 +4,7 @@
 
 - Refine typography, contrast, focus and selection feedback across compact and expanded widgets, all six palettes, settings and the synthetic design workbench.
 - Add keyboard expansion, explicit compact status labels and native checks for all 24 expanded presentation combinations.
+- Wait for three consistent layout measurements before resizing expanded windows, preventing transient WebView2 grid heights from moving edge-anchored panels twice.
 - Patch npm tooling dependencies and the rustls TLS handshake vulnerability; retain dependency audit and production bundle budget gates before release preparation.
 - Supersede the cancelled, unpublished v0.3.23 and v0.3.24 candidates while preserving their tags and any draft releases.
 
