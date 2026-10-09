@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.25 - 2026-10-09
 
 - Refine typography, contrast, focus and selection feedback across compact and expanded widgets, all six palettes, settings and the synthetic design workbench.
 - Add keyboard expansion, explicit compact status labels and native checks for all 24 expanded presentation combinations.
