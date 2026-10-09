@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Refine typography, contrast, focus and selection feedback across compact and expanded widgets, all six palettes, settings and the synthetic design workbench.
+- Add keyboard expansion, explicit compact status labels and native checks for all 24 expanded presentation combinations.
+- Patch npm tooling dependencies and the rustls TLS handshake vulnerability; retain dependency audit and production bundle budget gates before release preparation.
+- Supersede the cancelled, unpublished v0.3.23 and v0.3.24 candidates while preserving their tags and any draft releases.
+
 ## 0.3.24 - 2026-10-09
 
 - Refine typography, contrast, focus and selection feedback across Float, Ring, Bar, Bottleneck, expanded layouts and all six theme/appearance combinations.
