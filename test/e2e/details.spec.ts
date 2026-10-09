@@ -19,18 +19,25 @@ describe("Edge details window stability", () => {
         ));
         for (let attempt = 0; attempt < 3; attempt += 1) {
           const trace = await browser.tauri.execute(async () => {
-            const samples: { width: number; height: number; cardHeight: number; compact: boolean }[] = [];
+            const samples: { width: number; height: number; cardHeight: number; cardWidth: number; compact: boolean; primaryHeight: number; ledgerHeight: number; headerHeight: number; states: string; pixelRatio: number }[] = [];
             const start = performance.now();
             document.querySelector<HTMLButtonElement>(".bar-details")!.click();
             while (performance.now() - start < 1500) {
               await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
               const card = document.querySelector<HTMLElement>(".quota-card");
-              samples.push({ width: innerWidth, height: innerHeight, cardHeight: card?.offsetHeight ?? 0, compact: !card });
+              samples.push({ width: innerWidth, height: innerHeight, cardHeight: card?.offsetHeight ?? 0,
+                cardWidth: card?.offsetWidth ?? 0, compact: !card, pixelRatio: devicePixelRatio,
+                primaryHeight: card?.querySelector<HTMLElement>(".primary-pane")?.offsetHeight ?? 0,
+                ledgerHeight: card?.querySelector<HTMLElement>(".provider-ledger")?.offsetHeight ?? 0,
+                headerHeight: card?.querySelector<HTMLElement>(".quota-panel-header")?.offsetHeight ?? 0,
+                states: Array.from(card?.querySelectorAll(".provider-row") ?? []).map(row => row.className).join("|") });
             }
             return samples;
           });
           traces.push({ edge, attempt, trace });
           await writeFile("output/handoff/edge-details-traces.json", JSON.stringify(traces, null, 2));
+          console.info("Edge detail geometry changes", JSON.stringify({ edge, attempt,
+            phases: trace.filter((sample, index) => index === 0 || JSON.stringify(sample) !== JSON.stringify(trace[index - 1])) }));
           const expanded = trace.filter((sample) => sample.width >= 550 && !sample.compact);
           expect(expanded.length).toBeGreaterThan(0);
           const final = trace.at(-1)!;

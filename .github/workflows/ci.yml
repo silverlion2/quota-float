@@ -110,7 +110,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: quota-float-native-ui
-          path: output/handoff/*.png
+          path: |
+            output/handoff/*.png
+            output/handoff/*.json
           if-no-files-found: ignore
           retention-days: 7
       - run: ${{ matrix.build-command }}
