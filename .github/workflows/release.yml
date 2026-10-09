@@ -51,6 +51,8 @@ jobs:
         with:
           workspaces: src-tauri
       - run: npm ci
+      - name: Audit dependencies before release preparation
+        run: npm audit --audit-level=high
       - name: Verify or plan the release
         id: release_context
         shell: bash
@@ -88,6 +90,8 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "source_sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
           echo "Verified release candidate $tag at $GITHUB_SHA."
+      - name: Verify production bundle budgets
+        run: npm run check:bundle
 
   create-release-ref:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}

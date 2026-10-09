@@ -32,6 +32,20 @@ async function prepareDraft(releases) {
 }
 
 describe("shared release draft workflow", () => {
+  it("blocks release preparation on dependency audit and bundle budget failures", () => {
+    const verification = job("verify");
+    const install = verification.indexOf("- run: npm ci");
+    const audit = verification.indexOf("run: npm audit --audit-level=high");
+    const plan = verification.indexOf("- name: Verify or plan the release");
+    const bundle = verification.indexOf("run: npm run check:bundle");
+    expect(install).toBeGreaterThan(-1);
+    expect(audit).toBeGreaterThan(install);
+    expect(plan).toBeGreaterThan(audit);
+    expect(bundle).toBeGreaterThan(plan);
+    expect(verification).not.toContain("continue-on-error:");
+    expect(job("create-release-ref")).toContain("needs: verify");
+  });
+
   it("builds both platforms independently against one draft without concurrent manifest writers", () => {
     expect(job("create-draft")).toContain("needs: [verify, create-release-ref]");
     expect(job("create-draft")).toContain("needs.verify.result == 'success'");
