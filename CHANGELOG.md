@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.23 - 2026-10-09
 
 - Refine typography, contrast, focus and selection feedback across Float, Ring, Bar, Bottleneck, expanded layouts and all six theme/appearance combinations.
 - Add keyboard expansion and explicit loading/sign-in/unavailable labels to compact widgets, and keep low-quota and stale states readable through shape cues.
