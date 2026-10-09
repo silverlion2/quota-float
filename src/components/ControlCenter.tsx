@@ -1,4 +1,4 @@
-import { ArrowClockwise, ArrowCounterClockwise, Bell, ChartLineUp, ClockCounterClockwise, DownloadSimple, Eye, EyeSlash, GearSix, Heartbeat, Layout, ListStar, Monitor, Moon, Plus, Sun, Trash, UploadSimple, X } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowCounterClockwise, Bell, ChartLineUp, CheckCircle, ClockCounterClockwise, DownloadSimple, Eye, EyeSlash, GearSix, Heartbeat, Layout, ListStar, Monitor, Moon, Plus, Sun, Trash, UploadSimple, X } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
 import { useModalDialog } from "../lib/modalDialog";
 import { DEFAULT_PROVIDER_ORDER, PROVIDER_CATALOG } from "../lib/providers";
@@ -302,6 +302,7 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
                   <button key={id} type="button" role="radio" aria-checked={preferences.compactLayout === id} className={`layout-option layout-option--${id}${preferences.compactLayout === id ? " is-active" : ""}`} onClick={() => onPreferences({ ...preferences, compactLayout: id, ...(id === "taskbar" ? { stayExpanded: false, locked: false } : {}) })}>
                     <i aria-hidden="true">{id === "taskbar" ? <span className="layout-taskbar-value">74</span> : id === "float" ? <span className="layout-float-value">67<small>%</small></span> : id === "ring" ? <span className="layout-ring-value">67<small>%</small></span> : id === "bottleneck" ? <><ProviderMark provider="claude" label="Claude" /><span className="layout-bar-value">18%</span><ProviderMark provider="codex" label="Codex" /><span className="layout-bar-value">74%</span></> : <><ProviderMark provider="codex" label="Codex" /><span className="layout-bar-value">74%</span></>}</i>
                     <span><strong>{label}</strong><small>{hint}</small></span>
+                    {preferences.compactLayout === id ? <CheckCircle className="choice-check" weight="fill" aria-hidden="true" /> : null}
                   </button>
                 ))}
               </div>
@@ -318,6 +319,7 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
                   <button key={id} type="button" role="radio" aria-checked={preferences.expandedLayout === id} className={`layout-option layout-option--${id}${preferences.expandedLayout === id ? " is-active" : ""}`} onClick={() => onPreferences({ ...preferences, expandedLayout: id })}>
                     <i aria-hidden="true"><b /><span /><span /><span /></i>
                     <span><strong>{label}</strong><small>{hint}</small></span>
+                    {preferences.expandedLayout === id ? <CheckCircle className="choice-check" weight="fill" aria-hidden="true" /> : null}
                   </button>
                 ))}
               </div>
@@ -374,6 +376,7 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
               >
                 <i aria-hidden="true"><span /><span /><span /></i>
                 <span><strong>{label}</strong><small>{hint}</small></span>
+                {preferences.colorTheme === id ? <CheckCircle className="choice-check" weight="fill" aria-hidden="true" /> : null}
               </button>
             ))}
           </div>
@@ -384,7 +387,7 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
             <label className="display-feature-option"><ChartLineUp /><span><strong>{appearanceLabels.history}</strong><small>{appearanceLabels.historyHint}</small></span><span className="switch"><input type="checkbox" checked={preferences.showHistorySparklines} onChange={(event) => onPreferences({ ...preferences, showHistorySparklines: event.target.checked })} /><i /></span></label>
           </div>
           <div className="control-section-title"><span>{labels.savedLayouts}</span></div>
-          <div className="layout-save"><input value={layoutName} onChange={(event) => setLayoutName(event.target.value)} placeholder={zh ? "方案名称" : "Profile name"} /><button type="button" onClick={saveLayout}><Plus />{labels.saveLayout}</button></div>
+          <div className="layout-save"><input aria-label={zh ? "方案名称" : "Profile name"} value={layoutName} onChange={(event) => setLayoutName(event.target.value)} placeholder={zh ? "方案名称" : "Profile name"} /><button type="button" onClick={saveLayout}><Plus />{labels.saveLayout}</button></div>
           <div className="saved-layouts">{runtimeState.savedLayouts.length === 0 ? <p>{labels.noLayouts}</p> : runtimeState.savedLayouts.map((layout) => <div key={layout.id}><button type="button" onClick={() => onPreferences({ ...preferences, providerOrder: layout.providerOrder, hiddenProviders: layout.hiddenProviders, collapsedProviders: layout.collapsedProviders, layoutMode: layout.layoutMode, compactLayout: layout.compactLayout, barEdge: layout.barEdge, barOffset: layout.barOffset, expandedLayout: layout.expandedLayout, colorTheme: layout.colorTheme, appearanceMode: layout.appearanceMode, riskFirst: layout.riskFirst, showHistorySparklines: layout.showHistorySparklines, accentColor: layout.accentColor })}><strong>{layout.name}</strong><small>{layout.compactLayout}{layout.compactLayout === "bar" || layout.compactLayout === "bottleneck" ? `/${layout.barEdge}` : ""} · {layout.expandedLayout} · {layout.colorTheme} · {layout.layoutMode}</small></button><button type="button" aria-label="Delete" onClick={() => onRuntimeState({ ...runtimeState, savedLayouts: runtimeState.savedLayouts.filter((item) => item.id !== layout.id) })}><Trash /></button></div>)}</div>
         </> : null}
 

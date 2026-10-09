@@ -597,6 +597,27 @@ describe("QuotaCard platform ledger", () => {
     expect(ring).toHaveStyle({ "--quota-progress-angle": "266.4deg" });
   });
 
+  it.each(["float", "ring"] as const)("opens %s details with Enter or Space without starting a drag", (compactLayout) => {
+    const onHover = vi.fn();
+    const onDrag = vi.fn();
+    render(<QuotaOrb snapshot={codex} language="en" compactLayout={compactLayout} onDrag={onDrag} onHover={onHover} />);
+    const orb = screen.getByRole("button", { name: "Weekly quota remaining 74%" });
+    act(() => orb.focus());
+    expect(onHover).not.toHaveBeenCalled();
+    fireEvent.keyDown(orb, { key: "Enter" });
+    fireEvent.keyDown(orb, { key: " " });
+    expect(onHover.mock.calls).toEqual([[true], [true]]);
+    expect(onDrag).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["loading", "Loading"], ["signed_out", "Sign in"], ["unavailable", "Unavailable"],
+  ] as const)("makes the compact %s state readable without relying on color", (status, label) => {
+    render(<QuotaOrb snapshot={{ ...codex, status, weeklyWindow: null }} language="en" onDrag={noop} onHover={noop} />);
+    expect(screen.getByText(label)).toBeVisible();
+    expect(screen.queryByText("74")).not.toBeInTheDocument();
+  });
+
   it("renders the Stacked expanded layout independently from color", () => {
     const { container } = render(
       <QuotaCard

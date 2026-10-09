@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Refine typography, contrast, focus and selection feedback across Float, Ring, Bar, Bottleneck, expanded layouts and all six theme/appearance combinations.
+- Add keyboard expansion and explicit loading/sign-in/unavailable labels to compact widgets, and keep low-quota and stale states readable through shape cues.
+- Improve settings and the synthetic design workbench; fix provider-list overflow and verify all 24 expanded presentation combinations in native Windows tests.
+- Share warmed native dependency caches and consolidate release finalization without changing verification or publication gates.
+
 ## 0.3.22 - 2026-09-23
 
 - Require platform-native tests and strict Clippy before uploading Windows/macOS release packages; honor workflow cancellation throughout the release chain.

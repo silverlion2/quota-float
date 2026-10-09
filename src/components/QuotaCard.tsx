@@ -89,6 +89,7 @@ interface Props {
 }
 
 function StatusIcon({ status, expired = false }: { status: ProviderSnapshot["status"]; expired?: boolean }) {
+  if (status === "loading") return <SpinnerGap className="quota-loading-icon" />;
   if (status === "signed_out") return <SignIn weight="duotone" />;
   if (status === "stale" || expired) return <ClockCounterClockwise weight="duotone" />;
   if (status === "unavailable") return <CloudSlash weight="duotone" />;
@@ -1115,6 +1116,10 @@ export const QuotaOrb = memo(function QuotaOrb({ snapshot, onDrag, onHover, lang
     : unlimited
       ? (activeLanguage === "en" ? "Unlimited" : "不限量")
     : `${balance} ${snapshot.balanceUnit ?? ""}`.trim();
+  const stateLabel = snapshot.status === "loading" ? (activeLanguage === "en" ? "Loading" : "读取中")
+    : snapshot.status === "signed_out" ? (activeLanguage === "en" ? "Sign in" : "未登录")
+    : snapshot.status === "stale" ? (activeLanguage === "en" ? "Stale" : "已过期")
+    : (activeLanguage === "en" ? "Unavailable" : "不可用");
 
   const scheduleIdle = () => {
     if (idleTimer.current !== null) window.clearTimeout(idleTimer.current);
@@ -1138,20 +1143,33 @@ export const QuotaOrb = memo(function QuotaOrb({ snapshot, onDrag, onHover, lang
     <main
       className={`quota-orb quota-card--${snapshot.status} quota-card--${tier} quota-card--compact-${compactLayout} quota-card--style-${colorTheme} quota-card--theme-${resolvedAppearance}${idle ? " quota-orb--idle" : ""}`}
       style={{ "--accent-color": accentColor, "--quota-progress-angle": `${Math.round(compactProgress * 36) / 10}deg` } as CSSProperties}
+      role="button"
+      tabIndex={0}
+      aria-description={activeLanguage === "en" ? "Press Enter or Space to expand quota details. Drag to move." : "按 Enter 或空格展开额度详情，拖动可移动。"}
+      onFocus={() => { if (idleTimer.current !== null) window.clearTimeout(idleTimer.current); setIdle(false); }}
+      onBlur={scheduleIdle}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          handleMouseEnter();
+        }
+      }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={() => { onHover(false); scheduleIdle(); }}
       onMouseDown={(event) => { if (event.button === 0) void onDrag(); }}
-      aria-label={available ? `${staleUsable ? `${t.dataStale} · ` : ""}${accessibleLabel}` : localizedBackendMessage(snapshot.message, activeLanguage, snapshot.displayName) ?? t.unavailableStatus}
+      aria-label={available ? `${staleUsable ? `${t.dataStale} · ` : ""}${accessibleLabel}` : snapshot.status === "loading" ? stateLabel : localizedBackendMessage(snapshot.message, activeLanguage, snapshot.displayName) ?? t.unavailableStatus}
     >
       <div className="aurora" aria-hidden="true" />
       {available ? (
         <section className="orb-metric">
           <span>{remaining ?? compactBalance}</span>
           <small>{remaining !== null ? "%" : !unlimited && snapshot.balanceUnit === "credits" ? "cr" : ""}</small>
+          {staleUsable || tier === "critical" || tier === "caution" ? <span className="orb-state-mark" aria-hidden="true" title={staleUsable ? t.dataStale : activeLanguage === "en" ? "Low quota" : "额度偏低"}>{staleUsable ? <ClockCounterClockwise /> : <WarningCircle />}</span> : null}
         </section>
       ) : (
         <section className="orb-unavailable">
           <StatusIcon status={snapshot.status} />
+          <small>{stateLabel}</small>
         </section>
       )}
     </main>
@@ -1293,7 +1311,10 @@ export const QuotaBar = memo(function QuotaBar({
         {suffix ? <small>{suffix}</small> : null}
       </span>
       <span className="bar-reset" title={activeLanguage === "en" ? `Personal reset ${reset}` : `个人周期 ${reset}`}><ClockCounterClockwise aria-hidden="true" />{reset}</span>
-      <span className={`bar-status bar-status--${healthy && (remaining === null || remaining > 10) ? "ok" : "attention"}`}><i /><span>{status}</span></span>
+      <span className={`bar-status bar-status--${healthy && (remaining === null || remaining > 10) ? "ok" : "attention"}`}>
+        {snapshot.status === "loading" ? <SpinnerGap className="quota-loading-icon" aria-hidden="true" /> : healthy && (remaining === null || remaining > 10) ? <CheckCircle aria-hidden="true" /> : <StatusIcon status={snapshot.status} />}
+        <span>{status}</span>
+      </span>
       <span className="bar-freshness" title={activeLanguage === "en" ? `Updated ${freshness}` : `更新于 ${freshness}`}>{activeLanguage === "en" ? `Updated ${freshness}` : `更新 ${freshness}`}</span>
       </button>
       <span className="bar-progress" aria-hidden="true"><i /></span>

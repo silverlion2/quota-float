@@ -6,10 +6,12 @@ Quota Float is used beside an editor throughout the working day. Its compact vie
 
 - Main quota surfaces retain their selected ambient palette. Control Center, diagnostics, updates, and Insights use the same semantic `--ui-*` tokens.
 - Dialogs use opaque, theme-specific surfaces, a 16px radius, and a single subtle border. They do not blur or cast a second large shadow over the already-contained widget.
-- Use the system sans family. Settings labels are 10px and form values 11px; settings descriptions wrap at 9px rather than silently truncating. Compact quota metrics retain their existing density contract.
+- Use the system sans family with tabular figures. Settings labels and values are 12px; descriptions wrap at 11px. Provider rows use 12px names, 14px values, and 11px supporting text. Compact quota metrics retain their native density contract.
 - Use accent tint and border for selection, with `--ui-text` for readable labels. Success, warning, and failure use named semantic colors and explicit text.
 - Long system-operation feedback wraps inside the scrollable settings body. It remains readable after pending state ends.
 - Every interactive control retains a visible keyboard focus state. Invisible checkbox inputs paint their focus outline on the visible switch track.
+- Selected layout and color choices include a check icon. Float and Ring expose Enter/Space expansion, remain readable while idle, and show explicit loading, sign-in, and unavailable labels. Bar status uses a shape as well as color.
+- Graphite uses a quiet solid surface. Aurora keeps its ambient palette and Paper its warm texture. Shared `--ui-*` tokens apply to expanded, compact, and detached surfaces; opaque dialog surfaces isolate reading contrast from desktop wallpaper.
 
 ## Motion budget
 

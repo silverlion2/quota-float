@@ -42,8 +42,11 @@ describe("Edge details window stability", () => {
           if (attempt === 0) await browser.saveScreenshot(`output/handoff/edge-details-${edge}.png`);
           if (edge === "top" && attempt === 0) {
             await browser.tauri.execute(() => {
-              document.querySelectorAll<HTMLButtonElement>('.quota-panel-tabs [role="tab"]')[1]!.click();
+              document.querySelectorAll<HTMLButtonElement>('.quota-panel-tabs [role="tab"]')[0]!.focus();
             });
+            // Exercise the real keyboard path so resize-induced pointer leaves
+            // cannot dismiss the panel while the interaction is still active.
+            await browser.keys(["ArrowRight"]);
             await browser.$(".usage-insights-panel").waitForDisplayed();
             const heights = await browser.tauri.execute(async () => {
               const samples: number[] = [];
@@ -62,6 +65,7 @@ describe("Edge details window stability", () => {
             await browser.saveScreenshot("output/handoff/insights-stable-native.png");
           }
           await browser.tauri.execute(() => {
+            if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
             document.querySelector(".quota-card")?.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: null }));
           });
           await browser.waitUntil(async () => browser.tauri.execute(() => !!document.querySelector(".bar-details") && innerWidth < 450));

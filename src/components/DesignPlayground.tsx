@@ -117,12 +117,13 @@ interface Values {
   warm: string;
 }
 
-type PreviewMode = 74 | 35 | 8 | "unavailable" | "stale" | "signed_out" | "orb";
+type PreviewMode = 74 | 35 | 8 | "loading" | "unavailable" | "stale" | "signed_out" | "orb";
 
 const previewModes: Array<{ value: PreviewMode; label: string }> = [
   { value: 74, label: "74% Healthy" },
   { value: 35, label: "35% Caution" },
   { value: 8, label: "8% Critical" },
+  { value: "loading", label: "Loading" },
   { value: "unavailable", label: "Unavailable" },
   { value: "stale", label: "Stale" },
   { value: "signed_out", label: "Signed out" },
@@ -136,7 +137,7 @@ function initialPreviewMode(): PreviewMode {
   if (mode === "healthy") return 74;
   if (mode === "caution") return 35;
   if (mode === "critical") return 8;
-  if (mode === "unavailable" || mode === "stale" || mode === "signed_out" || mode === "orb") return mode;
+  if (mode === "loading" || mode === "unavailable" || mode === "stale" || mode === "signed_out" || mode === "orb") return mode;
   return 74;
 }
 
@@ -172,6 +173,7 @@ export function DesignPlayground() {
     expandedLayout,
     colorTheme,
     appearanceMode: resolvedAppearance,
+    language: params.get("lang") === "zh" ? "zh-CN" : "en",
     riskFirst: params.has("risk") || previewVariant.includes("risk"),
     showHistorySparklines: true,
   };
@@ -208,8 +210,16 @@ export function DesignPlayground() {
   const providerCount = Math.max(1, Math.min(7, Number(params.get("providers")) || 7));
   const activeSnapshots = useMemo(() => previewSnapshots(activePreview).slice(0, providerCount), [activePreview, providerCount]);
   const displayedPreview = activeSnapshots.find((snapshot) => snapshot.provider === selectedProvider) ?? activePreview;
+  const compactPreview = previewMode === "orb" || shotKind === "compact";
+  const stageStyle = { ...style, "--preview-card-width": `${(providerCount === 1 ? expandedLayout === "cockpit" ? 400 : 360 : 552) + 8}px` } as CSSProperties;
 
   const update = <K extends keyof Values>(key: K, value: Values[K]) => setValues((current) => ({ ...current, [key]: value }));
+  const changeVariant = (key: string, value: string) => {
+    const next = new URLSearchParams(window.location.search);
+    next.set(key, value);
+    next.set("mode", key === "compact" ? "orb" : key === "expanded" ? "healthy" : typeof previewMode === "number" ? previewMode === 8 ? "critical" : previewMode === 35 ? "caution" : "healthy" : previewMode);
+    window.location.search = next.toString();
+  };
 
   if (screenshotMode) {
     if (shotKind === "states") {
@@ -255,14 +265,14 @@ export function DesignPlayground() {
     }
 
     return (
-      <div className={`screenshot-stage${previewMode === "orb" && barLike ? " screenshot-stage--bar" : ""}${captureMode ? " screenshot-stage--capture" : ""}`} style={style}>
-        <div className={previewMode === "orb" ? barLike ? `design-bar-frame design-bar-frame--${barEdge}` : "design-orb-frame" : "design-card-frame"}>
-          {previewMode === "orb"
+      <div className={`screenshot-stage${compactPreview && barLike ? " screenshot-stage--bar" : ""}${captureMode ? " screenshot-stage--capture" : ""}`} style={stageStyle}>
+        <div className={compactPreview ? barLike ? `design-bar-frame design-bar-frame--${barEdge}` : "design-orb-frame" : "design-card-frame"}>
+          {compactPreview
             ? compactLayout === "bar"
               ? <QuotaBar snapshot={displayedPreview} snapshots={activeSnapshots} edge={barEdge} language={params.get("lang") === "zh" ? "zh-CN" : "en"} colorTheme={colorTheme} accentColor={activePreferences.accentColor} resolvedAppearance={resolvedAppearance} onSelectProvider={setSelectedProvider} onDrag={noop} onHover={noop} />
               : compactLayout === "bottleneck"
                 ? <QuotaBottleneckBar snapshot={displayedPreview} snapshots={activeSnapshots} edge={barEdge} language={params.get("lang") === "zh" ? "zh-CN" : "en"} colorTheme={colorTheme} accentColor={activePreferences.accentColor} resolvedAppearance={resolvedAppearance} onSelectProvider={setSelectedProvider} onDrag={noop} onHover={noop} />
-              : <QuotaOrb snapshot={activePreview} language="en" compactLayout={compactLayout} colorTheme={colorTheme} accentColor={activePreferences.accentColor} resolvedAppearance={resolvedAppearance} onDrag={() => {}} onHover={() => {}} />
+              : <QuotaOrb snapshot={activePreview} language={activePreferences.language} compactLayout={compactLayout} colorTheme={colorTheme} accentColor={activePreferences.accentColor} resolvedAppearance={resolvedAppearance} onDrag={() => {}} onHover={() => {}} />
             : <QuotaCard snapshot={displayedPreview} snapshots={activeSnapshots} preferences={activePreferences} resolvedAppearance={resolvedAppearance} history={previewHistory} dailyUsage={previewDailyUsage} resetForecast={previewResetForecast} onSelectProvider={setSelectedProvider} onLock={noop} onToggleStayExpanded={noop} onLanguage={noop} onDrag={noop} onHover={noop} consumingProviders={noConsumingProviders} initialShowCreditTip={showCreditTip} />}
         </div>
       </div>
@@ -280,18 +290,25 @@ export function DesignPlayground() {
         <div className={previewMode === "orb" ? barLike ? `design-bar-frame design-bar-frame--${barEdge}` : "design-orb-frame" : "design-card-frame"}>
           {previewMode === "orb"
             ? compactLayout === "bar"
-              ? <QuotaBar snapshot={displayedPreview} snapshots={activeSnapshots} edge={barEdge} colorTheme={colorTheme} accentColor={activePreferences.accentColor} resolvedAppearance={resolvedAppearance} onSelectProvider={setSelectedProvider} onDrag={noop} onHover={noop} />
+              ? <QuotaBar snapshot={displayedPreview} snapshots={activeSnapshots} edge={barEdge} language={activePreferences.language} colorTheme={colorTheme} accentColor={activePreferences.accentColor} resolvedAppearance={resolvedAppearance} onSelectProvider={setSelectedProvider} onDrag={noop} onHover={noop} />
               : compactLayout === "bottleneck"
-                ? <QuotaBottleneckBar snapshot={displayedPreview} snapshots={activeSnapshots} edge={barEdge} colorTheme={colorTheme} accentColor={activePreferences.accentColor} resolvedAppearance={resolvedAppearance} onSelectProvider={setSelectedProvider} onDrag={noop} onHover={noop} />
-              : <QuotaOrb snapshot={activePreview} compactLayout={compactLayout} colorTheme={colorTheme} accentColor={activePreferences.accentColor} resolvedAppearance={resolvedAppearance} onDrag={() => {}} onHover={() => {}} />
+                ? <QuotaBottleneckBar snapshot={displayedPreview} snapshots={activeSnapshots} edge={barEdge} language={activePreferences.language} colorTheme={colorTheme} accentColor={activePreferences.accentColor} resolvedAppearance={resolvedAppearance} onSelectProvider={setSelectedProvider} onDrag={noop} onHover={noop} />
+              : <QuotaOrb snapshot={activePreview} language={activePreferences.language} compactLayout={compactLayout} colorTheme={colorTheme} accentColor={activePreferences.accentColor} resolvedAppearance={resolvedAppearance} onDrag={() => {}} onHover={() => {}} />
             : <QuotaCard snapshot={displayedPreview} snapshots={activeSnapshots} preferences={activePreferences} resolvedAppearance={resolvedAppearance} history={previewHistory} dailyUsage={previewDailyUsage} resetForecast={previewResetForecast} onSelectProvider={setSelectedProvider} onLock={noop} onToggleStayExpanded={noop} onLanguage={noop} onDrag={noop} onHover={noop} consumingProviders={noConsumingProviders} />}
         </div>
       </section>
       <aside className="design-controls">
         <div>
-          <p className="design-kicker">QUOTA FLOAT</p>
-          <h1>Visual Tuning</h1>
-          <p className="design-description">Preview changes live, then apply the chosen values to the desktop widget.</p>
+          <h1>Quota Float variants</h1>
+          <p className="design-description">Synthetic preview · changes here do not affect your desktop preferences.</p>
+        </div>
+        <div className="design-variant-controls">
+          <label>Compact layout<select value={compactLayout} onChange={(event) => changeVariant("compact", event.target.value)}>{["float", "ring", "bar", "bottleneck"].map((id) => <option key={id} value={id}>{id}</option>)}</select></label>
+          <label>Expanded layout<select value={expandedLayout} onChange={(event) => changeVariant("expanded", event.target.value)}>{["dashboard", "cockpit", "provider-bar", "stacked"].map((id) => <option key={id} value={id}>{id}</option>)}</select></label>
+          <label>Color theme<select value={colorTheme} onChange={(event) => changeVariant("theme", event.target.value)}>{["aurora", "graphite", "paper"].map((id) => <option key={id} value={id}>{id}</option>)}</select></label>
+          <label>Appearance<select value={resolvedAppearance} onChange={(event) => changeVariant("appearance", event.target.value)}><option value="light">Light</option><option value="dark">Dark</option></select></label>
+          <label>Edge<select value={barEdge} onChange={(event) => changeVariant("edge", event.target.value)}>{["top", "left", "right"].map((id) => <option key={id} value={id}>{id}</option>)}</select></label>
+          <label>Language<select value={activePreferences.language} onChange={(event) => changeVariant("lang", event.target.value === "zh-CN" ? "zh" : "en")}><option value="en">English</option><option value="zh-CN">简体中文</option></select></label>
         </div>
         <Range label="Radius" value={values.radius} min={24} max={64} unit="px" onChange={(v) => update("radius", v)} />
         <Range label="Main number" value={values.numberSize} min={42} max={72} unit="px" onChange={(v) => update("numberSize", v)} />
