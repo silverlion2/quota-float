@@ -56,6 +56,27 @@ export interface ModelUsageSummary extends TokenUsageSummary {
   share: number;
 }
 
+export type UsageBreakdownDimension = "project" | "terminal";
+
+export interface UsageBreakdownRow {
+  key: string;
+  label: string;
+  dimension: UsageBreakdownDimension;
+  totalTokens: number;
+  tokenShare: number;
+  requests: number;
+  sessions: number;
+  bucketCount: number;
+  /** Complete group price; null when any selected bucket is unpriced. */
+  costUsd: number | null;
+  /** Subtotal for priced buckets only, never a complete cost for an unpriced group. */
+  knownCostUsd: number;
+  /** Null unless the entire selected distribution is priced. */
+  costShare: number | null;
+  pricedTokenCoverage: number;
+  unpricedModels: string[];
+}
+
 export interface TokenFilterOptions {
   models: string[];
   projects: Array<{ id: string; name: string; label: string }>;
@@ -297,6 +318,45 @@ export function buildModelBreakdown(report: CodexTokenUsageReport, range: UsageR
     const summary = summarizeTokenBuckets(buckets);
     return { model, label: pricingForModel(model)?.label ?? model, share: total > 0 ? summary.totalTokens / total : 0, ...summary };
   }).sort((left, right) => right.cost.totalUsd - left.cost.totalUsd || right.totalTokens - left.totalTokens);
+}
+
+/** Local metadata only: uses the same selected buckets and prices as the overview. */
+export function buildUsageBreakdown(report: CodexTokenUsageReport, range: UsageRange, now = new Date(), filters: TokenUsageFilters = {}, dimension: UsageBreakdownDimension = "project"): UsageBreakdownRow[] {
+  const bounds = usageRangeBounds(range, now, usageCoverageStart(report, now));
+  const groups = new Map<string, { labels: Set<string>; buckets: CodexTokenUsageBucket[] }>();
+  for (const bucket of bucketsInWindow(report.buckets, bounds.start, bounds.end, filters)) {
+    const key = dimension === "project" ? bucket.projectId || "unknown" : bucket.terminal || "Other";
+    const label = dimension === "project" ? key === "unknown" ? "Unknown" : bucket.project || "Unknown" : key;
+    const group = groups.get(key) ?? { labels: new Set<string>(), buckets: [] };
+    group.labels.add(label);
+    group.buckets.push(bucket);
+    groups.set(key, group);
+  }
+  // Source ordering may change between index refreshes; labels and tie breaks
+  // stay deterministic without merging project identities that share a name.
+  const rows: UsageBreakdownRow[] = [...groups.entries()].map(([key, group]) => {
+    const summary = summarizeTokenBuckets(group.buckets);
+    const label = [...group.labels].sort()[0];
+    return {
+      key, label, dimension, totalTokens: summary.totalTokens, tokenShare: 0,
+      requests: summary.requests, sessions: summary.sessions, bucketCount: group.buckets.length,
+      costUsd: summary.unpricedModels.length === 0 ? summary.cost.totalUsd : null,
+      knownCostUsd: summary.cost.totalUsd, costShare: null,
+      pricedTokenCoverage: summary.pricedTokenCoverage, unpricedModels: summary.unpricedModels,
+    };
+  });
+  const nameCounts = new Map<string, number>();
+  for (const row of rows) nameCounts.set(row.label, (nameCounts.get(row.label) ?? 0) + 1);
+  const totalTokens = rows.reduce((sum, row) => sum + row.totalTokens, 0);
+  const knownCostUsd = rows.reduce((sum, row) => sum + row.knownCostUsd, 0);
+  const fullyPriced = rows.every((row) => row.costUsd !== null);
+  for (const row of rows) {
+    if (dimension === "project" && row.key !== "unknown" && (nameCounts.get(row.label) ?? 0) > 1) row.label += ` · ${row.key.slice(-6)}`;
+    row.tokenShare = totalTokens > 0 ? row.totalTokens / totalTokens : 0;
+    row.costShare = fullyPriced ? knownCostUsd > 0 ? row.knownCostUsd / knownCostUsd : 0 : null;
+  }
+  const compareText = (left: string, right: string) => left < right ? -1 : left > right ? 1 : 0;
+  return rows.sort((left, right) => right.totalTokens - left.totalTokens || compareText(left.label, right.label) || compareText(left.key, right.key));
 }
 
 export function buildTokenFilterOptions(report: CodexTokenUsageReport, range: UsageRange, now = new Date()): TokenFilterOptions {

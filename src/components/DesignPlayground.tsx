@@ -1,9 +1,10 @@
 import "./DesignPlayground.css";
 import { useMemo, useState, type CSSProperties } from "react";
-import type { BarEdge, ColorTheme, CompactLayout, DailyUsageSummary, ExpandedLayout, ProviderId, ProviderSnapshot, QuotaHistoryPoint, ResetForecast, ResolvedAppearance, WidgetPreferences } from "../types";
+import type { BarEdge, ColorTheme, CompactLayout, DailyUsageSummary, ExpandedLayout, ProviderId, ProviderSnapshot, QuotaHistoryPoint, ResolvedAppearance, WidgetPreferences } from "../types";
 import { QuotaBar, QuotaBottleneckBar, QuotaCard, QuotaOrb } from "./QuotaCard";
 import type { UpdateViewState } from "./UpdatePanel";
 import { DEFAULT_WIDGET_PREFERENCES } from "../lib/preferences";
+import { createPreviewResetForecast } from "../lib/resetForecastPreview";
 
 const preview: ProviderSnapshot = {
   provider: "codex",
@@ -70,22 +71,7 @@ const previewDailyUsage: DailyUsageSummary[] = Array.from({ length: 90 }, (_, in
     updatedAt: date.toISOString(),
   };
 });
-const previewResetForecast: ResetForecast = {
-  score: 62,
-  windowHours: 48,
-  fetchedAt: new Date().toISOString(),
-  resetAnnounced: false,
-  resetAt: null,
-  expectedAt: null,
-  sourceUrl: "https://codex-reset.com/",
-  sourceCount: 3,
-  confidence: "medium",
-  sources: [
-    { name: "Codex Reset", score: 62, fetchedAt: new Date().toISOString(), sourceUrl: "https://codex-reset.com/" },
-    { name: "Codex Reset Radar", score: 59, fetchedAt: new Date().toISOString(), sourceUrl: "https://codexresetradar.com/" },
-    { name: "Will Codex Reset Today", score: 67, fetchedAt: new Date().toISOString(), sourceUrl: "https://codexreset.app/" },
-  ],
-};
+const previewResetForecast = createPreviewResetForecast();
 
 const readyUpdate: UpdateViewState = {
   phase: "ready",

@@ -643,20 +643,39 @@ async fn export_app_data(
     Ok(Some(target.to_string_lossy().into_owned()))
 }
 
+fn usage_export_format(content_bytes: usize, format: &str) -> Result<String, String> {
+    const MAX_EXPORT_BYTES: usize = 20 * 1024 * 1024;
+    if content_bytes > MAX_EXPORT_BYTES {
+        return Err("usage export is too large".into());
+    }
+    let format = format.to_ascii_lowercase();
+    if !matches!(format.as_str(), "csv" | "json" | "svg" | "md") {
+        return Err("usage export must use .csv, .json, .svg, or .md".into());
+    }
+    Ok(format)
+}
+
+fn validate_usage_export_target(target: &std::path::Path, format: &str) -> Result<(), String> {
+    if !target.is_absolute() {
+        return Err("usage export path is invalid".into());
+    }
+    if target
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_none_or(|extension| !extension.eq_ignore_ascii_case(format))
+    {
+        return Err("usage export extension does not match its format".into());
+    }
+    Ok(())
+}
+
 #[tauri::command]
 async fn export_usage_data(
     content: String,
     format: String,
     app: AppHandle,
 ) -> Result<Option<String>, String> {
-    const MAX_EXPORT_BYTES: usize = 20 * 1024 * 1024;
-    if content.len() > MAX_EXPORT_BYTES {
-        return Err("usage export is too large".into());
-    }
-    let format = format.to_ascii_lowercase();
-    if !matches!(format.as_str(), "csv" | "json" | "svg") {
-        return Err("usage export must use .csv, .json, or .svg".into());
-    }
+    let format = usage_export_format(content.len(), &format)?;
     let filename = format!(
         "quota-float-usage-{}.{}",
         chrono::Local::now().format("%Y-%m-%d"),
@@ -674,19 +693,37 @@ async fn export_usage_data(
     else {
         return Ok(None);
     };
-    if target
-        .extension()
-        .and_then(|value| value.to_str())
-        .is_none_or(|extension| !extension.eq_ignore_ascii_case(&format))
-    {
-        return Err("usage export extension does not match its format".into());
-    }
+    validate_usage_export_target(&target, &format)?;
     let mut file =
         fs::File::create(&target).map_err(|_| "failed to create usage export".to_string())?;
     file.write_all(content.as_bytes())
         .and_then(|_| file.sync_all())
         .map_err(|_| "failed to write usage export".to_string())?;
     Ok(Some(target.to_string_lossy().into_owned()))
+}
+
+#[cfg(test)]
+mod usage_export_tests {
+    use super::{usage_export_format, validate_usage_export_target};
+
+    #[test]
+    fn accepts_markdown_and_preserves_export_size_limit() {
+        assert_eq!(usage_export_format(20 * 1024 * 1024, "MD").unwrap(), "md");
+        assert!(usage_export_format(20 * 1024 * 1024 + 1, "md").is_err());
+        for format in ["../usage.md", "md/usage", "md\\usage", ".md", "exe"] {
+            assert!(usage_export_format(10, format).is_err());
+        }
+    }
+
+    #[test]
+    fn accepts_selected_absolute_markdown_path_and_rejects_mismatches() {
+        let directory = std::env::temp_dir();
+        assert!(validate_usage_export_target(&directory.join("usage.MD"), "md").is_ok());
+        assert!(validate_usage_export_target(std::path::Path::new("usage.md"), "md").is_err());
+        for filename in ["usage", "usage.md.exe", "usage.json"] {
+            assert!(validate_usage_export_target(&directory.join(filename), "md").is_err());
+        }
+    }
 }
 
 #[tauri::command]

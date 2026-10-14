@@ -13,10 +13,10 @@ import {
   Wrench,
   X,
 } from "@phosphor-icons/react";
-import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { exportUsageData, fetchCodexTokenUsage, sendDesktopNotification } from "../lib/bridge";
 import { clampPercent, formatResetTime } from "../lib/format";
-import { resetSignalSummary, type ResetForecastLoadStatus } from "../lib/resetForecast";
+import { freshResetForecast, resetSignalSummary, type ResetForecastLoadStatus } from "../lib/resetForecast";
 import { deliverNotificationOnce } from "../lib/notificationDelivery";
 import { OPENAI_PRICING_CATALOG } from "../lib/openaiPricing";
 import { calculateQuotaPace, paceBaselineKey, trackedQuotaWindows } from "../lib/quotaPace";
@@ -24,6 +24,8 @@ import {
   buildApiBudgetForecast,
   buildCurrentPeriodUsageReport,
   buildModelBreakdown,
+  buildUsageBreakdown,
+  type UsageBreakdownDimension,
   buildTokenFilterOptions,
   buildTokenHeatmap,
   buildTokenSeries,
@@ -43,7 +45,7 @@ import {
   usageRangeBounds,
 } from "../lib/tokenUsage";
 import { buildCodexBillingPlanComparison } from "../lib/billingPlan";
-import { buildPeriodUsageJson, buildPricingCatalogJson, buildUsageCsv, buildUsageJson, buildUsageShareSvg } from "../lib/usageExport";
+import { buildPeriodUsageJson, buildPricingCatalogJson, buildUsageCsv, buildUsageJson, buildUsageMarkdown, buildUsageShareSvg } from "../lib/usageExport";
 import { buildUsageCalendar, MAX_RETAINED_DAILY_SUMMARIES, MAX_RETAINED_QUOTA_SAMPLES, observedTrendUse, recentQuotaTrend, retainedQuotaCoverageStart, usageSummary } from "../lib/usageInsights";
 import { requestLatest, type LatestRequestState } from "../lib/latestRequest";
 import type {
@@ -59,6 +61,7 @@ import type {
 } from "../types";
 import { QuotaHistoryCurve } from "./QuotaHistoryCurve";
 import { CodexProfileSummary } from "./CodexProfileSummary";
+import { UsageBreakdown } from "./UsageBreakdown";
 import { ResetOutlook } from "./ResetOutlook";
 
 interface Props {
@@ -79,7 +82,7 @@ interface Props {
 }
 
 type ChartMode = "token" | "cost";
-type UsageExport = "csv" | "json" | "svg" | "pricing";
+type UsageExport = "csv" | "json" | "svg" | "md" | "pricing";
 const RANGE_OPTIONS: UsagePresetRange[] = ["today", "24h", "7d", "30d", "90d", "all"];
 
 function percent(value: number | null, digits = 1): string {
@@ -141,7 +144,7 @@ export function UsageInsightsPanel({
   paceBaselines,
   language,
   preferences,
-  resetForecast = null,
+  resetForecast: incomingResetForecast = null,
   onSelectProvider,
   onPreferences,
   onOpenResetForecast,
@@ -150,11 +153,14 @@ export function UsageInsightsPanel({
   onClose,
 }: Props) {
   const english = language === "en";
+  const [resetOutlookOpen, setResetOutlookOpen] = useState(false);
+  const resetOutlookId = useId();
   const [range, setRange] = useState<UsageRange>("24h");
   const [customStartDraft, setCustomStartDraft] = useState(() => dateInputValue(new Date(Date.now() - 6 * 86_400_000)));
   const [customEndDraft, setCustomEndDraft] = useState(() => dateInputValue(new Date()));
   const [customRangeError, setCustomRangeError] = useState(false);
   const [customRangeOpen, setCustomRangeOpen] = useState(false);
+  const [distributionDimension, setDistributionDimension] = useState<UsageBreakdownDimension>("project");
   const [chartMode, setChartMode] = useState<ChartMode>("token");
   const [modelFilter, setModelFilter] = useState("");
   const [projectFilter, setProjectFilter] = useState("");
@@ -169,11 +175,15 @@ export function UsageInsightsPanel({
   const [upgradeDateDraft, setUpgradeDateDraft] = useState(preferences.codexPlanUpgradeDate ?? "");
   const [planTargetDraft, setPlanTargetDraft] = useState(String(preferences.codexPlanValueTargetRatio));
   const now = new Date();
+  const resetForecast = freshResetForecast(incomingResetForecast, now);
   const filters = useMemo<TokenUsageFilters>(() => ({
     model: modelFilter || undefined,
     projectId: projectFilter || undefined,
     terminal: terminalFilter || undefined,
   }), [modelFilter, projectFilter, terminalFilter]);
+  // One reference time per data/selection snapshot keeps rolling totals,
+  // distributions and exports aligned while reset freshness stays live.
+  const analysisNow = useMemo(() => new Date(), [tokenReport, range, filters]);
 
   const windows = trackedQuotaWindows(snapshot);
   const primaryWindow = windows.find((item) => item.period === "weekly") ?? windows[0] ?? null;
@@ -186,9 +196,9 @@ export function UsageInsightsPanel({
     [dailyUsage, history, snapshot.provider],
   );
   const providerHistoryStart = retainedQuotaStart?.getTime() ?? null;
-  const allQuotaDays = providerHistoryStart === null ? 1 : Math.max(1, Math.ceil((now.getTime() - providerHistoryStart) / 86_400_000) + 1);
-  const rangeBounds = useMemo(() => usageRangeBounds(range, now, retainedQuotaStart ?? now), [now, range, retainedQuotaStart]);
-  const calendarNow = typeof range === "object" ? new Date(`${range.endDate}T12:00:00`) : now;
+  const allQuotaDays = providerHistoryStart === null ? 1 : Math.max(1, Math.ceil((analysisNow.getTime() - providerHistoryStart) / 86_400_000) + 1);
+  const rangeBounds = useMemo(() => usageRangeBounds(range, analysisNow, retainedQuotaStart ?? analysisNow), [analysisNow, range, retainedQuotaStart]);
+  const calendarNow = typeof range === "object" ? new Date(`${range.endDate}T12:00:00`) : analysisNow;
   const calendar = useMemo(
     () => buildUsageCalendar(dailyUsage, history, snapshot.provider, calendarNow, rangeDayCount(range, allQuotaDays)),
     [allQuotaDays, calendarNow, dailyUsage, history, range, snapshot.provider],
@@ -239,54 +249,58 @@ export function UsageInsightsPanel({
   useEffect(() => { setPlanTargetDraft(String(preferences.codexPlanValueTargetRatio)); }, [preferences.codexPlanValueTargetRatio]);
 
   const filterOptions = useMemo(
-    () => tokenReport && snapshot.provider === "codex" ? buildTokenFilterOptions(tokenReport, range, now) : { models: [], projects: [], terminals: [] },
-    [range, snapshot.provider, tokenReport],
+    () => tokenReport && snapshot.provider === "codex" ? buildTokenFilterOptions(tokenReport, range, analysisNow) : { models: [], projects: [], terminals: [] },
+    [analysisNow, range, snapshot.provider, tokenReport],
   );
   useEffect(() => { if (modelFilter && !filterOptions.models.includes(modelFilter)) setModelFilter(""); }, [filterOptions.models, modelFilter]);
   useEffect(() => { if (projectFilter && !filterOptions.projects.some((project) => project.id === projectFilter)) setProjectFilter(""); }, [filterOptions.projects, projectFilter]);
   useEffect(() => { if (terminalFilter && !filterOptions.terminals.includes(terminalFilter)) setTerminalFilter(""); }, [filterOptions.terminals, terminalFilter]);
 
   const tokenComparison = useMemo(
-    () => snapshot.provider === "codex" && tokenReport ? summarizeTokenReport(tokenReport, range, now, filters) : null,
-    [filters, range, snapshot.provider, tokenReport],
+    () => snapshot.provider === "codex" && tokenReport ? summarizeTokenReport(tokenReport, range, analysisNow, filters) : null,
+    [analysisNow, filters, range, snapshot.provider, tokenReport],
   );
   const tokenSummary = tokenComparison?.current ?? null;
   const currentMonthSummary = useMemo(
-    () => snapshot.provider === "codex" && tokenReport ? summarizeCurrentMonthTokenUsage(tokenReport, now, filters) : null,
-    [filters, snapshot.provider, tokenReport],
+    () => snapshot.provider === "codex" && tokenReport ? summarizeCurrentMonthTokenUsage(tokenReport, analysisNow, filters) : null,
+    [analysisNow, filters, snapshot.provider, tokenReport],
   );
   const tokenSeries = useMemo(
-    () => snapshot.provider === "codex" && tokenReport ? buildTokenSeries(tokenReport, range, now, filters) : [],
-    [filters, range, snapshot.provider, tokenReport],
+    () => snapshot.provider === "codex" && tokenReport ? buildTokenSeries(tokenReport, range, analysisNow, filters) : [],
+    [analysisNow, filters, range, snapshot.provider, tokenReport],
   );
   const heatmap = useMemo(
-    () => snapshot.provider === "codex" && tokenReport ? buildTokenHeatmap(tokenReport, range, now, filters) : [],
-    [filters, range, snapshot.provider, tokenReport],
+    () => snapshot.provider === "codex" && tokenReport ? buildTokenHeatmap(tokenReport, range, analysisNow, filters) : [],
+    [analysisNow, filters, range, snapshot.provider, tokenReport],
   );
   const modelBreakdown = useMemo(
-    () => snapshot.provider === "codex" && tokenReport ? buildModelBreakdown(tokenReport, range, now, filters) : [],
-    [filters, range, snapshot.provider, tokenReport],
+    () => snapshot.provider === "codex" && tokenReport ? buildModelBreakdown(tokenReport, range, analysisNow, filters) : [],
+    [analysisNow, filters, range, snapshot.provider, tokenReport],
+  );
+  const distribution = useMemo(
+    () => tokenReport ? buildUsageBreakdown(tokenReport, range, analysisNow, filters, distributionDimension) : [],
+    [analysisNow, tokenReport, range, filters, distributionDimension],
   );
   const budget = useMemo(
     () => tokenSummary ? buildApiBudgetForecast(
       tokenSummary,
       range,
       preferences.monthlyApiBudgetUsd,
-      now,
-      tokenReport ? usageCoverageStart(tokenReport, now) : now,
+      analysisNow,
+      tokenReport ? usageCoverageStart(tokenReport, analysisNow) : analysisNow,
       currentMonthSummary?.cost.totalUsd ?? 0,
     ) : null,
-    [currentMonthSummary, preferences.monthlyApiBudgetUsd, range, tokenReport, tokenSummary],
+    [analysisNow, currentMonthSummary, preferences.monthlyApiBudgetUsd, range, tokenReport, tokenSummary],
   );
   const planComparison = useMemo(
     () => snapshot.provider === "codex" && tokenReport && preferences.codexPlanUpgradeDate
-      ? buildCodexBillingPlanComparison(tokenReport, preferences.codexPlanUpgradeDate, now, preferences.codexPlanValueTargetRatio)
+      ? buildCodexBillingPlanComparison(tokenReport, preferences.codexPlanUpgradeDate, analysisNow, preferences.codexPlanValueTargetRatio)
       : null,
-    [preferences.codexPlanUpgradeDate, preferences.codexPlanValueTargetRatio, snapshot.provider, tokenReport],
+    [analysisNow, preferences.codexPlanUpgradeDate, preferences.codexPlanValueTargetRatio, snapshot.provider, tokenReport],
   );
   const periodReport = useMemo(
-    () => snapshot.provider === "codex" && tokenReport ? buildCurrentPeriodUsageReport(tokenReport, reportPeriod, now, filters) : null,
-    [filters, reportPeriod, snapshot.provider, tokenReport],
+    () => snapshot.provider === "codex" && tokenReport ? buildCurrentPeriodUsageReport(tokenReport, reportPeriod, analysisNow, filters) : null,
+    [analysisNow, filters, reportPeriod, snapshot.provider, tokenReport],
   );
 
   useEffect(() => {
@@ -318,7 +332,7 @@ export function UsageInsightsPanel({
   const weekdayLabels = english ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] : ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
   const rangeText = rangeLabel(range, english);
   const isCustomRange = typeof range === "object";
-  const tokenCoverageStart = tokenReport ? usageCoverageStart(tokenReport, now) : null;
+  const tokenCoverageStart = tokenReport ? usageCoverageStart(tokenReport, analysisNow) : null;
   const coverageDate = tokenCoverageStart && tokenReport?.buckets.length
     ? new Intl.DateTimeFormat(english ? "en-US" : "zh-CN", { year: "numeric", month: "short", day: "numeric" }).format(tokenCoverageStart)
     : null;
@@ -365,9 +379,10 @@ export function UsageInsightsPanel({
     if (!tokenReport || !tokenSummary || !budget) return;
     setOperationMessage(null);
     try {
-      const content = kind === "csv" ? buildUsageCsv(tokenReport, range, filters, now)
-        : kind === "json" ? buildUsageJson(tokenReport, range, filters, now)
-          : kind === "svg" ? buildUsageShareSvg(tokenSummary, modelBreakdown, budget, range, language, now)
+      const content = kind === "csv" ? buildUsageCsv(tokenReport, range, filters, analysisNow)
+        : kind === "json" ? buildUsageJson(tokenReport, range, filters, analysisNow)
+          : kind === "md" ? buildUsageMarkdown(tokenReport, range, filters, analysisNow, language)
+          : kind === "svg" ? buildUsageShareSvg(tokenSummary, modelBreakdown, budget, range, language, analysisNow)
             : buildPricingCatalogJson();
       const format = kind === "pricing" ? "json" : kind;
       const path = await exportUsageData(content, format);
@@ -401,7 +416,7 @@ export function UsageInsightsPanel({
             <button type="button" className="usage-icon-action" onClick={() => void handleExport("csv")} aria-label={english ? "Export anonymized CSV" : "导出脱敏 CSV"} title={english ? "Export anonymized CSV" : "导出脱敏 CSV"}><DownloadSimple /></button>
             <button type="button" className="usage-icon-action" onClick={() => void handleExport("svg")} aria-label={english ? "Share SVG summary" : "生成分享卡片"} title={english ? "Share SVG summary" : "生成分享卡片"}><ShareNetwork /></button>
           </> : null}
-          {resetForecast && snapshot.provider === "codex" ? <button type="button" className="usage-reset-badge" onClick={() => onOpenResetForecast?.(resetForecast.sourceUrl)} aria-label={forecastMeta} title={forecastMeta}><Gauge weight="bold" />{resetSignalSummary(resetForecast, english)}</button> : null}
+          {resetForecast && snapshot.provider === "codex" ? <button type="button" className="usage-reset-badge" onClick={() => setResetOutlookOpen((value) => !value)} aria-controls={resetOutlookId} aria-expanded={resetOutlookOpen} aria-label={forecastMeta} title={forecastMeta}><Gauge weight="bold" />{resetSignalSummary(resetForecast, english)}</button> : null}
           {onClose ? <button type="button" className="usage-close" onClick={onClose} aria-label={english ? "Close usage insights" : "关闭用量洞察"}><X /></button> : null}
         </div>
       </header>
@@ -436,7 +451,7 @@ export function UsageInsightsPanel({
       </div> : null}
 
       {snapshot.provider === "codex" ? <CodexProfileSummary language={language} /> : null}
-      {snapshot.provider === "codex" ? <ResetOutlook snapshot={snapshot} history={history} forecast={resetForecast ?? null} loadStatus={resetForecastStatus} now={now} language={language} onOpenSource={onOpenResetForecast ?? (() => undefined)} onRefresh={onRefreshResetForecast} /> : null}
+      {snapshot.provider === "codex" ? <ResetOutlook id={resetOutlookId} open={resetOutlookOpen} onOpenChange={setResetOutlookOpen} snapshot={snapshot} history={history} forecast={resetForecast ?? null} loadStatus={resetForecastStatus} now={now} language={language} onOpenSource={onOpenResetForecast ?? (() => undefined)} onRefresh={onRefreshResetForecast} /> : null}
 
       <div className="usage-summary-grid usage-summary-grid--extended">
         <article className="usage-stat-card usage-stat-card--cost"><span>{english ? "API equivalent" : "API 等价费用"}{changeLabel(costChange) ? <em>{changeLabel(costChange)}</em> : null}</span><strong>{tokenLoading && !tokenReport ? "…" : knownTokenData ? money(tokenSummary.cost.totalUsd) : "—"}</strong><small>{knownTokenData ? `${Math.round(tokenSummary.pricedTokenCoverage * 100)}% ${english ? "priced coverage" : "已定价覆盖"}` : (english ? "Codex metadata only" : "仅 Codex 元数据")}</small></article>
@@ -560,6 +575,8 @@ export function UsageInsightsPanel({
         </article>
       </div>
 
+      {snapshot.provider === "codex" && tokenReport ? <UsageBreakdown rows={distribution} dimension={distributionDimension} onDimension={setDistributionDimension} metric={chartMode} language={language} /> : null}
+
       {knownTokenData ? <section className="usage-model-breakdown" aria-label={english ? "Model cost breakdown" : "模型费用明细"}>
         <header><div><Database weight="duotone" /><span>{english ? "MODEL COST LEDGER" : "模型费用账本"}</span></div><small>{modelBreakdown.length} {english ? "models · filtered view" : "个模型 · 当前筛选"}</small></header>
         <div className="usage-model-table" role="table" aria-colcount={5} aria-rowcount={modelBreakdown.length + 1}>
@@ -571,7 +588,7 @@ export function UsageInsightsPanel({
       {snapshot.provider === "codex" ? <section className="usage-maintenance-panel" aria-label={english ? "Local index and pricing maintenance" : "本地索引与价格维护"}>
         <div><Wrench weight="duotone" /><span>{english ? "LOCAL INDEX" : "本地索引"}</span><strong>{tokenReport ? `${tokenReport.cacheStatus.toUpperCase()} · ${tokenReport.scanDurationMs}ms` : "—"}</strong><small>{tokenReport ? `${tokenReport.indexedFiles} ${english ? "files indexed" : "个索引文件"} · ${tokenReport.reusedFiles} ${english ? "reused" : "复用"} · ${bytes(tokenReport.scannedBytes)} ${english ? "read" : "读取"}${coverageDate ? ` · ${english ? "Token since" : "Token 自"} ${coverageDate}` : ""}${retainedQuotaDate ? ` · ${english ? "quota since" : "额度自"} ${retainedQuotaDate}` : ""}` : (english ? "Waiting for metadata" : "等待元数据")}</small></div>
         <div><CurrencyDollar weight="duotone" /><span>{english ? "PRICE CATALOG" : "价格目录"}</span><strong>v{OPENAI_PRICING_VERSION}</strong><small>{OPENAI_PRICING_CATALOG.models.length} {english ? "models · standard API rates · reprices history" : "个模型 · 标准 API 单价 · 历史统一重估"}</small></div>
-        <div className="usage-maintenance-actions"><button type="button" disabled={tokenLoading} onClick={() => loadTokenUsage(true, true)}><ArrowClockwise />{english ? "Rebuild index" : "重建索引"}</button><button type="button" disabled={!knownTokenData} onClick={() => void handleExport("json")}><DownloadSimple />JSON</button><button type="button" disabled={!knownTokenData} onClick={() => void handleExport("pricing")}><DownloadSimple />{english ? "Prices" : "价格表"}</button></div>
+        <div className="usage-maintenance-actions"><button type="button" disabled={tokenLoading} onClick={() => loadTokenUsage(true, true)}><ArrowClockwise />{english ? "Rebuild index" : "重建索引"}</button><button type="button" disabled={!knownTokenData} onClick={() => void handleExport("json")}><DownloadSimple />JSON</button><button type="button" disabled={!knownTokenData} onClick={() => void handleExport("md")}><DownloadSimple />{english ? "Markdown summary" : "Markdown 摘要"}</button><button type="button" disabled={!knownTokenData} onClick={() => void handleExport("pricing")}><DownloadSimple />{english ? "Prices" : "价格表"}</button></div>
       </section> : null}
 
       {operationMessage ? <div className="usage-operation-message" role="status">{operationMessage}</div> : null}

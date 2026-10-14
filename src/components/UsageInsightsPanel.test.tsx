@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_WIDGET_PREFERENCES } from "../lib/preferences";
 import type { CodexTokenUsageReport, ProviderSnapshot } from "../types";
@@ -84,6 +84,42 @@ function renderPanel(active: ProviderSnapshot) {
 describe("UsageInsightsPanel token loading", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("keeps rolling overview, distribution and Markdown on one reference time while reset freshness stays live", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-08-16T12:30:00Z"));
+    const anchoredReport = { ...report, generatedAt: new Date().toISOString(), buckets: [
+      { ...report.buckets[0], bucketStart: "2026-08-15T13:00:00Z", sessionKey: "left-boundary" },
+      { ...report.buckets[0], bucketStart: "2026-08-16T11:00:00Z", sessionKey: "recent" },
+    ] };
+    mocks.fetchCodexTokenUsage.mockResolvedValue(anchoredReport);
+    mocks.exportUsageData.mockResolvedValue("usage.md");
+    const active = snapshot("codex");
+    render(<UsageInsightsPanel snapshot={active} snapshots={[active]} history={[]} dailyUsage={[]} paceBaselines={{}}
+      language="en" preferences={{ ...DEFAULT_WIDGET_PREFERENCES, language: "en" }}
+      resetForecast={{ score: 34, windowHours: 48, fetchedAt: "2026-08-16T08:30:00Z", resetAnnounced: false, sourceUrl: "https://codex-reset.com/" }} />);
+    await screen.findByRole("img", { name: "24H token usage trend" });
+    expect(screen.getByText("Local range Token").closest("article")).toHaveTextContent("2.2M");
+    expect(screen.getByRole("button", { name: /48h reference · 34\/100/ })).toBeInTheDocument();
+
+    // A re-render for a presentation-only change must not drop a bucket that
+    // the still-visible overview includes, or export a different rolling range.
+    vi.setSystemTime(new Date("2026-08-16T14:31:00Z"));
+    fireEvent.click(screen.getByRole("button", { name: "Terminals" }));
+    expect(within(screen.getByRole("region", { name: "Project and terminal distribution" })).getByText("2.2M")).toBeInTheDocument();
+    expect(screen.getByText("Local range Token").closest("article")).toHaveTextContent("2.2M");
+    expect(screen.queryByRole("button", { name: /48h reference · 34\/100/ })).not.toBeInTheDocument();
+    expect(screen.getByText("No fresh public signal")).toBeInTheDocument();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Markdown summary" })); });
+    expect(mocks.exportUsageData).toHaveBeenCalledWith(expect.stringContaining("2026-08-15T12:30:00.000Z → 2026-08-16T12:30:00.000Z"), "md");
+    expect(mocks.exportUsageData.mock.calls[0][0]).toContain("Token: 2,200,000;");
+
+    // A new data snapshot advances the shared time and all dependent views.
+    mocks.fetchCodexTokenUsage.mockResolvedValue({ ...anchoredReport, generatedAt: new Date().toISOString() });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Refresh token metadata" })); });
+    expect(screen.getByText("Local range Token").closest("article")).toHaveTextContent("1.1M");
+    expect(within(screen.getByRole("region", { name: "Project and terminal distribution" })).getByText("1.1M")).toBeInTheDocument();
   });
 
   it("ignores a token report that resolves after leaving and returning to Codex", async () => {

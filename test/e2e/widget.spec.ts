@@ -77,8 +77,8 @@ describe("Quota Float desktop widget", () => {
     await expect(browser.$("#root > *")).toBeExisting();
   });
 
-  it("shows the reset consumption plan with bounded source details", async () => {
-    await browser.$(".reset-outlook summary").click();
+  it("opens the global prediction in-app with bounded supporting details", async () => {
+    await browser.$(".reset-forecast").click();
     await browser.$(".reset-outlook[open]").waitForExist();
     const plan = await browser.tauri.execute(() => {
       const panel = document.querySelector<HTMLElement>(".reset-outlook")!;
@@ -86,6 +86,11 @@ describe("Quota Float desktop widget", () => {
       return { text: panel.textContent, overflow: panel.scrollWidth - panel.clientWidth,
         bodyHeight: body.clientHeight, sources: panel.querySelectorAll(".reset-outlook-source").length };
     });
+    expect(plan.text).toContain("48h estimate · 34%");
+    expect(plan.text).toContain("19%");
+    expect(plan.text).toContain("21.8–48.7%");
+    expect(plan.text).toContain("Watch window");
+    expect(plan.text).toContain("Low confidence");
     expect(plan.text).toContain("Target average");
     expect(plan.text).toContain("pp/h");
     expect(plan.text).toContain("Last reported reset");
@@ -266,6 +271,18 @@ describe("Quota Float desktop widget", () => {
       select.dispatchEvent(new Event("change", { bubbles: true }));
     });
     await browser.waitUntil(async () => !(await browser.$('[aria-label="Local period usage summary"]').getText()).includes("FILTERED"));
+    const distribution = await browser.tauri.execute(() => {
+      const panel = document.querySelector<HTMLElement>(".usage-breakdown")!;
+      panel.querySelectorAll<HTMLButtonElement>("button")[1].click();
+      return { rows: panel.querySelectorAll("li").length, overflow: panel.scrollWidth - panel.clientWidth,
+        markdown: Array.from(document.querySelectorAll("button")).some(button => button.textContent?.includes("Markdown summary")) };
+    });
+    expect(distribution.rows).toBeGreaterThan(0);
+    expect(distribution.overflow).toBeLessThanOrEqual(1);
+    expect(distribution.markdown).toBe(true);
+    await browser.waitUntil(async () => browser.tauri.execute(() =>
+      document.querySelectorAll(".usage-breakdown button")[1]?.getAttribute("aria-pressed") === "true",
+    ));
     await browser.tauri.execute(() => {
       document.querySelectorAll<HTMLButtonElement>(".quota-panel-tabs button")[0]?.click();
     });

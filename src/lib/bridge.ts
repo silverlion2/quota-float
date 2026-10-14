@@ -2,10 +2,11 @@ import type { AppDiagnostics, BarPlacement, CockpitRegion, CodexProfileStats, Co
 import { EMPTY_RUNTIME_STATE, normalizeRuntimeState } from "./activity";
 import { DEFAULT_WIDGET_PREFERENCES } from "./preferences";
 import type { CodexExtensionsReport } from "./codexExtensions";
+import { createPreviewResetForecast } from "./resetForecastPreview";
 
 const defaultPreferences = DEFAULT_WIDGET_PREFERENCES;
 
-const mockSnapshots: ProviderSnapshot[] = [{
+const mockSnapshots: ProviderSnapshot[] = import.meta.env.DEV || import.meta.env.VITE_WDIO === "1" ? [{
   provider: "codex",
   displayName: "CODEX",
   plan: "PRO",
@@ -73,7 +74,7 @@ const mockSnapshots: ProviderSnapshot[] = [{
   updatedAt: new Date().toISOString(),
   status: "ok",
   message: null,
-}];
+}] : [];
 
 const mockVolcengineDiagnostics: VolcengineDiagnostics = {
   installed: true,
@@ -150,7 +151,12 @@ function enqueueDataWrite(operation: () => Promise<void>): Promise<void> {
 }
 
 export const isTauri = () => "__TAURI_INTERNALS__" in window;
-export const usesSyntheticData = () => !isTauri() || import.meta.env.VITE_WDIO === "1";
+export const usesSyntheticData = () => (import.meta.env.DEV || import.meta.env.VITE_WDIO === "1")
+  && (!isTauri() || import.meta.env.VITE_WDIO === "1");
+
+function requireNativeDataAccess(): void {
+  if (!isTauri()) throw new Error("Quota Float production data requires the desktop app. Browser access is unsupported.");
+}
 
 let snapshotRefreshSequence = 0;
 
@@ -164,7 +170,7 @@ export async function fetchSnapshotsProgressively(
   providerIds: ProviderSnapshot["provider"][] | undefined,
   onProgress: (progress: SnapshotRefreshProgress) => void,
 ): Promise<ProviderSnapshot[]> {
-  if (usesSyntheticData()) {
+  if ((import.meta.env.DEV || import.meta.env.VITE_WDIO === "1") && usesSyntheticData()) {
     const requestedProviderIds = providerIds ?? mockSnapshots.map((snapshot) => snapshot.provider);
     const values = mockSnapshots.filter((snapshot) => requestedProviderIds.includes(snapshot.provider));
     for (const providerId of requestedProviderIds) {
@@ -178,6 +184,7 @@ export async function fetchSnapshotsProgressively(
     }
     return values;
   }
+  requireNativeDataAccess();
   const [{ invoke }, { listen }] = await Promise.all([
     import("@tauri-apps/api/core"),
     import("@tauri-apps/api/event"),
@@ -205,57 +212,46 @@ export async function fetchSnapshotsProgressively(
 }
 
 export async function fetchSnapshots(force = false, providerIds?: ProviderSnapshot["provider"][]): Promise<ProviderSnapshot[]> {
-  if (usesSyntheticData()) return providerIds ? mockSnapshots.filter((snapshot) => providerIds.includes(snapshot.provider)) : mockSnapshots;
+  if ((import.meta.env.DEV || import.meta.env.VITE_WDIO === "1") && usesSyntheticData()) return providerIds ? mockSnapshots.filter((snapshot) => providerIds.includes(snapshot.provider)) : mockSnapshots;
+  requireNativeDataAccess();
   const { invoke } = await import("@tauri-apps/api/core");
   if (providerIds || force) return fetchSnapshotsProgressively(createSnapshotRefreshRequestId(), providerIds, () => undefined);
   return invoke<ProviderSnapshot[]>("get_snapshots");
 }
 
 export async function readCachedSnapshots(providerIds?: ProviderSnapshot["provider"][]): Promise<SnapshotCacheRead> {
-  if (usesSyntheticData()) {
+  if ((import.meta.env.DEV || import.meta.env.VITE_WDIO === "1") && usesSyntheticData()) {
     const snapshots = providerIds ? mockSnapshots.filter((snapshot) => providerIds.includes(snapshot.provider)) : mockSnapshots;
     return { snapshots, freshness: snapshots.length > 0 ? "fresh" : "empty", oldestAgeSeconds: snapshots.length > 0 ? 0 : null };
   }
+  requireNativeDataAccess();
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<SnapshotCacheRead>("get_cached_snapshots", { providerIds });
 }
 
 export async function fetchCodexResetForecast(): Promise<ResetForecast | null> {
-  if (usesSyntheticData()) return {
-    score: 62,
-    windowHours: 48,
-    fetchedAt: new Date().toISOString(),
-    resetAnnounced: false,
-    resetAt: null,
-    expectedAt: null,
-    sourceUrl: "https://codex-reset.com/",
-    sourceCount: 3,
-    confidence: "low",
-    quality: "consistent",
-    sources: [
-      { name: "Codex Reset", score: 62, fetchedAt: new Date().toISOString(), sourceUrl: "https://codex-reset.com/", lastResetAt: new Date(Date.now() - 3 * 86_400_000).toISOString(), included: true, baselineVerified: true },
-      { name: "Codex Reset Radar", score: 59, fetchedAt: new Date().toISOString(), sourceUrl: "https://codexresetradar.com/", lastResetAt: new Date(Date.now() - 3 * 86_400_000).toISOString(), included: true, baselineVerified: true },
-      { name: "Will Codex Reset Today", score: 67, fetchedAt: new Date().toISOString(), sourceUrl: "https://codexreset.app/", lastResetAt: new Date(Date.now() - 3 * 86_400_000).toISOString(), included: true, baselineVerified: true },
-    ],
-  };
+  if ((import.meta.env.DEV || import.meta.env.VITE_WDIO === "1") && usesSyntheticData()) return createPreviewResetForecast();
+  requireNativeDataAccess();
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<ResetForecast | null>("get_codex_reset_forecast");
 }
 
 export async function fetchCodexTokenUsage(force = false, rebuild = false): Promise<CodexTokenUsageReport> {
-  if (usesSyntheticData()) return mockCodexTokenUsage();
+  if ((import.meta.env.DEV || import.meta.env.VITE_WDIO === "1") && usesSyntheticData()) return mockCodexTokenUsage();
+  requireNativeDataAccess();
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<CodexTokenUsageReport>("get_codex_token_usage", { force, rebuild });
 }
 
 export async function fetchCodexProfileStats(): Promise<CodexProfileStats> {
-  if (usesSyntheticData()) return { fetchedAt: new Date().toISOString(), lifetimeTokens: 42_000_000_000, peakDailyTokens: 1_200_000_000, currentStreakDays: 8, longestStreakDays: 32, longestRunningTurnSeconds: 7_200, totalThreads: 1_600 };
+  if ((import.meta.env.DEV || import.meta.env.VITE_WDIO === "1") && usesSyntheticData()) return { fetchedAt: new Date().toISOString(), lifetimeTokens: 42_000_000_000, peakDailyTokens: 1_200_000_000, currentStreakDays: 8, longestStreakDays: 32, longestRunningTurnSeconds: 7_200, totalThreads: 1_600 };
+  requireNativeDataAccess();
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<CodexProfileStats>("get_codex_profile_stats");
 }
 
 export async function fetchCodexExtensions(): Promise<CodexExtensionsReport> {
-  if (usesSyntheticData()) return {
+  if ((import.meta.env.DEV || import.meta.env.VITE_WDIO === "1") && usesSyntheticData()) return {
     status: "ok", truncated: false, warnings: [],
     entries: [
       { kind: "mcp", name: "example-docs", enabled: true, source: "codex_config" },
@@ -264,16 +260,17 @@ export async function fetchCodexExtensions(): Promise<CodexExtensionsReport> {
       { kind: "plugin", name: "example-design@local", enabled: true, source: "codex_config" },
     ],
   };
+  requireNativeDataAccess();
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<CodexExtensionsReport>("fetch_codex_extensions");
 }
 
-export type UsageExportFormat = "csv" | "json" | "svg";
+export type UsageExportFormat = "csv" | "json" | "svg" | "md";
 
 export async function exportUsageData(content: string, format: UsageExportFormat): Promise<string | null> {
   const filename = `quota-float-usage-${new Date().toISOString().slice(0, 10)}.${format}`;
   if (!isTauri()) {
-    const blob = new Blob([content], { type: format === "svg" ? "image/svg+xml" : format === "csv" ? "text/csv" : "application/json" });
+    const blob = new Blob([content], { type: format === "svg" ? "image/svg+xml" : format === "csv" ? "text/csv" : format === "md" ? "text/markdown;charset=utf-8" : "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -296,13 +293,15 @@ export async function openExternalUrl(url: string): Promise<void> {
 }
 
 export async function getVolcengineDiagnostics(): Promise<VolcengineDiagnostics> {
-  if (usesSyntheticData()) return mockVolcengineDiagnostics;
+  if ((import.meta.env.DEV || import.meta.env.VITE_WDIO === "1") && usesSyntheticData()) return mockVolcengineDiagnostics;
+  requireNativeDataAccess();
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<VolcengineDiagnostics>("get_volcengine_diagnostics");
 }
 
 export async function reconnectVolcengine(): Promise<VolcengineDiagnostics> {
-  if (usesSyntheticData()) return mockVolcengineDiagnostics;
+  if ((import.meta.env.DEV || import.meta.env.VITE_WDIO === "1") && usesSyntheticData()) return mockVolcengineDiagnostics;
+  requireNativeDataAccess();
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<VolcengineDiagnostics>("reconnect_volcengine");
 }
@@ -466,6 +465,17 @@ async function currentWorkArea(): Promise<WorkAreaPayload | null> {
     position: { x: monitor.workArea.position.x, y: monitor.workArea.position.y },
     size: { width: monitor.workArea.size.width, height: monitor.workArea.size.height },
   } : null;
+}
+
+export async function getWidgetContentHeightLimit(): Promise<number | null> {
+  if (!isTauri()) return null;
+  const { currentMonitor } = await import("@tauri-apps/api/window");
+  const monitor = await currentMonitor().catch(() => null);
+  if (!monitor || !Number.isFinite(monitor.scaleFactor) || monitor.scaleFactor <= 0
+    || !Number.isFinite(monitor.workArea.size.height) || monitor.workArea.size.height <= 0) return null;
+  // Match Rust's work-area content cap and its 1200px window cap after the
+  // two 4px transparent safety insets. Work-area dimensions are physical.
+  return Math.min(1192, monitor.workArea.size.height / monitor.scaleFactor);
 }
 
 export async function startDragging(): Promise<BarPlacement | null> {

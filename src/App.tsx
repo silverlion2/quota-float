@@ -4,7 +4,7 @@ import { QuotaBar, QuotaBottleneckBar, QuotaCard, QuotaOrb } from "./components/
 import { EMPTY_UPDATE_STATE } from "./components/UpdatePanel";
 import type { UpdateViewState } from "./components/UpdatePanel";
 import type { ControlOperation, ControlOperationKind } from "./components/ControlCenter";
-import { applyAppData, createAutomaticBackup, createSnapshotRefreshRequestId, exportAppData, fetchCodexResetForecast, fetchSnapshotsProgressively, getAppDiagnostics, getAutostartEnabled, getPreferences, getRuntimeState, getVolcengineDiagnostics, importAppData, listenDesktopEvents, notifyFocusPanels, openExternalUrl, openFocusPanel, reconnectVolcengine, resizeWidgetToContent, restoreLatestBackup, sendDesktopNotification, setAlwaysOnTop, setAutostartEnabled, setWidgetExpanded, startDragging, syncTaskbarIndicator, updatePreferences, updateRuntimeState } from "./lib/bridge";
+import { applyAppData, createAutomaticBackup, createSnapshotRefreshRequestId, exportAppData, fetchCodexResetForecast, fetchSnapshotsProgressively, getAppDiagnostics, getAutostartEnabled, getPreferences, getRuntimeState, getVolcengineDiagnostics, getWidgetContentHeightLimit, importAppData, listenDesktopEvents, notifyFocusPanels, openExternalUrl, openFocusPanel, reconnectVolcengine, resizeWidgetToContent, restoreLatestBackup, sendDesktopNotification, setAlwaysOnTop, setAutostartEnabled, setWidgetExpanded, startDragging, syncTaskbarIndicator, updatePreferences, updateRuntimeState } from "./lib/bridge";
 import { appUpdateErrorMessage, cancelAppUpdateCheck, checkForAppUpdate, discardAppUpdate, downloadAppUpdate, installAppUpdate, openReleasePage, shouldInvalidateUpdateCheckOnChannelChange } from "./lib/appUpdate";
 import type { AppUpdateInfo } from "./lib/appUpdate";
 import { copy, nextLanguage, normalizeLanguage } from "./lib/i18n";
@@ -865,6 +865,8 @@ export default function App() {
     let lastWidth: number | undefined;
     let widthRequest: { width: number; complete: boolean } | undefined;
     let measurement: { height: number; cardWidth: number; contentWidth: number | undefined; frames: number } | undefined;
+    let contentHeightLimit: number | null = null;
+    let heightLimitRequest = 0;
     const syncSize = () => {
       if (disposed) return;
       animationFrame = null;
@@ -899,6 +901,52 @@ export default function App() {
       } else {
         widthRequest = undefined;
       }
+      const resetBody = card.querySelector<HTMLElement>(".reset-outlook[open] .reset-outlook-body");
+      const providerLedger = card.querySelector<HTMLElement>(".provider-ledger");
+      if ((!resetBody || !card.classList.contains("quota-card--expanded-stacked")) && card.hasAttribute("data-reset-ledger-bounded")) {
+        card.removeAttribute("data-reset-ledger-bounded");
+        card.style.removeProperty("--reset-ledger-max-height");
+        measurement = undefined;
+        scheduleSync();
+        return;
+      }
+      if (resetBody && contentHeightLimit !== null) {
+        if (providerLedger && card.classList.contains("quota-card--expanded-stacked")) {
+          // In the stacked layout the full provider list can consume the whole
+          // work area. Keep a useful prediction viewport and scroll providers
+          // locally instead of reducing the prediction body to zero.
+          const otherHeight = card.offsetHeight - resetBody.offsetHeight - providerLedger.offsetHeight;
+          const naturalLedgerHeight = Math.max(providerLedger.offsetHeight, providerLedger.scrollHeight);
+          const ledgerLimit = Math.max(96, Math.min(naturalLedgerHeight, contentHeightLimit - otherHeight - 160));
+          if (ledgerLimit < naturalLedgerHeight) {
+            const value = `${ledgerLimit}px`;
+            if (card.style.getPropertyValue("--reset-ledger-max-height") !== value) {
+              card.setAttribute("data-reset-ledger-bounded", "true");
+              card.style.setProperty("--reset-ledger-max-height", value);
+              measurement = undefined;
+              scheduleSync();
+              return;
+            }
+          } else if (card.hasAttribute("data-reset-ledger-bounded")) {
+            card.removeAttribute("data-reset-ledger-bounded");
+            card.style.removeProperty("--reset-ledger-max-height");
+            measurement = undefined;
+            scheduleSync();
+            return;
+          }
+        }
+        // The native window can stop growing at the monitor work-area limit.
+        // Keep the rest of the card visible and let prediction details scroll
+        // inside the space that is actually available on this monitor.
+        const restHeight = card.offsetHeight - resetBody.offsetHeight;
+        const bodyLimit = `${Math.max(0, Math.min(260, contentHeightLimit - restHeight))}px`;
+        if (card.style.getPropertyValue("--reset-outlook-max-height") !== bodyLimit) {
+          card.style.setProperty("--reset-outlook-max-height", bodyLimit);
+          measurement = undefined;
+          scheduleSync();
+          return;
+        }
+      }
       const contentHeight = card.offsetHeight;
       if (contentHeight <= 0 || (contentHeight === lastHeight && contentWidth === lastWidth)) {
         measurement = undefined;
@@ -926,6 +974,17 @@ export default function App() {
       if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);
       animationFrame = window.requestAnimationFrame(syncSize);
     };
+    const refreshHeightLimit = () => {
+      if (!("__TAURI_INTERNALS__" in window)) return;
+      const request = ++heightLimitRequest;
+      void getWidgetContentHeightLimit().then((limit) => {
+        if (disposed || request !== heightLimitRequest || contentHeightLimit === limit) return;
+        contentHeightLimit = limit;
+        scheduleSync();
+      }).catch(() => undefined);
+    };
+    refreshHeightLimit();
+    window.addEventListener("resize", refreshHeightLimit);
     scheduleSync();
     const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(scheduleSync);
     resizeObserver?.observe(card);
@@ -933,6 +992,7 @@ export default function App() {
     layoutObserver.observe(card, { attributes: true, attributeFilter: ["data-content-width"] });
     return () => {
       disposed = true;
+      window.removeEventListener("resize", refreshHeightLimit);
       resizeObserver?.disconnect();
       layoutObserver.disconnect();
       if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);

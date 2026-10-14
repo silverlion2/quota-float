@@ -1227,11 +1227,12 @@ select:focus-visible {
 .usage-profile-summary > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .usage-profile-summary p { margin: 0; color: var(--ui-muted); font-size: 10px; line-height: 1.5; }
 .usage-profile-summary .usage-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.reset-outlook summary { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 5px; padding: 9px 2px; cursor: pointer; }
-.reset-outlook summary::before { content: "+"; }
-.reset-outlook[open] summary::before { content: "−"; }
-.reset-outlook summary strong { margin-left: auto; font-variant-numeric: tabular-nums; }
-.reset-outlook-body { display: grid; gap: 8px; max-height: 260px; overflow-y: auto; padding: 2px 5px 9px 2px; }
+.reset-outlook > summary { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 5px; padding: 9px 2px; cursor: pointer; }
+.reset-outlook > summary::before { content: "+"; }
+.reset-outlook[open] > summary::before { content: "−"; }
+.reset-outlook > summary strong { margin-left: auto; font-variant-numeric: tabular-nums; }
+.reset-outlook-body { display: grid; gap: 8px; max-height: var(--reset-outlook-max-height, 260px); overflow-y: auto; padding: 2px 5px 9px 2px; }
+.quota-card--expanded-stacked[data-reset-ledger-bounded="true"] .provider-ledger { min-height: 0; max-height: var(--reset-ledger-max-height); overflow-y: auto; scrollbar-width: thin; }
 .reset-outlook-body > button { color: inherit; font: inherit; }
 .reset-outlook p, .reset-outlook h4, .reset-outlook dl { margin: 0; }
 .reset-outlook dl > div { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; }
@@ -1239,6 +1240,19 @@ select:focus-visible {
 .reset-outlook-note, .reset-outlook-source small { color: var(--ui-muted); line-height: 1.5; }
 .reset-outlook-source { display: grid; gap: 3px; border-top: 1px solid var(--ui-border); padding-top: 6px; }
 .reset-outlook-source button { font: inherit; color: inherit; text-align: left; padding: 4px 0; background: transparent; border: 0; cursor: pointer; }
+.reset-prediction { display: grid; gap: 10px; padding: 5px 0 8px; font-size: 11px; line-height: 1.5; }
+.reset-prediction h4 { font-size: 13px; }
+.reset-prediction .reset-prediction-horizons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding-block: 6px; border-bottom: 1px solid var(--ui-border); }
+.reset-prediction-horizons > div { flex-direction: column; }
+.reset-prediction-horizons dd { text-align: left; font-size: 20px; font-variant-numeric: tabular-nums; }
+.reset-prediction-horizons small { display: block; font-size: 10px; font-weight: 500; color: var(--ui-muted); }
+.reset-prediction-action { font-weight: 650; text-wrap: pretty; }
+.reset-prediction-timing > div { flex-wrap: wrap; }
+.reset-prediction-timing dd { overflow-wrap: anywhere; }
+.reset-evidence { border-block: 1px solid var(--ui-border); padding-block: 8px; }
+.reset-evidence > summary { min-height: 24px; cursor: pointer; font-weight: 650; }
+.reset-evidence > p { padding-block: 6px; }
+.reset-outlook summary:focus-visible, .reset-outlook button:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
 .reset-forecast-copy small { color: currentColor; font-weight: 760; line-height: 1; text-transform: uppercase; }
 .reset-forecast-copy strong { font-weight: 760; white-space: nowrap; }
 .primary-metric span { font-size: var(--number-size, 46px); }
@@ -2634,3 +2648,13 @@ button.usage-stat-card:hover { border-color: color-mix(in srgb, var(--accent-col
   .update-body,
   .diagnostics-body { grid-template-columns: minmax(0, 1fr); }
 }
+
+.usage-breakdown { min-width: 0; color: var(--ui-text); font-size: 11px; }
+.usage-breakdown .usage-chart-controls { flex-wrap: wrap; }
+.usage-breakdown .usage-chart-controls > div { width: auto; flex-shrink: 0; }
+.usage-breakdown p { color: var(--ui-muted); margin: 6px 0; }
+.usage-breakdown ol { list-style: none; padding: 0; margin: 0; display: grid; gap: 9px; }
+.usage-breakdown li > div { display: grid; grid-template-columns: minmax(0, 1fr) auto 32px; gap: 8px; align-items: baseline; }
+.usage-breakdown li span { overflow-wrap: anywhere; }
+.usage-breakdown li small { text-align: right; color: var(--ui-muted); }
+.usage-breakdown progress { display: block; width: 100%; height: 4px; margin-top: 4px; accent-color: var(--ui-focus); }

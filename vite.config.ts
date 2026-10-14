@@ -7,6 +7,8 @@ export default defineConfig({
   server: { port: 1420, strictPort: true },
   envPrefix: ["VITE_", "TAURI_ENV_"],
   build: {
+    minify: "terser",
+    terserOptions: { compress: { ecma: 2020, passes: 3 }, format: { ecma: 2020 } },
     manifest: true,
     rollupOptions: {
       input: "index.html",

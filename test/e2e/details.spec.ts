@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 
 describe("Edge details window stability", () => {
-  it("expands details without oversizing or returning to the bar on all three edges", async () => {
+  it("keeps keyboard-focused details stable without oversizing on all three edges", async () => {
     await mkdir("output/handoff", { recursive: true });
     const original = await browser.tauri.execute(async (tauri) => tauri.core.invoke("get_preferences")) as Record<string, unknown>;
     const traces: unknown[] = [];
@@ -21,10 +21,21 @@ describe("Edge details window stability", () => {
           const trace = await browser.tauri.execute(async () => {
             const samples: { width: number; height: number; cardHeight: number; cardWidth: number; compact: boolean; primaryHeight: number; ledgerHeight: number; headerHeight: number; states: string; pixelRatio: number }[] = [];
             const start = performance.now();
+            let keyboardFocused = false;
             document.querySelector<HTMLButtonElement>(".bar-details")!.click();
             while (performance.now() - start < 1500) {
               await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
               const card = document.querySelector<HTMLElement>(".quota-card");
+              if (card && !keyboardFocused) {
+                // Embedded clicks do not move the OS pointer or establish keyboard
+                // modality; explicitly focus before native resize emits pointer leaves.
+                const tab = card.querySelector<HTMLButtonElement>('.quota-panel-tabs [role="tab"]')!;
+                tab.focus({ focusVisible: true } as FocusOptions);
+                if (document.activeElement !== tab || !tab.matches(":focus-visible")) {
+                  throw new Error("The embedded driver could not establish visible keyboard focus");
+                }
+                keyboardFocused = true;
+              }
               samples.push({ width: innerWidth, height: innerHeight, cardHeight: card?.offsetHeight ?? 0,
                 cardWidth: card?.offsetWidth ?? 0, compact: !card, pixelRatio: devicePixelRatio,
                 primaryHeight: card?.querySelector<HTMLElement>(".primary-pane")?.offsetHeight ?? 0,
@@ -51,8 +62,8 @@ describe("Edge details window stability", () => {
             await browser.tauri.execute(() => {
               document.querySelectorAll<HTMLButtonElement>('.quota-panel-tabs [role="tab"]')[0]!.focus();
             });
-            // Exercise the real keyboard path so resize-induced pointer leaves
-            // cannot dismiss the panel while the interaction is still active.
+            // The embedded driver dispatches DOM keyboard events. Visible focus
+            // above establishes keyboard modality before exercising the handler.
             await browser.keys(["ArrowRight"]);
             await browser.$(".usage-insights-panel").waitForDisplayed();
             const heights = await browser.tauri.execute(async () => {

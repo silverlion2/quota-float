@@ -26,6 +26,11 @@ const params = new URLSearchParams(window.location.search);
 const fallbackLanguage = navigator.language.toLowerCase().startsWith("zh") ? "zh-CN" : "en";
 
 function AppEntry() {
+  if (!(import.meta.env.DEV || import.meta.env.VITE_WDIO === "1") && !("__TAURI_INTERNALS__" in window)) {
+    return <div className="browser-preview-shell" role="alert"><p className="browser-preview-note">{fallbackLanguage === "en"
+      ? "Quota Float requires the desktop app. This production build does not support browser previews."
+      : "Quota Float 需要在桌面应用中运行。正式构建不支持浏览器预览。"}</p></div>;
+  }
   if (params.has("focusPanel")) return <FocusPanelApp />;
   if (DesignPlayground && (params.has("designer") || params.has("preview"))) return <DesignPlayground />;
   return "__TAURI_INTERNALS__" in window ? <App /> : <BrowserPreview />;

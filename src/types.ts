@@ -54,6 +54,7 @@ export interface SnapshotRefreshProgress {
 }
 
 export interface ResetForecast {
+  prediction?: ResetPrediction | null;
   score: number;
   windowHours: number;
   fetchedAt: string;
@@ -70,6 +71,24 @@ export interface ResetForecast {
   qualityReason?: string | null;
   latestResetAt?: string | null;
   exclusions?: { name: string; sourceUrl: string; lastResetAt: string | null; reason: string }[];
+}
+
+export interface ResetPrediction {
+  sourceName: string;
+  sourceUrl: string;
+  basis: "source_model" | "source_signal";
+  reportedLastResetAt: string | null;
+  generatedAt: string;
+  validUntil: string;
+  estimate24h: number | null;
+  estimate48h: number;
+  range24h: { lower: number; upper: number } | null;
+  range48h: { lower: number; upper: number } | null;
+  calibration: "experimental" | "uncalibrated";
+  expectedWindow: { startAt: string; endAt: string } | null;
+  watchWindow: { startAt: string; endAt: string } | null;
+  confidence: "low";
+  reason: string;
 }
 
 export interface ResetForecastSource {

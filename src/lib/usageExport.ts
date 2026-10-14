@@ -3,6 +3,7 @@ import { OPENAI_PRICING_CATALOG } from "./openaiPricing";
 import {
   bucketsInWindow,
   estimateBucketCost,
+  summarizeTokenBuckets,
   usageCoverageStart,
   usageRangeBounds,
   type ApiBudgetForecast,
@@ -105,6 +106,73 @@ export function buildUsageJson(report: CodexTokenUsageReport, range: UsageRange,
     privacy: "Project names are replaced with local aliases; session identifiers and prompt/response content are excluded.",
     rows: exportRows(report, range, filters, now),
   }, null, 2);
+}
+
+export function buildUsageMarkdown(report: CodexTokenUsageReport, range: UsageRange, filters: TokenUsageFilters = {}, now = new Date(), language: Language = "zh-CN"): string {
+  const en = language === "en";
+  const text = (zh: string, english: string) => en ? english : zh;
+  const bounds = usageRangeBounds(range, now, usageCoverageStart(report, now));
+  const buckets = bucketsInWindow(report.buckets, bounds.start, bounds.end, filters);
+  const summary = summarizeTokenBuckets(buckets);
+  const aliases = projectAliases(buckets.map((bucket) => bucket.projectId));
+  const hours = Math.max(0, Math.ceil((bounds.end.getTime() - bounds.start.getTime()) / 3_600_000));
+  const recorded = new Set(buckets.map((bucket) => Math.floor(Date.parse(bucket.bucketStart) / 3_600_000))).size;
+  const number = (value: number) => value.toLocaleString(en ? "en-US" : "zh-CN");
+  const amount = (value: TokenUsageSummary) => `${value.unpricedModels.length ? text("已知价格小计 ", "Priced subtotal ") : ""}$${value.cost.totalUsd.toFixed(6)}`;
+  const groupRows = (dimension: "model" | "projectId") => {
+    const groups = new Map<string, typeof buckets>();
+    for (const bucket of buckets) {
+      const group = groups.get(bucket[dimension]) ?? [];
+      group.push(bucket);
+      groups.set(bucket[dimension], group);
+    }
+    const keys = [...groups.keys()].sort();
+    return keys.map((key, index) => {
+      // Unknown free-form model metadata can contain paths; export only safe model IDs.
+      const label = dimension === "projectId" ? aliases.get(key) ?? "Unknown"
+        : /^(?:gpt-[a-z0-9][a-z0-9.-]*|o\d[a-z0-9.-]*)$/i.test(key) && key.length <= 96 ? key
+          : `${text("未知模型", "Unknown model")} ${index + 1}`;
+      const value = summarizeTokenBuckets(groups.get(key)!);
+      return `| ${label} | ${number(value.totalTokens)} | ${number(value.sessions)} | ${value.unpricedModels.length && value.pricedTokenCoverage === 0 ? text("未知", "Unknown") : amount(value)} |`;
+    });
+  };
+  const table = (title: string, dimension: "model" | "projectId") => [
+    `## ${title}`, "", `| ${title} | Token | ${text("会话数", "Sessions")} | ${text("API 等价 USD", "API-equivalent USD")} |`,
+    "| --- | ---: | ---: | ---: |", ...groupRows(dimension), "",
+  ];
+  const date = (value: string | null | undefined) => {
+    const parsed = value ? new Date(value) : null;
+    return parsed && Number.isFinite(parsed.getTime()) ? parsed.toISOString() : text("未知", "Unknown");
+  };
+  const coverageStart = report.coverageStart ? date(report.coverageStart)
+    : report.buckets.some((bucket) => Number.isFinite(Date.parse(bucket.bucketStart))) ? usageCoverageStart(report, now).toISOString()
+      : text("未知", "Unknown");
+  const filtered = (active: boolean) => active ? text("已筛选", "Filtered") : text("全部", "All");
+  return [
+    `# Quota Float · ${text("本机用量", "Local usage")}`, "",
+    `- ${text("统计时点", "As of")}: ${now.toISOString()}`,
+    `- ${text("UTC 区间 [包含起始,不含结束)", "UTC range [start inclusive,end exclusive)")}: ${bounds.start.toISOString()} → ${bounds.end.toISOString()}`,
+    `- ${text("筛选", "Filters")}: ${text("模型", "Model")} ${filtered(Boolean(filters.model))}; ${text("项目", "Project")} ${filtered(Boolean(filters.projectId))}; ${text("终端", "Terminal")} ${filtered(Boolean(filters.terminal))}`,
+    text("- 本机日历日期含结束日，截至现在。", "- Local calendar dates include end day, capped at now."), "",
+    `## ${text("总览", "Overview")}`, "",
+    `- Token: ${number(summary.totalTokens)}; ${text("输入", "Input")}: ${number(summary.inputTokens)}; ${text("输出", "Output")}: ${number(summary.outputTokens)}`,
+    `- ${text("缓存读/写", "Cache read/write")}: ${number(summary.cachedInputTokens)} / ${number(summary.cacheWriteInputTokens)}; ${text("推理（含于输出）", "Reasoning (in output)")}: ${number(summary.reasoningOutputTokens)}`,
+    `- ${text("会话/响应/记录天数", "Sessions/responses/recorded days")}: ${summary.sessions} / ${summary.requests} / ${summary.activeDays}`,
+    `- ${text("API 等价费用", "API-equivalent cost")}: ${amount(summary)}; ${text("已定价 Token", "Priced Token")}: ${(summary.pricedTokenCoverage * 100).toFixed(1)}%`,
+    text("- 现目录重估全部历史，非账单/订阅费；未知价不计，无记录≠零用量。", "- All history re-priced at current catalog, not bills/subscriptions; unpriced excluded, no records ≠ zero usage."),
+    `- ${text("未定价模型", "Unpriced models")}: ${summary.unpricedModels.length}`, "",
+    ...table(text("模型", "Models"), "model"),
+    ...table(text("匿名项目", "Project aliases"), "projectId"),
+    `## ${text("本机覆盖", "Local coverage")}`, "",
+    `- ${text("索引时间", "Indexed")}: ${date(report.generatedAt)}`,
+    `- ${text("全索引区间", "Index bounds")}: ${coverageStart} → ${date(report.coverageEnd)}`,
+    `- ${text("区间小时 记录/无记录", "Range hours recorded/unrecorded")}: ${recorded} / ${Math.max(0, hours - recorded)}`,
+    `- ${text("索引截断", "Index truncated")}: ${report.truncated ? text("是（部分）", "Yes (partial)") : text("否", "No")}; ${text("扫描 / 索引 / 跳过文件", "Scanned / indexed / skipped files")}: ${report.scannedFiles} / ${report.indexedFiles} / ${report.skippedFiles}`,
+    text("- 仅本机 Codex 元数据；记录小时≠工时，无记录可为空闲/未采集，截断/跳过可致不全。", "- Local Codex metadata only; recorded hours ≠ work time, no records may be idle/uncollected, truncated/skipped may be incomplete."), "",
+    `- ${text("价格目录", "Pricing catalog")}: ${OPENAI_PRICING_CATALOG.version}; ${text("核对", "Verified")}: ${OPENAI_PRICING_CATALOG.verifiedAt}; ${OPENAI_PRICING_CATALOG.pricingTier}`,
+    `- ${text("价格来源", "Pricing source")}: ${OPENAI_PRICING_CATALOG.source}`,
+    text("- 别名仅限本次；无项目名/路径/项目/会话/账号 ID/提示词/回复。", "- Aliases per export; no project names/paths/project/session/account IDs/prompts/responses."), "",
+  ].join("\n");
 }
 
 export function buildPeriodUsageJson(report: PeriodUsageReport): string {

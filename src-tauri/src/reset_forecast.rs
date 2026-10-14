@@ -1,4 +1,4 @@
-use chrono::{DateTime, SecondsFormat, Utc};
+use chrono::{DateTime, SecondsFormat, Timelike, Utc};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::future::Future;
 use std::time::Duration;
@@ -54,6 +54,40 @@ pub struct ResetForecastExclusion {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct PredictionRange {
+    pub lower: f64,
+    pub upper: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PredictionWindow {
+    pub start_at: String,
+    pub end_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResetPrediction {
+    pub source_name: String,
+    pub source_url: String,
+    pub basis: &'static str,
+    pub reported_last_reset_at: Option<String>,
+    pub generated_at: String,
+    pub valid_until: String,
+    pub estimate24h: Option<u8>,
+    pub estimate48h: u8,
+    pub range24h: Option<PredictionRange>,
+    pub range48h: Option<PredictionRange>,
+    pub calibration: &'static str,
+    pub expected_window: Option<PredictionWindow>,
+    pub watch_window: Option<PredictionWindow>,
+    pub confidence: ForecastConfidence,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ResetForecast {
     pub score: u8,
     pub window_hours: u8,
@@ -71,6 +105,17 @@ pub struct ResetForecast {
     pub quality_reason: Option<String>,
     pub latest_reset_at: Option<String>,
     pub exclusions: Vec<ResetForecastExclusion>,
+    pub prediction: Option<ResetPrediction>,
+}
+
+#[derive(Debug, Default)]
+struct PredictionData {
+    score24h: Option<u8>,
+    range24h: Option<PredictionRange>,
+    range48h: Option<PredictionRange>,
+    expected_window: Option<(DateTime<Utc>, DateTime<Utc>)>,
+    watch_window: Option<(DateTime<Utc>, DateTime<Utc>)>,
+    is_model: bool,
 }
 
 #[derive(Debug)]
@@ -83,6 +128,7 @@ struct SourceForecast {
     source_url: &'static str,
     reliability: u8,
     last_reset_at: Option<DateTime<Utc>>,
+    prediction: PredictionData,
 }
 
 #[derive(Deserialize)]
@@ -116,15 +162,36 @@ struct CodexResetResponse {
     official_signal: Option<CodexResetOfficialSignal>,
     #[serde(default)]
     last_reset_at: Option<String>,
+    #[serde(default)]
+    time_window: Option<CodexResetTimeWindow>,
 }
 
 #[derive(Deserialize)]
 struct CodexResetProbabilities {
     rounded_48h: i16,
     #[serde(default)]
+    rounded_24h: Option<i16>,
+    #[serde(default)]
+    range_24h: Option<CodexResetRange>,
+    #[serde(default)]
+    range_48h: Option<CodexResetRange>,
+    #[serde(default)]
     commitment: Option<f64>,
     #[serde(default)]
     commitment_floor_percent: Option<i16>,
+}
+
+#[derive(Deserialize)]
+struct CodexResetRange {
+    lower: f64,
+    upper: f64,
+}
+
+#[derive(Deserialize)]
+struct CodexResetTimeWindow {
+    start_hour: u8,
+    end_hour: u8,
+    timezone: String,
 }
 
 #[derive(Deserialize)]
@@ -158,6 +225,8 @@ struct ResetSignalLastReset {
 #[serde(rename_all = "camelCase")]
 struct ResetSignalPayload {
     probability_48h: i16,
+    #[serde(default)]
+    probability_24h: Option<i16>,
 }
 
 fn timestamp(value: &str, now: DateTime<Utc>) -> Option<DateTime<Utc>> {
@@ -188,6 +257,60 @@ fn score(value: i16) -> Option<u8> {
     (0..=100).contains(&value).then_some(value as u8)
 }
 
+fn prediction_range(value: Option<CodexResetRange>, estimate: u8) -> Option<PredictionRange> {
+    let value = value?;
+    if !value.lower.is_finite()
+        || !value.upper.is_finite()
+        || !(0.0..=1.0).contains(&value.lower)
+        || !(value.lower..=1.0).contains(&value.upper)
+        // Whole-percent outputs can round half a point outside a narrow band.
+        || f64::from(estimate) + 0.5 < value.lower * 100.0
+        || f64::from(estimate) - 0.5 > value.upper * 100.0
+    {
+        return None;
+    }
+    Some(PredictionRange {
+        lower: value.lower * 100.0,
+        upper: value.upper * 100.0,
+    })
+}
+
+fn daily_watch_window(
+    value: Option<CodexResetTimeWindow>,
+    generated_at: DateTime<Utc>,
+    now: DateTime<Utc>,
+) -> Option<(DateTime<Utc>, DateTime<Utc>)> {
+    let value = value?;
+    if value.timezone != "UTC"
+        || value.start_hour >= 24
+        || value.end_hour > 24
+        || value.start_hour == value.end_hour
+    {
+        return None;
+    }
+    let midnight = generated_at
+        .with_hour(0)?
+        .with_minute(0)?
+        .with_second(0)?
+        .with_nanosecond(0)?;
+    let mut start = midnight + chrono::Duration::hours(i64::from(value.start_hour));
+    let mut end = midnight + chrono::Duration::hours(i64::from(value.end_hour));
+    if end <= start {
+        end += chrono::Duration::days(1);
+        if generated_at < midnight + chrono::Duration::hours(i64::from(value.end_hour)) {
+            start -= chrono::Duration::days(1);
+            end -= chrono::Duration::days(1);
+        }
+    }
+    if end <= generated_at {
+        start += chrono::Duration::days(1);
+        end += chrono::Duration::days(1);
+    }
+    // This is a historical time-of-day watch period, anchored to the source
+    // calculation. Re-reading cached evidence never moves it to another day.
+    (end > now && end <= generated_at + chrono::Duration::hours(48)).then_some((start, end))
+}
+
 fn normalize_reset_radar(
     response: ResetRadarResponse,
     now: DateTime<Utc>,
@@ -206,6 +329,7 @@ fn normalize_reset_radar(
         last_reset_at: response
             .latest_reset
             .and_then(|reset| baseline_timestamp(Some(&reset.occurred_at), now)),
+        prediction: PredictionData::default(),
     })
 }
 
@@ -218,25 +342,29 @@ fn normalize_codex_reset(
         .probabilities
         .commitment
         .filter(|value| value.is_finite() && (0.0..=1.0).contains(value));
-    let expected_at = response
+    let score48h = score(response.probabilities.rounded_48h)?;
+    let score24h = response
+        .probabilities
+        .rounded_24h
+        .and_then(score)
+        .filter(|value| *value <= score48h);
+    let expected_window = response
         .official_signal
         .and_then(|signal| signal.window)
         .and_then(|window| {
             let start = raw_timestamp(&window.start_at)?;
             let end = raw_timestamp(&window.end_at)?;
-            if end <= start || end <= now {
+            if end <= start || end <= now || end > fetched_at + chrono::Duration::days(14) {
                 return None;
             }
-            let midpoint =
-                start + chrono::Duration::milliseconds((end - start).num_milliseconds() / 2);
-            (midpoint > now).then_some(midpoint)
+            Some((start, end))
         });
     // A third-party tracker's mode and commitment are not an official
     // provider announcement. Keep the fields parsed for schema validation,
     // but never turn them into an actionable personal reset signal.
     let _tracker_claims_announcement = response.mode == "announced"
         && commitment.is_some_and(|value| value >= 0.75)
-        && expected_at.is_some();
+        && expected_window.is_some();
     let reset_announced = false;
     let reported_score = response
         .probabilities
@@ -252,6 +380,15 @@ fn normalize_codex_reset(
         source_url: CODEX_RESET_SOURCE_URL,
         reliability: 3,
         last_reset_at: baseline_timestamp(response.last_reset_at.as_deref(), now),
+        prediction: PredictionData {
+            score24h,
+            range24h: score24h
+                .and_then(|estimate| prediction_range(response.probabilities.range_24h, estimate)),
+            range48h: prediction_range(response.probabilities.range_48h, score48h),
+            expected_window,
+            watch_window: daily_watch_window(response.time_window, fetched_at, now),
+            is_model: response.mode == "model",
+        },
     })
 }
 
@@ -259,9 +396,10 @@ fn normalize_reset_signal(
     response: ResetSignalResponse,
     now: DateTime<Utc>,
 ) -> Option<SourceForecast> {
+    let score48h = score(response.forecast.probability_48h)?;
     Some(SourceForecast {
         name: "Will Codex Reset Today",
-        score: score(response.forecast.probability_48h)?,
+        score: score48h,
         fetched_at: timestamp(&response.data_as_of, now)?,
         reset_announced: false,
         expected_at: None,
@@ -270,6 +408,14 @@ fn normalize_reset_signal(
         last_reset_at: response
             .last_confirmed_reset
             .and_then(|reset| baseline_timestamp(reset.timestamp.as_deref(), now)),
+        prediction: PredictionData {
+            score24h: response
+                .forecast
+                .probability_24h
+                .and_then(score)
+                .filter(|value| *value <= score48h),
+            ..PredictionData::default()
+        },
     })
 }
 
@@ -314,7 +460,10 @@ fn aggregate(mut sources: Vec<SourceForecast>) -> Option<ResetForecast> {
                 .last_reset_at
                 .is_some_and(|reset| reset < latest && latest - reset > chrono::Duration::hours(24))
         });
-        let included = !(latest_is_corroborated && stale_against_latest);
+        // A model anchored to a superseded reported reset is a poor reference
+        // even when only one tracker has caught up. This selects a reference;
+        // it does not turn the newer third-party claim into an official fact.
+        let included = !stale_against_latest;
         if !included {
             exclusions.push(ResetForecastExclusion {
                 name: source.name.to_string(),
@@ -323,7 +472,7 @@ fn aggregate(mut sources: Vec<SourceForecast>) -> Option<ResetForecast> {
                     .last_reset_at
                     .map(|value| value.to_rfc3339_opts(SecondsFormat::Millis, true)),
                 reason:
-                    "reset baseline predates the corroborated latest reset by more than 24 hours"
+                    "reported reset baseline is more than 24 hours older than the newest reported baseline"
                         .to_string(),
             });
         }
@@ -343,19 +492,11 @@ fn aggregate(mut sources: Vec<SourceForecast>) -> Option<ResetForecast> {
     } else {
         eligible_scores
     };
-    let mut scores = scores;
-    scores.sort_unstable();
     let score_min = scores.iter().min().copied();
     let score_max = scores.iter().max().copied();
     let large_score_disagreement = score_min
         .zip(score_max)
         .is_some_and(|(minimum, maximum)| maximum - minimum > MAX_SCORE_SPREAD);
-    let score = if scores.len() % 2 == 1 {
-        scores[scores.len() / 2]
-    } else {
-        let right = scores.len() / 2;
-        (u16::from(scores[right - 1]) + u16::from(scores[right])).div_ceil(2) as u8
-    };
     let has_unknown_baseline = sources
         .iter()
         .zip(included_sources.iter())
@@ -376,7 +517,7 @@ fn aggregate(mut sources: Vec<SourceForecast>) -> Option<ResetForecast> {
     let quality_reason = match quality {
         ForecastQuality::Consistent => None,
         ForecastQuality::Limited if !exclusions.is_empty() => Some(
-            "A corroborated latest reset was found; older source baselines were excluded."
+            "Older reported reset baselines were excluded from the primary reference."
                 .to_string(),
         ),
         ForecastQuality::Limited if has_unknown_baseline => Some(
@@ -388,20 +529,14 @@ fn aggregate(mut sources: Vec<SourceForecast>) -> Option<ResetForecast> {
                 .to_string(),
         ),
         ForecastQuality::Conflicting if large_score_disagreement => Some(
-            "Eligible source scores differ by more than 25 percentage points; the numeric score is suppressed as a consensus signal."
+            "Eligible source scores differ by more than 25 percentage points; the selected primary reference remains visible with low confidence."
                 .to_string(),
         ),
         ForecastQuality::Conflicting => Some(
-            "Sources report conflicting reset baselines without two-source corroboration; the numeric score is suppressed as a consensus signal."
+            "Sources disagree on reset baselines or scores; the selected primary reference remains visible with low confidence."
                 .to_string(),
         ),
     };
-    let mut score_sources = sources
-        .iter()
-        .enumerate()
-        .map(|(index, source)| (source, included_sources[index]))
-        .collect::<Vec<_>>();
-    score_sources.sort_by_key(|(source, _)| source.score);
     let announced = sources
         .iter()
         .filter(|source| source.reset_announced)
@@ -413,21 +548,51 @@ fn aggregate(mut sources: Vec<SourceForecast>) -> Option<ResetForecast> {
     } else {
         ForecastConfidence::Low
     };
-    let primary = announced.unwrap_or_else(|| {
-        score_sources
-            .iter()
-            .filter(|(_, included)| *included)
-            .map(|(source, _)| *source)
-            .max_by_key(|source| source.reliability)
-            .expect("non-empty forecast sources")
-    });
-    let fetched_at = sources
+    let primary = sources
         .iter()
         .zip(included_sources.iter())
-        .filter(|(_, included)| **included)
-        .map(|(source, _)| source.fetched_at)
-        .min()
+        .filter(|(source, included)| {
+            **included && (latest_reset_at.is_none() || source.last_reset_at.is_some())
+        })
+        .map(|(source, _)| source)
+        .max_by_key(|source| {
+            let information = u8::from(source.prediction.score24h.is_some())
+                + u8::from(source.prediction.range48h.is_some())
+                + u8::from(source.prediction.range24h.is_some())
+                + u8::from(source.prediction.expected_window.is_some())
+                + u8::from(source.prediction.watch_window.is_some());
+            (information, source.reliability, source.fetched_at)
+        })
         .expect("non-empty forecast sources");
+    let fetched_at = primary.fetched_at;
+    let score = primary.score;
+    let serialize_window = |value: (DateTime<Utc>, DateTime<Utc>)| PredictionWindow {
+        start_at: value.0.to_rfc3339_opts(SecondsFormat::Millis, true),
+        end_at: value.1.to_rfc3339_opts(SecondsFormat::Millis, true),
+    };
+    let prediction = Some(ResetPrediction {
+        source_name: primary.name.into(),
+        source_url: primary.source_url.into(),
+        basis: if primary.prediction.is_model { "source_model" } else { "source_signal" },
+        reported_last_reset_at: primary.last_reset_at
+            .map(|value| value.to_rfc3339_opts(SecondsFormat::Millis, true)),
+        generated_at: fetched_at.to_rfc3339_opts(SecondsFormat::Millis, true),
+        valid_until: (fetched_at + chrono::Duration::hours(48))
+            .to_rfc3339_opts(SecondsFormat::Millis, true),
+        estimate24h: primary.prediction.score24h,
+        estimate48h: primary.score,
+        range24h: primary.prediction.range24h.clone(),
+        range48h: primary.prediction.range48h.clone(),
+        calibration: if primary.prediction.is_model { "experimental" } else { "uncalibrated" },
+        expected_window: primary.prediction.expected_window.map(serialize_window),
+        watch_window: primary.prediction.watch_window.map(serialize_window),
+        confidence: ForecastConfidence::Low,
+        reason: if latest_reset_at.is_some() {
+            "Primary reference uses the newest reported reset baseline, then information completeness, source reliability and calculation time. Other tracker disagreement is diagnostic; estimates are not averaged or independently calibrated."
+        } else {
+            "No source reports a reset baseline. The most complete available source is a fallback reference with unverified history; estimates are not averaged or independently calibrated."
+        }.into(),
+    });
     let reset_announced = announced.is_some();
     let expected_at = announced.and_then(|source| source.expected_at);
     let source_url = primary.source_url.to_string();
@@ -455,7 +620,7 @@ fn aggregate(mut sources: Vec<SourceForecast>) -> Option<ResetForecast> {
                 None
             } else {
                 Some(
-                    "reset baseline predates the corroborated latest reset by more than 24 hours"
+                    "reported reset baseline is more than 24 hours older than the newest reported baseline"
                         .to_string(),
                 )
             },
@@ -480,12 +645,21 @@ fn aggregate(mut sources: Vec<SourceForecast>) -> Option<ResetForecast> {
         latest_reset_at: latest_reset_at
             .map(|value| value.to_rfc3339_opts(SecondsFormat::Millis, true)),
         exclusions,
+        prediction,
     })
 }
 
 async fn fetch_json<T: DeserializeOwned>(client: &reqwest::Client, url: &str) -> Option<T> {
     let mut response = client
         .get(url)
+        .header(
+            reqwest::header::USER_AGENT,
+            concat!(
+                "QuotaFloat/",
+                env!("CARGO_PKG_VERSION"),
+                " (+https://github.com/silverlion2/quota-float)"
+            ),
+        )
         .header(reqwest::header::ACCEPT, "application/json")
         .send()
         .await
@@ -574,11 +748,188 @@ mod tests {
                     .expect("valid source baseline")
                     .with_timezone(&Utc)
             }),
+            prediction: super::PredictionData::default(),
+        }
+    }
+
+    fn model(value: serde_json::Value, at: DateTime<Utc>) -> SourceForecast {
+        let response = serde_json::from_value::<CodexResetResponse>(value).unwrap();
+        normalize_codex_reset(response, at).unwrap()
+    }
+
+    fn model_payload() -> serde_json::Value {
+        serde_json::json!({
+            "mode": "model", "updated_at": "2026-08-23T10:20:00Z",
+            "last_reset_at": "2026-08-22T08:00:00Z",
+            "probabilities": {
+                "rounded_24h": 19, "rounded_48h": 34,
+                "range_24h": {"lower": 0.099, "upper": 0.325},
+                "range_48h": {"lower": 0.218, "upper": 0.487}
+            },
+            "time_window": {"start_hour": 3, "end_hour": 6, "timezone": "UTC"}
+        })
+    }
+
+    #[test]
+    fn newest_reported_baseline_beats_old_high_scores_without_two_source_voting() {
+        let reference = model(model_payload(), now());
+        let stale_high = source(
+            "old high",
+            99,
+            "https://old.example/",
+            Some("2026-07-25T08:00:00Z"),
+        );
+        let forecast = aggregate(vec![reference, stale_high]).unwrap();
+        assert_eq!(forecast.quality, ForecastQuality::Conflicting);
+        assert_eq!(forecast.score, 34);
+        assert_eq!(forecast.source_url, "https://codex-reset.com/");
+        assert_eq!(forecast.fetched_at, "2026-08-23T10:20:00.000Z");
+        assert!(!forecast.sources[1].included);
+        assert!(forecast.exclusions[0].reason.contains("reported"));
+        let prediction = forecast.prediction.unwrap();
+        assert_eq!(prediction.estimate24h, Some(19));
+        assert_eq!(prediction.estimate48h, 34);
+        assert!((prediction.range48h.unwrap().upper - 48.7).abs() < 0.001);
+        assert_eq!(prediction.calibration, "experimental");
+        assert_eq!(prediction.basis, "source_model");
+        assert_eq!(prediction.confidence, ForecastConfidence::Low);
+        assert_eq!(prediction.valid_until, "2026-08-25T10:20:00.000Z");
+        assert_eq!(
+            prediction.watch_window.unwrap().start_at,
+            "2026-08-24T03:00:00.000Z"
+        );
+        assert!(!forecast.reset_announced);
+    }
+
+    #[test]
+    fn unknown_baseline_does_not_override_a_known_reference() {
+        let known = source(
+            "known",
+            20,
+            "https://known.example/",
+            Some("2026-08-22T08:00:00Z"),
+        );
+        let mut unknown = model(model_payload(), now());
+        unknown.last_reset_at = None;
+        let prediction = aggregate(vec![known, unknown]).unwrap().prediction.unwrap();
+        assert_eq!(prediction.source_name, "known");
+        assert_eq!(prediction.estimate48h, 20);
+    }
+
+    #[test]
+    fn missing_primary_falls_back_to_an_available_source_without_fake_ranges() {
+        let unknown = source("fallback", 51, "https://fallback.example/", None);
+        let forecast = aggregate(vec![unknown]).unwrap();
+        let prediction = forecast.prediction.unwrap();
+        assert_eq!(forecast.quality, ForecastQuality::Limited);
+        assert_eq!(prediction.basis, "source_signal");
+        assert_eq!(prediction.calibration, "uncalibrated");
+        assert_eq!(prediction.estimate48h, 51);
+        assert!(prediction.estimate24h.is_none());
+        assert!(prediction.range48h.is_none());
+        assert!(prediction.expected_window.is_none());
+        assert!(prediction.watch_window.is_none());
+        assert!(prediction.reason.contains("No source reports"));
+        assert!(aggregate(vec![]).is_none());
+    }
+
+    #[test]
+    fn same_baseline_disagreement_keeps_complete_primary_model_and_its_own_band() {
+        let low = model(model_payload(), now());
+        let high = source(
+            "high",
+            94,
+            "https://high.example/",
+            Some("2026-08-22T08:00:00Z"),
+        );
+        let forecast = aggregate(vec![low, high]).unwrap();
+        assert_eq!(forecast.quality, ForecastQuality::Conflicting);
+        assert_eq!(forecast.score, 34);
+        let prediction = forecast.prediction.unwrap();
+        assert_eq!(prediction.source_name, "Codex Reset");
+        assert!(prediction.range48h.unwrap().upper < 50.0);
+    }
+
+    #[test]
+    fn malformed_ranges_and_reversed_horizon_estimates_are_not_repaired_into_certainty() {
+        for (lower, upper) in [(0.5, 0.2), (-0.1, 0.5), (0.2, 1.1), (0.8, 0.9)] {
+            let mut payload = model_payload();
+            payload["probabilities"]["range_48h"] =
+                serde_json::json!({"lower": lower, "upper": upper});
+            payload["probabilities"]["rounded_24h"] = serde_json::json!(90);
+            let normalized = model(payload, now());
+            assert!(normalized.prediction.range48h.is_none());
+            assert!(normalized.prediction.score24h.is_none());
+            assert!(normalized.prediction.range24h.is_none());
+            assert_eq!(normalized.score, 34);
+        }
+        assert!(super::prediction_range(
+            Some(super::CodexResetRange {
+                lower: f64::NAN,
+                upper: 0.5
+            }),
+            34
+        )
+        .is_none());
+        assert!(super::prediction_range(
+            Some(super::CodexResetRange {
+                lower: 0.2,
+                upper: f64::INFINITY
+            }),
+            34
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn expired_expected_windows_are_discarded_and_source_time_anchors_watch_day() {
+        let mut payload = model_payload();
+        payload["official_signal"] = serde_json::json!({"window": {"start_at": "2026-08-23T08:00:00Z", "end_at": "2026-08-23T09:00:00Z"}});
+        let normalized = model(payload, now());
+        assert!(normalized.prediction.expected_window.is_none());
+        let value = || {
+            Some(super::CodexResetTimeWindow {
+                start_hour: 3,
+                end_hour: 6,
+                timezone: "UTC".into(),
+            })
+        };
+        let generated = now();
+        let later = generated + chrono::Duration::hours(21);
+        assert!(super::daily_watch_window(value(), generated, later).is_none());
+        let anchored = super::daily_watch_window(value(), generated, generated).unwrap();
+        assert_eq!(anchored.0.to_rfc3339(), "2026-08-24T03:00:00+00:00");
+    }
+
+    #[test]
+    fn utc_watch_window_handles_midnight_crossing_and_rejects_unknown_zones() {
+        let generated = Utc.with_ymd_and_hms(2026, 8, 23, 1, 0, 0).single().unwrap();
+        let value = Some(super::CodexResetTimeWindow {
+            start_hour: 23,
+            end_hour: 2,
+            timezone: "UTC".into(),
+        });
+        let (start, end) = super::daily_watch_window(value, generated, generated).unwrap();
+        assert_eq!(start.to_rfc3339(), "2026-08-22T23:00:00+00:00");
+        assert_eq!(end.to_rfc3339(), "2026-08-23T02:00:00+00:00");
+        for (start_hour, end_hour, timezone) in
+            [(24, 2, "UTC"), (2, 25, "UTC"), (3, 3, "UTC"), (3, 6, "PST")]
+        {
+            assert!(super::daily_watch_window(
+                Some(super::CodexResetTimeWindow {
+                    start_hour,
+                    end_hour,
+                    timezone: timezone.into()
+                }),
+                generated,
+                generated
+            )
+            .is_none());
         }
     }
 
     #[test]
-    fn builds_a_fresh_median_consensus() {
+    fn builds_a_primary_reference_without_averaging_independent_models() {
         let radar: ResetRadarResponse = serde_json::from_str(
             r#"{"generatedAt":"2026-08-23T10:15:21.295Z","forecast":{"probability":39,"windowHours":48}}"#,
         )
@@ -602,7 +953,7 @@ mod tests {
         assert_eq!(forecast.score, 50);
         assert_eq!(forecast.source_count, 3);
         assert_eq!(forecast.confidence, ForecastConfidence::Low);
-        assert_eq!(forecast.fetched_at, "2026-08-23T10:11:40.277Z");
+        assert_eq!(forecast.fetched_at, "2026-08-23T10:24:05.046Z");
         assert_eq!(forecast.source_url, "https://codex-reset.com/");
         assert!(!forecast.reset_announced);
         assert_eq!(forecast.sources.len(), 3);
@@ -664,6 +1015,12 @@ mod tests {
         assert_eq!(forecast.score, 50);
         assert_eq!(forecast.confidence, ForecastConfidence::Low);
         assert_eq!(forecast.expected_at, None);
+        let prediction = forecast.prediction.unwrap();
+        assert_eq!(prediction.basis, "source_signal");
+        assert_eq!(prediction.calibration, "uncalibrated");
+        let window = prediction.expected_window.unwrap();
+        assert_eq!(window.start_at, "2026-08-23T20:00:00.000Z");
+        assert_eq!(window.end_at, "2026-08-23T22:00:00.000Z");
     }
 
     #[test]
@@ -781,7 +1138,7 @@ mod tests {
         ])
         .expect("forecast with corroborated baseline");
 
-        assert_eq!(forecast.score, 80);
+        assert_eq!(forecast.score, 70);
         assert_eq!(forecast.score_min, Some(70));
         assert_eq!(forecast.score_max, Some(90));
         assert_eq!(forecast.source_count, 2);
@@ -812,14 +1169,14 @@ mod tests {
         .expect("conflicting forecast");
 
         assert_eq!(forecast.quality, ForecastQuality::Conflicting);
-        assert_eq!(forecast.score, 85);
-        assert_eq!(forecast.score_min, Some(80));
+        assert_eq!(forecast.score, 90);
+        assert_eq!(forecast.score_min, Some(90));
         assert_eq!(forecast.score_max, Some(90));
-        assert!(forecast
-            .quality_reason
-            .as_deref()
-            .is_some_and(|reason| reason.contains("without two-source corroboration")));
-        assert!(forecast.exclusions.is_empty());
+        assert!(forecast.quality_reason.as_deref().is_some_and(
+            |reason| reason.contains("primary reference remains visible with low confidence")
+        ));
+        assert_eq!(forecast.exclusions.len(), 1);
+        assert_eq!(forecast.prediction.unwrap().estimate48h, 90);
     }
 
     #[test]
@@ -841,7 +1198,7 @@ mod tests {
         .expect("large score disagreement forecast");
 
         assert_eq!(forecast.quality, ForecastQuality::Conflicting);
-        assert_eq!(forecast.score, 67);
+        assert_eq!(forecast.score, 91);
         assert!(forecast
             .quality_reason
             .as_deref()
@@ -861,7 +1218,7 @@ mod tests {
         a.fetched_at = now() - chrono::Duration::minutes(10);
         let b = source("b", 45, "https://b.example/", Some("2026-08-23T08:00:00Z"));
         let forecast = aggregate(vec![old, a, b]).expect("fresh participating sources");
-        assert_eq!(forecast.fetched_at, "2026-08-23T10:20:00.000Z");
+        assert_eq!(forecast.fetched_at, "2026-08-23T10:30:00.000Z");
         assert_eq!(forecast.source_count, 2);
         assert!(!forecast.sources[0].included);
         assert_eq!(forecast.sources.len(), 3);

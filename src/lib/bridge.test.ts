@@ -10,6 +10,7 @@ import {
   fetchCodexTokenUsage,
   fetchCodexExtensions,
   getVolcengineDiagnostics,
+  getWidgetContentHeightLimit,
   listenDesktopEvents,
   notifyFocusPanels,
   openFocusPanel,
@@ -22,8 +23,10 @@ import {
   syncTaskbarIndicator,
   updatePreferences,
   updateRuntimeState,
+  usesSyntheticData,
 } from "./bridge";
 import { DEFAULT_WIDGET_PREFERENCES } from "./preferences";
+import { createPreviewResetForecast } from "./resetForecastPreview";
 
 const api = vi.hoisted(() => ({
   calls: [] as string[],
@@ -34,6 +37,7 @@ const api = vi.hoisted(() => ({
     return undefined;
   }),
   currentMonitor: vi.fn(async () => ({
+    scaleFactor: 1,
     workArea: { position: { x: 0, y: 0 }, size: { width: 1920, height: 1040 } },
   })),
   currentWindow: {
@@ -58,6 +62,42 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe("widget transitions", () => {
+  it.each([
+    ["snapshots", () => fetchSnapshots()],
+    ["progressive snapshots", () => fetchSnapshotsProgressively("production-browser", undefined, vi.fn())],
+    ["cached snapshots", () => readCachedSnapshots()],
+    ["reset forecast", () => fetchCodexResetForecast()],
+    ["token usage", () => fetchCodexTokenUsage()],
+    ["account Profile", () => fetchCodexProfileStats()],
+    ["extensions", () => fetchCodexExtensions()],
+    ["Volcengine diagnostics", () => getVolcengineDiagnostics()],
+    ["Volcengine reconnect", () => reconnectVolcengine()],
+  ] as const)("rejects production browser %s access instead of showing synthetic success", async (_name, read) => {
+    vi.stubGlobal("window", {});
+    vi.stubEnv("DEV", false);
+    expect(usesSyntheticData()).toBe(false);
+    await expect(read()).rejects.toThrow("Browser access is unsupported");
+    expect(api.invoke).not.toHaveBeenCalled();
+    expect(events.listen).not.toHaveBeenCalled();
+  });
+
+  it("retains isolated WDIO fixtures when DEV is false", async () => {
+    vi.stubEnv("DEV", false);
+    vi.stubEnv("VITE_WDIO", "1");
+    expect(usesSyntheticData()).toBe(true);
+    expect(await fetchSnapshots()).toEqual(expect.arrayContaining([expect.objectContaining({ provider: "codex", plan: "PRO" })]));
+    expect(await fetchCodexResetForecast()).toMatchObject({ prediction: { estimate24h: 19, estimate48h: 34 } });
+    expect((await fetchCodexTokenUsage()).buckets.length).toBeGreaterThan(0);
+    expect(api.invoke).not.toHaveBeenCalled();
+  });
+
+  it("keeps production desktop reads on the native bridge", async () => {
+    vi.stubEnv("DEV", false);
+    expect(usesSyntheticData()).toBe(false);
+    await fetchCodexResetForecast();
+    expect(api.invoke).toHaveBeenCalledWith("get_codex_reset_forecast");
+  });
+
   it("keeps native E2E provider reads on isolated synthetic data", async () => {
     vi.stubEnv("VITE_WDIO", "1");
 
@@ -73,13 +113,55 @@ describe("widget transitions", () => {
     expect(snapshots).toHaveLength(1);
     expect(snapshots[0]).toMatchObject({ provider: "codex", displayName: "CODEX", plan: "PRO" });
     expect(cached).toMatchObject({ freshness: "fresh", snapshots: [{ provider: "codex" }] });
-    expect(forecast).toMatchObject({ confidence: "low", sourceCount: 3 });
+    expect(forecast).toMatchObject({ confidence: "low", sourceCount: 1, quality: "conflicting", prediction: { basis: "source_model", estimate24h: 19, estimate48h: 34, calibration: "experimental" } });
     expect(profile).toMatchObject({ lifetimeTokens: 42_000_000_000, peakDailyTokens: 1_200_000_000 });
     expect(usage.buckets.length).toBeGreaterThan(0);
     expect(extensions).toMatchObject({ status: "ok", entries: [{ name: "example-docs" }, { name: "example-browser" }, { name: "example-review" }, { name: "example-design@local" }] });
     expect(diagnostics).toMatchObject({ authenticated: true, profileName: "coding-plan_personal" });
     expect(reconnected).toEqual(diagnostics);
     expect(api.invoke).not.toHaveBeenCalled();
+  });
+
+  it("uses the same synthetic primary prediction in browser mode without invoking native reads", async () => {
+    vi.stubGlobal("window", {});
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-10-14T11:35:00Z"));
+      const forecast = await fetchCodexResetForecast();
+      expect(forecast).toMatchObject({
+        score: 34, fetchedAt: "2026-10-14T11:35:00.000Z", resetAnnounced: false,
+        expectedAt: null, sourceCount: 1, quality: "conflicting",
+        prediction: {
+          sourceName: "Codex Reset", basis: "source_model", estimate24h: 19, estimate48h: 34,
+          generatedAt: "2026-10-14T11:35:00.000Z", validUntil: "2026-10-16T11:35:00.000Z",
+          range48h: { lower: 21.8, upper: 48.7 }, confidence: "low", expectedWindow: null,
+          watchWindow: { startAt: "2026-10-15T03:00:00.000Z", endAt: "2026-10-15T06:00:00.000Z" },
+        },
+      });
+      expect(forecast?.sources?.filter((source) => source.included)).toHaveLength(1);
+      expect(forecast?.sources?.filter((source) => source.included === false).map((source) => source.score)).toEqual([50, 94]);
+      expect(forecast?.exclusions).toHaveLength(2);
+      expect(api.invoke).not.toHaveBeenCalled();
+      vi.setSystemTime(new Date("2026-10-15T07:00:00Z"));
+      expect(forecast?.prediction?.watchWindow?.endAt).toBe("2026-10-15T06:00:00.000Z");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the preview watch window in UTC and independent of other fixture objects", () => {
+    const first = createPreviewResetForecast(new Date("2026-10-14T01:00:00Z"));
+    const next = createPreviewResetForecast(new Date("2026-10-14T07:00:00Z"));
+    expect(first.prediction?.watchWindow).toEqual({ startAt: "2026-10-14T03:00:00.000Z", endAt: "2026-10-14T06:00:00.000Z" });
+    expect(next.prediction?.watchWindow).toEqual({ startAt: "2026-10-15T03:00:00.000Z", endAt: "2026-10-15T06:00:00.000Z" });
+    expect(first.sources?.[0].lastResetAt).toBe(first.prediction?.reportedLastResetAt);
+    expect(first.fetchedAt).toBe(first.prediction?.generatedAt);
+    expect(first.sources?.[1].lastResetAt).not.toBe(first.sources?.[0].lastResetAt);
+  });
+
+  it("keeps the live reset forecast behind the native command boundary", async () => {
+    await fetchCodexResetForecast();
+    expect(api.invoke).toHaveBeenCalledWith("get_codex_reset_forecast");
   });
 
   it("reads extensions through a native command without passing local paths", async () => {
@@ -153,6 +235,25 @@ describe("widget transitions", () => {
       contentHeight: 213.4,
       workArea: { position: { x: 0, y: 0 }, size: { width: 1920, height: 1040 } },
     });
+  });
+
+  it.each([
+    [1020, 1.5, 680],
+    [1080, 2, 540],
+    [4000, 1, 1192],
+  ])("uses physical work-area height %s at scale %s for the logical card cap", async (height, scaleFactor, expected) => {
+    api.currentMonitor.mockResolvedValueOnce({ scaleFactor, workArea: { position: { x: 0, y: 0 }, size: { width: 1920, height } } });
+    expect(await getWidgetContentHeightLimit()).toBe(expected);
+    expect(api.invoke).not.toHaveBeenCalled();
+  });
+
+  it("does not manufacture monitor limits in the browser or on a failed native query", async () => {
+    vi.stubGlobal("window", {});
+    expect(await getWidgetContentHeightLimit()).toBeNull();
+    expect(api.currentMonitor).not.toHaveBeenCalled();
+    vi.stubGlobal("window", { __TAURI_INTERNALS__: {} });
+    api.currentMonitor.mockRejectedValueOnce(new Error("monitor unavailable"));
+    expect(await getWidgetContentHeightLimit()).toBeNull();
   });
 
   it("ignores invalid content heights", async () => {

@@ -3,9 +3,11 @@ import { mkdir, writeFile } from "node:fs/promises";
 describe("Desktop presentation variants", () => {
   it("keeps all expanded layouts inside the native window across six palettes", async function () {
     this.timeout(180_000);
-    await mkdir("output/uiux-20261010/native", { recursive: true });
+    await mkdir("output/reset-prediction-20261014/native", { recursive: true });
     const original = await browser.tauri.execute(async (tauri) => tauri.core.invoke("get_preferences")) as Record<string, unknown>;
     const measurements: unknown[] = [];
+    const sizeTraces: unknown[] = [];
+    let completed = false;
     try {
       for (const expandedLayout of ["dashboard", "cockpit", "provider-bar", "stacked"]) {
         for (const colorTheme of ["aurora", "graphite", "paper"]) {
@@ -25,9 +27,33 @@ describe("Desktop presentation variants", () => {
               const card = document.querySelector<HTMLElement>(".quota-card")!;
               return card.offsetHeight <= innerHeight + 2 && card.offsetWidth <= innerWidth + 2;
             }));
+            await browser.$(".reset-outlook > summary").click();
+            await browser.$(".reset-outlook[open] .reset-prediction").waitForDisplayed();
+            let lastSize = "";
+            await browser.waitUntil(async () => {
+              const size = await browser.tauri.execute(() => {
+                const card = document.querySelector<HTMLElement>(".quota-card")!;
+                const body = document.querySelector<HTMLElement>(".reset-outlook-body")!;
+                const style = getComputedStyle(body);
+                return {
+                  viewport: [innerWidth, innerHeight], card: [card.offsetWidth, card.offsetHeight],
+                  body: [body.clientWidth, body.clientHeight, body.scrollHeight],
+                  cardScrollHeight: card.scrollHeight, pixelRatio: devicePixelRatio,
+                  bodyMaxHeight: style.maxHeight, bodyMinHeight: style.minHeight,
+                  bodyOverflow: style.overflowY, contentWidth: card.dataset.contentWidth,
+                  ledger: Array.from(card.querySelectorAll<HTMLElement>(".provider-ledger")).map((ledger) => ({ height: ledger.offsetHeight, contentHeight: ledger.scrollHeight, overflow: getComputedStyle(ledger).overflowY })),
+                };
+              });
+              const signature = JSON.stringify(size);
+              if (signature !== lastSize) {
+                sizeTraces.push({ id, ...size });
+                lastSize = signature;
+              }
+              return size.card[1] <= size.viewport[1] + 2;
+            });
             const bounds = await browser.tauri.execute(() => ({
               viewport: [innerWidth, innerHeight],
-              panels: Array.from(document.querySelectorAll<HTMLElement>(".quota-panel-header, .primary-pane, .provider-ledger, .cockpit-panel")).map(el => ({
+              panels: Array.from(document.querySelectorAll<HTMLElement>(".quota-panel-header, .primary-pane, .provider-ledger, .cockpit-panel, .reset-prediction, .reset-outlook-body")).map(el => ({
                 name: el.className, width: el.clientWidth, contentWidth: el.scrollWidth,
               })),
             }));
@@ -37,13 +63,16 @@ describe("Desktop presentation variants", () => {
               || (expandedLayout === "cockpit" && colorTheme === "aurora" && appearanceMode === "light")
               || (expandedLayout === "provider-bar" && colorTheme === "graphite" && appearanceMode === "light")
               || (expandedLayout === "stacked" && colorTheme === "paper" && appearanceMode === "light")) {
-              await browser.saveScreenshot(`output/uiux-20261010/native/${id}.png`);
+              await browser.saveScreenshot(`output/reset-prediction-20261014/native/${id}.png`);
             }
           }
         }
       }
+      completed = true;
     } finally {
-      await writeFile("output/uiux-20261010/native/expanded-matrix.json", JSON.stringify(measurements, null, 2));
+      await writeFile("output/reset-prediction-20261014/native/variants-size-trace.json", JSON.stringify(sizeTraces, null, 2));
+      if (!completed) await browser.saveScreenshot("output/reset-prediction-20261014/native/variants-size-failure.png");
+      await writeFile("output/reset-prediction-20261014/native/expanded-matrix.json", JSON.stringify(measurements, null, 2));
       await browser.tauri.execute(async (tauri, preferences) => { await tauri.core.invoke("set_preferences", { preferences }); }, original);
     }
   });

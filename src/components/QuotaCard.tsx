@@ -584,6 +584,8 @@ export const QuotaCard = memo(function QuotaCard({
   const now = useMinuteClock(snapshot.updatedAt);
   const [showCreditTip, setShowCreditTip] = useState(initialShowCreditTip);
   const [insightsOpen, setInsightsOpen] = useState(initialInsightsOpen);
+  const [resetOutlookOpen, setResetOutlookOpen] = useState(false);
+  const resetOutlookId = useId();
   const [localProviderListPreference, setLocalProviderListPreference] = useState<boolean | null>(null);
   const providerListPreference = controlledProviderListPreference === undefined ? localProviderListPreference : controlledProviderListPreference;
   const setProviderListPreference = (expanded: boolean) => {
@@ -926,8 +928,10 @@ export const QuotaCard = memo(function QuotaCard({
                   className="reset-forecast"
                   title={resetForecastTitle(language, visibleResetForecast)}
                   aria-label={resetForecastTitle(language, visibleResetForecast)}
+                  aria-controls={resetOutlookId}
+                  aria-expanded={resetOutlookOpen}
                   onMouseDown={(event) => event.stopPropagation()}
-                  onClick={() => onOpenResetForecast(visibleResetForecast.sourceUrl)}
+                  onClick={() => setResetOutlookOpen((value) => !value)}
                 >
                   <Gauge weight="bold" />
                   <span className="reset-forecast-copy">
@@ -1053,7 +1057,7 @@ export const QuotaCard = memo(function QuotaCard({
       </aside> : null}
       </>
       )}
-      {!insightsOpen && snapshot.provider === "codex" ? <ResetOutlook snapshot={snapshot} history={history} forecast={visibleResetForecast} loadStatus={resetForecastStatus} now={now} language={language} onOpenSource={onOpenResetForecast} onRefresh={onRefreshResetForecast} /> : null}
+      {!insightsOpen && snapshot.provider === "codex" ? <ResetOutlook id={resetOutlookId} open={resetOutlookOpen} onOpenChange={setResetOutlookOpen} snapshot={snapshot} history={history} forecast={visibleResetForecast} loadStatus={resetForecastStatus} now={now} language={language} onOpenSource={onOpenResetForecast} onRefresh={onRefreshResetForecast} /> : null}
       </div>
 
       <div
