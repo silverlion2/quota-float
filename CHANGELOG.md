@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.26 - 2026-10-14
+
+- feat: make reset forecasts actionable and add local usage breakdowns
+
 ## 0.3.25 - 2026-10-09
 
 - Refine typography, contrast, focus and selection feedback across compact and expanded widgets, all six palettes, settings and the synthetic design workbench.
