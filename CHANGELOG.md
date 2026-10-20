@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Use the supported macOS Intel runner pool after repeated ARM runner allocation failures, while continuing to build and verify both Universal executable architectures.
+
 - Normalize expanded window width before measuring its height, preventing a transient oversize when an edge panel starts wider than its requested layout.
 
 ## 0.3.27 - 2026-10-20

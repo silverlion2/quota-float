@@ -337,7 +337,7 @@ jobs:
     needs: [verify, create-release-ref, create-draft]
     permissions:
       contents: write
-    runs-on: macos-latest
+    runs-on: macos-15-intel
     outputs:
       release_id: ${{ needs.create-draft.outputs.release_id }}
     steps:
@@ -420,6 +420,9 @@ jobs:
           prerelease: ${{ contains(needs.verify.outputs.tag, '-') }}
           includeUpdaterJson: false
           args: "--target universal-apple-darwin --bundles app,dmg --config src-tauri/tauri.release.conf.json"
+      - name: Verify both Universal executable architectures
+        shell: bash
+        run: bash scripts/verify-macos-universal.sh
       - name: Verify Developer ID signature and notarization when configured
         shell: bash
         env:

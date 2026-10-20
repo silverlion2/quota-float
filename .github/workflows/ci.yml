@@ -64,7 +64,7 @@ jobs:
             build-command: >-
               npm run tauri -- build --config src-tauri/tauri.ci.conf.json
             artifact-path: src-tauri/target/release/bundle/**
-          - os: macos-latest
+          - os: macos-15-intel
             artifact-name: quota-float-macos-universal-unsigned
             build-command: >-
               npm run tauri -- build --target universal-apple-darwin --config src-tauri/tauri.ci.conf.json
@@ -117,6 +117,10 @@ jobs:
           retention-days: 7
       - run: ${{ matrix.build-command }}
         if: needs.changes.outputs.scope != 'docs'
+      - name: Verify both Universal executable architectures
+        if: needs.changes.outputs.scope != 'docs' && runner.os == 'macOS'
+        shell: bash
+        run: bash scripts/verify-macos-universal.sh
       - name: Verify Windows artifacts with Microsoft Defender
         if: needs.changes.outputs.scope != 'docs' && (runner.os == 'Windows')
         shell: powershell
