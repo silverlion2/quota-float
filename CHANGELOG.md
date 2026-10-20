@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.28 - 2026-10-20
 
 - Use the supported macOS Intel runner pool after repeated ARM runner allocation failures, while continuing to build and verify both Universal executable architectures.
 
