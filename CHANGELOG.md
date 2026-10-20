@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.27 - 2026-10-20
 
 - Add a personal weekly quota burndown to the reset outlook, with recorded capture times, keyboard and pointer inspection, and a separate even-use reference toward the provider-reported personal reset.
 - Keep gaps, refills, stale data and reset changes out of the continuous observed segment. Explicit subscription plan changes now also reset the numeric consumption estimate.
