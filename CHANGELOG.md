@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Correct the macOS Universal architecture check's input ordering and exercise the actual Apple tool with dual-architecture and rejected single-architecture fixtures before native compilation.
+- Include the personal weekly quota burndown and expanded-window sizing fix from the unpublished v0.3.27 and v0.3.28 candidates.
+
 ## 0.3.28 - 2026-10-20
 
 - Use the supported macOS Intel runner pool after repeated ARM runner allocation failures, while continuing to build and verify both Universal executable architectures.

@@ -118,6 +118,18 @@ describe("release automation", () => {
     expect(releaseScript).toContain("duplicate cargo check is skipped");
   });
 
+  it("tests the real macOS architecture gate before expensive native setup", () => {
+    const ci = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8").split("\n  desktop:\n")[1];
+    const release = readFileSync(new URL("../.github/workflows/release.yml", import.meta.url), "utf8")
+      .split("\n  publish-macos:\n")[1].split("\n  upgrade-smoke:")[0];
+    for (const job of [ci, release]) {
+      const selftest = job.indexOf("bash scripts/verify-macos-universal-selftest.sh");
+      expect(selftest).toBeGreaterThan(job.indexOf("actions/checkout@"));
+      expect(selftest).toBeLessThan(job.indexOf("dtolnay/rust-toolchain@"));
+    }
+    expect(ci).toContain("if: needs.changes.outputs.scope != 'docs' && runner.os == 'macOS'");
+  });
+
   it("blocks public release publishing until Defender accepts the exact Windows artifacts", () => {
     const releaseWorkflow = readFileSync(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
     const ciWorkflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
