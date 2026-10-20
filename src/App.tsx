@@ -873,16 +873,16 @@ export default function App() {
       // Use the layout's requested window width, not the current viewport width:
       // a narrow native viewport must still be able to grow for an open dialog.
       const contentWidth = Number(card.dataset.contentWidth) || undefined;
-      if (contentWidth && contentWidth > window.innerWidth + 1) {
+      if (contentWidth && Math.abs(contentWidth - window.innerWidth) > 1) {
         // A work area narrower than the requested layout makes the exact width
-        // unreachable. Measure once at the native-clamped width after the grow
+        // unreachable. Measure once at the native-clamped width after the width
         // request instead of retrying forever.
         if (widthRequest?.width !== contentWidth || !widthRequest.complete) {
           if (widthRequest?.width === contentWidth) return;
           const request = { width: contentWidth, complete: false };
           widthRequest = request;
-          // Preserve the last stable height while widening. Measuring the newly
-          // revealed content in the old narrow viewport produces a transient,
+          // Preserve the last stable height while normalizing width. Measuring
+          // content in the previous viewport can produce a transient,
           // over-tall window and moves an edge-anchored panel twice.
           const preservedHeight = lastHeight || Math.max(1, window.innerHeight - 8);
           void resizeWidgetToContent(preservedHeight, contentWidth)
@@ -896,6 +896,12 @@ export default function App() {
               widthRequest = undefined;
               setOperationError("Widget resize failed.");
             });
+          return;
+        }
+        // A shrink is reachable: wait for WebView2 to expose the requested
+        // viewport before measuring, even if the native command already resolved.
+        if ("__TAURI_INTERNALS__" in window && window.innerWidth > contentWidth + 1) {
+          scheduleSync();
           return;
         }
       } else {

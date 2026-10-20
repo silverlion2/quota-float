@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Normalize expanded window width before measuring its height, preventing a transient oversize when an edge panel starts wider than its requested layout.
+
 ## 0.3.27 - 2026-10-20
 
 - Add a personal weekly quota burndown to the reset outlook, with recorded capture times, keyboard and pointer inspection, and a separate even-use reference toward the provider-reported personal reset.

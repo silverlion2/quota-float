@@ -21,3 +21,9 @@ This is an independent implementation using Quota Float's existing data and visu
 Helper and component regressions cover the sample boundaries, reference line and keyboard inspection. The desktop fast handoff and platform packaging gates remain required; their actual results belong in the release receipt. Automated packaging does not establish real-account accuracy or replace physical multi-monitor and Mac visual checks.
 
 Rollback uses the prior public desktop installer and existing recovery flow. This feature adds no persisted settings or data schema.
+
+## Native release regression
+
+The first source CI caught a right-edge expansion overshoot: a temporary 560px viewport retained a 462px card height before narrowing to the requested 552px viewport and 452px card. The grow-only width guard allowed that stale height to reach native resizing (470px, then 460px). The pending v0.3.27 release was cancelled before platform packaging; its draft and tag were retained.
+
+The follow-up normalizes oversized as well as undersized viewports before height measurement, waits for the narrower viewport to be observable after the native command resolves, and retains the existing stable-frame and narrow-monitor-clamp behavior. The native E2E overshoot assertion remains unchanged. Final validation and publication evidence belong in the release receipt.

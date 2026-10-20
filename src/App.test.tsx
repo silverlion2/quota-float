@@ -71,6 +71,7 @@ vi.mock("./lib/bridge", () => {
     getAutostartEnabled: vi.fn(async () => false),
     getPreferences: vi.fn(async () => ({ ...(testState.initialPreferences ?? DEFAULT_WIDGET_PREFERENCES), language: "en" })),
     getRuntimeState: vi.fn(async () => structuredClone(EMPTY_RUNTIME_STATE)),
+    getWidgetContentHeightLimit: vi.fn(async () => 1000),
     getVolcengineDiagnostics: vi.fn(async () => null),
     importAppData: vi.fn(async () => null),
     listenDesktopEvents: vi.fn(async (handlers: { onShow?: () => void }) => {
@@ -135,9 +136,11 @@ import App from "./App";
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 beforeEach(() => {
+  vi.spyOn(window, "innerWidth", "get").mockReturnValue(400);
   testState.updateCheck = deferred<null>();
   testState.exportRequest = null;
   testState.exportCalls = 0;
@@ -253,6 +256,63 @@ describe("App modal and preference lifecycle", () => {
     expect(resizeWidgetToContent).not.toHaveBeenCalled();
     act(() => { for (const frame of frames.splice(0)) frame(80); });
     expect(resizeWidgetToContent).toHaveBeenCalledExactlyOnceWith(452, 400);
+  });
+
+  it("normalizes an oversized expansion viewport before measuring even after the native reply", async () => {
+    vi.stubGlobal("__TAURI_INTERNALS__", {});
+    vi.mocked(resizeWidgetToContent).mockClear();
+    testState.widgetExpandRequest = deferred<void>();
+    let viewportWidth = 408;
+    let measuredHeight = 462;
+    const frames: FrameRequestCallback[] = [];
+    const widthRequest = deferred<void>();
+    vi.spyOn(window, "innerWidth", "get").mockImplementation(() => viewportWidth);
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(() => measuredHeight);
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(392);
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => { frames.push(callback); return frames.length; });
+    vi.mocked(resizeWidgetToContent).mockImplementationOnce(() => widthRequest.promise);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Expand widget" }));
+    await act(async () => { testState.widgetExpandRequest!.resolve(); });
+    act(() => { for (const frame of frames.splice(0)) frame(16); });
+    expect(resizeWidgetToContent).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(resizeWidgetToContent).mock.calls[0][1]).toBe(400);
+    expect(vi.mocked(resizeWidgetToContent).mock.calls[0][0]).not.toBe(462);
+    await act(async () => { widthRequest.resolve(); });
+    for (const time of [32, 48, 64, 80]) {
+      act(() => { for (const frame of frames.splice(0)) frame(time); });
+    }
+    expect(resizeWidgetToContent).toHaveBeenCalledTimes(1);
+    viewportWidth = 400;
+    measuredHeight = 452;
+    for (const time of [96, 112, 128]) {
+      act(() => { for (const frame of frames.splice(0)) frame(time); });
+    }
+    expect(resizeWidgetToContent).toHaveBeenLastCalledWith(452, 400);
+    expect(resizeWidgetToContent).toHaveBeenCalledTimes(2);
+  });
+
+  it("settles browser preview measurements when native resizing is a no-op", async () => {
+    vi.mocked(resizeWidgetToContent).mockClear();
+    testState.widgetExpandRequest = deferred<void>();
+    const frames = new Map<number, FrameRequestCallback>();
+    let frameId = 0;
+    vi.spyOn(window, "innerWidth", "get").mockReturnValue(1280);
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(452);
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => { frames.set(++frameId, callback); return frameId; });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => { frames.delete(id); });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Expand widget" }));
+    await act(async () => { testState.widgetExpandRequest!.resolve(); });
+    for (let index = 0; index < 8; index += 1) {
+      await act(async () => {
+        const pending = [...frames.values()];
+        frames.clear();
+        pending.forEach((frame) => frame(index * 16));
+      });
+    }
+    expect(resizeWidgetToContent).toHaveBeenLastCalledWith(452, 400);
+    expect(frames.size).toBe(0);
   });
 
   it("widens before measuring new content and accepts a native-clamped width", async () => {
