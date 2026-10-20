@@ -3,6 +3,7 @@ import type { Language, ProviderSnapshot, QuotaHistoryPoint, ResetForecast } fro
 import { calculateResetConsumptionPlan } from "../lib/resetConsumptionPlan";
 import { activeResetWindow, freshResetForecast, resetForecastAdvice, resetPrediction, resetSignalSummary, type ResetForecastLoadStatus } from "../lib/resetForecast";
 import { formatDateTime } from "../lib/format";
+import { QuotaBurndown } from "./QuotaBurndown";
 
 interface Props {
   snapshot: ProviderSnapshot;
@@ -30,11 +31,11 @@ export function ResetOutlook({ snapshot, history, forecast: incomingForecast, no
     : loadStatus === "loading" ? en ? "Loading public signals…" : "正在获取公开信号…"
     : en ? "No fresh public signal" : "暂无新鲜公开信号";
   const observationNotes = {
-    insufficient_history: en ? "Recent continuous history is insufficient for a burn estimate. Need 3 samples spanning 30 minutes." : "近期连续样本不足；至少需要跨 30 分钟的 3 个采样。",
-    stale_history: en ? "Stale or unavailable samples. Waiting for fresh continuous data." : "采样过期或不可用，等待新连续数据。",
-    ambiguous_history: en ? "Weekly window changed or is unclear. Waiting for matching samples." : "周周期变化或不明确，等待匹配采样。",
+    insufficient_history: en ? "Usage estimate needs 3 continuous samples spanning 30 minutes." : "消耗估计需跨 30 分钟的 3 个连续采样。",
+    stale_history: en ? "Samples unavailable or stale; waiting for fresh data." : "采样不可用或过期，等待新数据。",
+    ambiguous_history: en ? "Weekly window unclear or changed; collecting samples." : "周周期不明确或变化，积累新采样。",
     refill: en ? "Quota refilled. Collecting new samples." : "额度已回补，积累新采样。",
-    gap: en ? "Sampling gap exceeded one hour. Collecting continuous samples." : "采样间断超过一小时，等待连续采样。",
+    gap: en ? "Gap exceeded one hour; collecting samples." : "采样间断超过一小时，积累新采样。",
     observed: "",
   };
   const number = (value: number) => new Intl.NumberFormat(en ? "en-US" : "zh-CN", { maximumFractionDigits: 2 }).format(value);
@@ -84,7 +85,7 @@ export function ResetOutlook({ snapshot, history, forecast: incomingForecast, no
       </details>
       <h4>{en ? "Personal consumption plan" : "个人消耗计划"}</h4>
       {plan ? <>
-        <p>{en ? "To use the remaining weekly quota by your personal reset:" : "在个人重置前用完剩余周额度："}</p>
+        <QuotaBurndown plan={plan} resetsAt={snapshot.weeklyWindow!.resetsAt!} language={language} />
         <dl>
           <div><dt>{en ? "Remaining / time left" : "剩余额度 / 剩余时间"}</dt><dd>{number(plan.remainingPercent)}% / {number(plan.hoursUntilReset)}h</dd></div>
           <div><dt>{en ? "Target average" : "目标平均速度"}</dt><dd>{rate(plan.targetPercentPerHour)}</dd></div>
@@ -95,10 +96,10 @@ export function ResetOutlook({ snapshot, history, forecast: incomingForecast, no
           </> : null}
         </dl>
         <p className="reset-outlook-note">{plan.observedBurnPercentPerHour !== null
-          ? en ? `Based on ${plan.sampleCount} samples over ${number(plan.sampleSpanMinutes)} minutes, including idle time. Assumes this average continues.` : `基于最近 ${number(plan.sampleSpanMinutes)} 分钟的 ${plan.sampleCount} 个采样，包含空闲时间；仅在此平均速度持续时成立。`
+          ? en ? `${plan.sampleCount} samples / ${number(plan.sampleSpanMinutes)} min, including idle time. Assumes the average continues.` : `${number(plan.sampleSpanMinutes)} 分钟 / ${plan.sampleCount} 个采样，含空闲时间；假设平均速度持续。`
           : observationNotes[plan.observationStatus]}</p>
-        <p className="reset-outlook-note">{en ? "pp/h = percentage points of weekly quota per hour. Short-window limits may interrupt usage." : "速度单位为周额度百分点/小时；短周期限额仍可能使消耗中断。"}</p>
-      </> : <p>{en ? "A fresh weekly quota and a future personal reset time are needed." : "需要最新周额度和有效的未来个人重置时间。"}</p>}
+        <p className="reset-outlook-note">{en ? "pp/h: weekly percentage points/hour. Short-window limits still apply." : "速度：周额度百分点/小时；仍受短周期限额约束。"}</p>
+      </> : <p>{en ? "Needs fresh weekly quota and a future personal reset." : "需要最新周额度及未来个人重置时间。"}</p>}
     </div>
   </details>;
 }

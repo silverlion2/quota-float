@@ -28,7 +28,7 @@ describe("reset consumption outlook", () => {
     expect(screen.getByText("2 pp/h")).toBeInTheDocument();
     expect(screen.getByText("48h reference · 42/100")).toBeInTheDocument();
     expect(screen.queryByText("67/100")).not.toBeInTheDocument();
-    expect(screen.getByText(/Recent continuous history is insufficient/)).toBeInTheDocument();
+    expect(screen.getByText(/Usage estimate needs 3 continuous samples/)).toBeInTheDocument();
     fireEvent.click(screen.getByText("Why this forecast? View sources"));
     fireEvent.click(screen.getByRole("button", { name: "Codex Reset ↗" }));
     expect(open).toHaveBeenCalledWith("https://codex-reset.com/");
@@ -37,8 +37,8 @@ describe("reset consumption outlook", () => {
     const history = [50, 49, 48].map((metric, index) => ({ provider: "codex" as const, capturedAt: new Date(now.getTime() - (2 - index) * 30 * 60_000).toISOString(), metric, metricKind: "percent" as const, status: "ok" as const, resetsAt: snapshot.weeklyWindow!.resetsAt }));
     render(<ResetOutlook snapshot={snapshot} history={history} forecast={null} now={now} language="en" onOpenSource={vi.fn()} />);
     expect(screen.getByText("Observed average")).toBeInTheDocument();
-    expect(screen.getByText("0%")).toBeInTheDocument();
-    expect(screen.getByText(/3 samples over 60 minutes/)).toBeInTheDocument();
+    expect(screen.getByText("0%", { selector: "dd" })).toBeInTheDocument();
+    expect(screen.getByText(/3 samples \/ 60 min/)).toBeInTheDocument();
     expect(screen.getByText("No fresh public signal")).toBeInTheDocument();
   });
   it.each(["stale", "signed_out", "unavailable"] as const)("retains public evidence but no consumption target for a %s provider", (status) => {

@@ -27,7 +27,8 @@ export interface ResetConsumptionPlan {
   sampleCount: number;
   sampleSpanMinutes: number;
   observationStatus: ResetConsumptionObservationStatus;
-  observationReason: string | null;
+  /** Actual observations from the validated continuous segment. */
+  points: Array<{ capturedAt: string; remainingPercent: number }>;
 }
 
 interface Sample {
@@ -57,7 +58,6 @@ function planWithObservation(
   hoursUntilReset: number,
   targetPercentPerHour: number,
   observationStatus: ResetConsumptionObservationStatus,
-  observationReason: string | null,
   samples: Sample[],
   observedBurnPercentPerHour: number | null,
 ): ResetConsumptionPlan {
@@ -81,7 +81,7 @@ function planWithObservation(
     sampleCount: samples.length,
     sampleSpanMinutes,
     observationStatus,
-    observationReason,
+    points: samples.map(({ capturedAt, remainingPercent }) => ({ capturedAt: new Date(capturedAt).toISOString(), remainingPercent })),
   };
 }
 
@@ -119,6 +119,14 @@ export function calculateResetConsumptionPlan(
   const hoursUntilReset = (resetAt - nowMs) / HOUR_MS;
   const targetPercentPerHour = remainingPercent / hoursUntilReset;
   const historyStart = nowMs - MAX_HISTORY_AGE_MS;
+  // An explicitly different known plan interrupts comparability even when the
+  // provider preserves the same reset timestamp. Legacy unknown plans do not.
+  const planBoundary = history.reduce((boundary, point) => {
+    const capturedAt = finiteDate(point.capturedAt);
+    return point.provider === snapshot.provider && point.plan != null && snapshot.plan != null
+      && point.plan !== snapshot.plan && capturedAt !== null && capturedAt <= updatedAt
+      ? Math.max(boundary, capturedAt) : boundary;
+  }, Number.NEGATIVE_INFINITY);
   const cycleStart = weeklyWindow && Number.isFinite(weeklyWindow.windowSeconds) && weeklyWindow.windowSeconds > 0
     ? resetAt - weeklyWindow.windowSeconds * 1000
     : null;
@@ -129,6 +137,7 @@ export function calculateResetConsumptionPlan(
       return capturedAt === null
         || capturedAt > updatedAt
         || capturedAt < historyStart
+        || capturedAt <= planBoundary
         || (cycleStart !== null && capturedAt < cycleStart)
         ? null
         : {
@@ -148,23 +157,19 @@ export function calculateResetConsumptionPlan(
     if (previous?.capturedAt === sample.capturedAt) deduplicatedSamples[deduplicatedSamples.length - 1] = sample;
     else deduplicatedSamples.push(sample);
   }
-  if (updatedAt >= historyStart && validPercent(remainingPercent)) {
-    const currentSample: Sample = {
-      capturedAt: updatedAt,
-      remainingPercent,
-      resetsAt: resetAt,
-      metricKind: "percent",
-      status: "ok",
-    };
-    const existingIndex = deduplicatedSamples.findIndex((sample) => sample.capturedAt === updatedAt);
-    if (existingIndex >= 0) deduplicatedSamples[existingIndex] = currentSample;
-    else deduplicatedSamples.push(currentSample);
-    deduplicatedSamples.sort((left, right) => left.capturedAt - right.capturedAt);
-  }
+  // History is already sorted and bounded by updatedAt. The validated fresh
+  // snapshot is authoritative at that timestamp and always ends the segment.
+  if (deduplicatedSamples.at(-1)?.capturedAt === updatedAt) deduplicatedSamples.pop();
+  deduplicatedSamples.push({
+    capturedAt: updatedAt,
+    remainingPercent,
+    resetsAt: resetAt,
+    metricKind: "percent",
+    status: "ok",
+  });
 
   let segment: Sample[] = [];
   let lastBoundary: ResetConsumptionObservationStatus = "insufficient_history";
-  let lastBoundaryReason = "Need at least 3 recent weekly samples spanning 30 minutes.";
   let previous: Sample | null = null;
 
   for (const sample of deduplicatedSamples) {
@@ -175,16 +180,7 @@ export function calculateResetConsumptionPlan(
     if (!isWeeklySample) {
       segment = [];
       previous = null;
-      if (sample.status !== "ok") {
-        lastBoundary = "stale_history";
-        lastBoundaryReason = "Recent history includes stale or unavailable quota data.";
-      } else if (sample.metricKind !== "percent" || !validPercent(sample.remainingPercent)) {
-        lastBoundary = "ambiguous_history";
-        lastBoundaryReason = "Recent history does not unambiguously represent a weekly percentage.";
-      } else {
-        lastBoundary = "ambiguous_history";
-        lastBoundaryReason = "The weekly reset identity changed in recent history.";
-      }
+      lastBoundary = sample.status === "ok" ? "ambiguous_history" : "stale_history";
       continue;
     }
 
@@ -193,42 +189,16 @@ export function calculateResetConsumptionPlan(
       if (gap > MAX_SAMPLE_GAP_MS) {
         segment = [];
         lastBoundary = "gap";
-        lastBoundaryReason = "Recent weekly history has a gap longer than 60 minutes.";
       } else if (sample.remainingPercent > previous.remainingPercent + REFILL_TOLERANCE_PERCENT) {
         segment = [];
         lastBoundary = "refill";
-        lastBoundaryReason = "A quota refill larger than 0.5 percentage points interrupted the burn history.";
       }
     }
     segment.push(sample);
     previous = sample;
   }
 
-  const latest = segment.at(-1);
-  if (latest === undefined) {
-    return planWithObservation(
-      snapshot,
-      remainingPercent,
-      hoursUntilReset,
-      targetPercentPerHour,
-      lastBoundary,
-      lastBoundaryReason,
-      segment,
-      null,
-    );
-  }
-  if (nowMs - latest.capturedAt > MAX_LATEST_AGE_MS) {
-    return planWithObservation(
-      snapshot,
-      remainingPercent,
-      hoursUntilReset,
-      targetPercentPerHour,
-      "stale_history",
-      "The latest weekly history sample is older than 15 minutes.",
-      segment,
-      null,
-    );
-  }
+  const latest = segment.at(-1)!;
   const spanMs = segment.length >= 2 ? segment.at(-1)!.capturedAt - segment[0].capturedAt : 0;
   if (segment.length < MIN_SAMPLE_COUNT || spanMs < MIN_SAMPLE_SPAN_MS) {
     return planWithObservation(
@@ -237,7 +207,6 @@ export function calculateResetConsumptionPlan(
       hoursUntilReset,
       targetPercentPerHour,
       lastBoundary,
-      lastBoundaryReason,
       segment,
       null,
     );
@@ -252,12 +221,11 @@ export function calculateResetConsumptionPlan(
       hoursUntilReset,
       targetPercentPerHour,
       "insufficient_history",
-      "Recent weekly history does not show a positive burn rate.",
       segment,
       null,
     );
   }
-  return planWithObservation(snapshot, remainingPercent, hoursUntilReset, targetPercentPerHour, "observed", null, segment, burn);
+  return planWithObservation(snapshot, remainingPercent, hoursUntilReset, targetPercentPerHour, "observed", segment, burn);
 }
 
 export const buildResetConsumptionPlan = calculateResetConsumptionPlan;

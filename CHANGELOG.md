@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Add a personal weekly quota burndown to the reset outlook, with recorded capture times, keyboard and pointer inspection, and a separate even-use reference toward the provider-reported personal reset.
+- Keep gaps, refills, stale data and reset changes out of the continuous observed segment. Explicit subscription plan changes now also reset the numeric consumption estimate.
+- Zoom the chart to recent recorded samples so it remains readable when the personal reset is days away; public reset predictions never alter this guide.
+
 ## 0.3.26 - 2026-10-14
 
 - feat: make reset forecasts actionable and add local usage breakdowns

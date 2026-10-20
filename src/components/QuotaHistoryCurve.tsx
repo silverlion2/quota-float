@@ -17,6 +17,7 @@ interface Props {
   hours?: number;
   interactive?: boolean;
   ariaLabel?: string;
+  referenceGuide?: { startPercent: number; endPercent: number };
 }
 
 const VIEWBOX_WIDTH = 220;
@@ -57,6 +58,7 @@ export function QuotaHistoryCurve({
   hours = 24,
   interactive = true,
   ariaLabel,
+  referenceGuide,
 }: Props) {
   const gradientId = `quota-history-${useId().replaceAll(":", "")}`;
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
@@ -85,8 +87,9 @@ export function QuotaHistoryCurve({
   const nearestLookup = useMemo(() => geometry?.points
     .map((point, index) => ({ x: point.x, index }))
     .sort((left, right) => left.x - right.x || left.index - right.index) ?? [], [geometry]);
-  const activePoint = activeIndex === null ? null : points[activeIndex] ?? null;
-  const activeGeometry = activeIndex === null ? null : geometry?.points[activeIndex] ?? null;
+  const effectiveActiveIndex = activeIndex === null || points.length === 0 ? null : Math.min(activeIndex, points.length - 1);
+  const activePoint = effectiveActiveIndex === null ? null : points[effectiveActiveIndex];
+  const activeGeometry = effectiveActiveIndex === null ? null : geometry?.points[effectiveActiveIndex] ?? null;
   const tooltip = useMemo(() => activePoint ? formatPoint(activePoint, language) : null, [activePoint, language]);
   const resolvedLabel = ariaLabel ?? (language === "en"
     ? `${hours}-hour quota remaining curve`
@@ -106,7 +109,7 @@ export function QuotaHistoryCurve({
     event.preventDefault();
     if (event.key === "Home") return setActiveIndex(0);
     if (event.key === "End") return setActiveIndex(points.length - 1);
-    const current = activeIndex ?? points.length - 1;
+    const current = effectiveActiveIndex ?? points.length - 1;
     setActiveIndex(event.key === "ArrowLeft"
       ? Math.max(0, current - 1)
       : Math.min(points.length - 1, current + 1));
@@ -136,6 +139,8 @@ export function QuotaHistoryCurve({
           </linearGradient>
         </defs>
         {[10, 38, 66].map((y) => <line className="quota-history-grid" key={y} x1="4" x2="216" y1={y} y2={y} />)}
+        {referenceGuide && geometry && points.length > 1 ? <line className="quota-history-crosshair quota-burndown-guide" x1="4" x2="216"
+          y1={66 - referenceGuide.startPercent * .56} y2={66 - referenceGuide.endPercent * .56} /> : null}
         {geometry && renderedGeometry ? <>
           <path className="quota-history-area" d={renderedGeometry.area} style={{ fill: `url(#${gradientId})` }} />
           <path className="quota-history-line" d={renderedGeometry.line} />

@@ -44,6 +44,7 @@ v0.3.15 完成 318 项前端、102 项 Windows Rust 和 10 项 Windows 原生测
 | Float/Ring | 原有吸附行为 | 不使用 Bar 磁吸结果，保持原窗口吸附路径 | Rust 几何回归、组件测试 |
 | 数据 | TRAE credits | 各 entitlement pack 独立计算后汇总，不相互抵扣 | Rust 解析器回归测试 |
 | 数据 | 正常/过期/登出/缺字段 | 不崩溃、不猜测额度、保留 last-known-good 并安全标记 | Provider/快照单元测试 |
+| 个人周额度消耗图 | 单点/连续采样、断档、回补、失败、周期/套餐变更、键盘查看 | 仅绘制当前个人周期最近 6 小时连续样本；已知套餐变更同步截断图表和速度估计；虚线只表示向个人重置归零的匀速参考；过期不显示有效图表 | `quotaBurndown`、`resetConsumptionPlan`、`QuotaBurndown` 与 `ResetOutlook` 回归；[设计边界](QUOTA-BURNDOWN-2026-10-21.md) |
 | Codex 全局重置展望 | 三源正常、部分失败、过期、异常窗口、分歧、第三方公告 | 仅纳入有效的 48h 数据；慢源不抹掉快源；展示来源信息；公开信号和公告均不改变个人规划，旧预测基线也不再放宽预算 | Rust `reset_forecast`、TypeScript `quotaPace` 与组件测试；本轮实际结果见系统审查记录 |
 | Provider registry | 并发、超时、临时失败与定向重试 | 固定顺序返回；慢平台被限制；只重试临时失败组；健康平台不重复请求 | Rust registry 单元测试、每周 Windows/macOS compatibility workflow |
 | Provider 出口契约 | 错误身份/状态、NaN/越界额度、超长文本/列表、无额度 `ok`、含 token/路径/原始 JSON 的诊断 | registry 覆盖身份；状态 allowlist；数值有限且比例限制到 `0…100`；载荷限界；失败清空额度；敏感诊断替换为固定安全提示 | 所有 provider descriptor 的 Rust 共享 conformance 测试 |

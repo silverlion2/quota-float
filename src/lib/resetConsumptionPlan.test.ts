@@ -37,6 +37,23 @@ function point(
 }
 
 describe("calculateResetConsumptionPlan", () => {
+  it("starts a new observation segment after an explicit plan change with the same reset", () => {
+    const plan = calculateResetConsumptionPlan(snapshot(), [
+      point(90, 90, { plan: "Pro" }), point(60, 80, { plan: "Other" }), point(30, 66, { plan: "Pro" }),
+    ], now)!;
+    expect(plan.sampleCount).toBe(2);
+    expect(plan.observedBurnPercentPerHour).toBeNull();
+  });
+
+  it("preserves observations from unknown legacy plans and ignores future or other-provider plan changes", () => {
+    const plan = calculateResetConsumptionPlan(snapshot(), [
+      point(60, 72), point(30, 66, { plan: null }),
+      point(-10, 55, { plan: "Other" }), point(10, 64, { provider: "claude", plan: "Other" }),
+    ], now)!;
+    expect(plan.sampleCount).toBe(3);
+    expect(plan.observedBurnPercentPerHour).toBe(12);
+  });
+
   it("returns the weekly target and an observed burn forecast", () => {
     const plan = calculateResetConsumptionPlan(snapshot(), [point(60, 72), point(30, 66), point(0, 60)], now);
     expect(plan).toMatchObject({

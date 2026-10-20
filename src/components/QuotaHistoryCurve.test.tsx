@@ -19,6 +19,32 @@ function movePointer(element: Element, clientX: number) {
 }
 
 describe("QuotaHistoryCurve", () => {
+  it("keeps focused inspection valid when samples shrink without another focus event", () => {
+    const props = { language: "en" as const, variant: "insights" as const, now: new Date("2026-08-08T08:00:00Z") };
+    const { rerender } = render(<QuotaHistoryCurve {...props} points={points} />);
+    const curve = screen.getByRole("img");
+    fireEvent.focus(curve);
+    fireEvent.keyDown(curve, { key: "End" });
+    expect(within(curve).getByRole("status")).toHaveTextContent("70%");
+    rerender(<QuotaHistoryCurve {...props} points={[points[0]]} />);
+    expect(within(curve).getByRole("status")).toHaveTextContent("90%");
+    fireEvent.keyDown(curve, { key: "ArrowLeft" });
+    expect(within(curve).getByRole("status")).toHaveTextContent("90%");
+    rerender(<QuotaHistoryCurve {...props} points={[]} />);
+    expect(within(curve).queryByRole("status")).not.toBeInTheDocument();
+  });
+  it("adds an optional even-use guide without changing recorded geometry and omits it for a single point", () => {
+    const props = { points, language: "en" as const, variant: "insights" as const, now: new Date("2026-08-08T08:00:00Z") };
+    const { container, rerender } = render(<QuotaHistoryCurve {...props} />);
+    const originalPath = container.querySelector(".quota-history-line")?.getAttribute("d");
+    expect(container.querySelector(".quota-burndown-guide")).toBeNull();
+    rerender(<QuotaHistoryCurve {...props} referenceGuide={{ startPercent: 90, endPercent: 50 }} />);
+    expect(container.querySelector(".quota-burndown-guide")).toHaveAttribute("y1", String(66 - 90 * .56));
+    expect(container.querySelector(".quota-burndown-guide")).toHaveAttribute("y2", String(66 - 50 * .56));
+    expect(container.querySelector(".quota-history-line")).toHaveAttribute("d", originalPath);
+    rerender(<QuotaHistoryCurve {...props} points={[points[0]]} referenceGuide={{ startPercent: 90, endPercent: 50 }} />);
+    expect(container.querySelector(".quota-burndown-guide")).toBeNull();
+  });
   it("shows the nearest time point and remaining percentage on pointer hover", () => {
     render(<QuotaHistoryCurve points={points} language="en" variant="insights" now={new Date("2026-08-08T08:00:00Z")} />);
     const curve = screen.getByRole("img", { name: "24-hour quota remaining curve" });
