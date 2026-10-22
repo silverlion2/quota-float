@@ -2,6 +2,14 @@
 
 Quota Float is used beside an editor throughout the working day. Its compact view should remain quiet; opening a control should give immediate feedback and readable detail. Preserve the existing Aurora, Graphite, and Paper identities and their light/dark appearances.
 
+## Precision instrument direction
+
+The quota reading leads, followed by the reset time and pace, then provider context. Navigation and supporting labels recede through weight and surface contrast instead of shrinking their hit targets. Supporting labels use 500 weight; readings use 550–650 emphasis according to metric size. Use the system Text family, including Segoe UI on Windows and explicit Chinese sans fallbacks, with tabular figures for stable numeric alignment. Insights headings, mixed-language metrics and controls share that family rather than falling back from a Latin monospace font.
+
+Aurora retains a soft ambient field, Graphite uses a solid workspace surface, and Paper uses warm neutral material. Provider rows and charts do not add a separate glow or another heavy shadow. Dialog titles start with the task name; repeated English brand/channel kickers are unnecessary when the title and subtitle already carry that context.
+
+This refinement draws on [Linear's interface refresh](https://linear.app/now/behind-the-latest-design-refresh), [Raycast's title/subtitle/accessory hierarchy](https://developers.raycast.com/api-reference/user-interface/list), and [CodexBar's inspectable quota UI](https://github.com/steipete/CodexBar/blob/main/docs/ui.md). These inform hierarchy and state clarity; Quota Float retains its own palettes and desktop geometry.
+
 ## Surfaces and typography
 
 - Main quota surfaces retain their selected ambient palette. Control Center, diagnostics, updates, and Insights use the same semantic `--ui-*` tokens.
@@ -36,3 +44,5 @@ The existing 650ms Bar/Bottleneck hover dwell is deliberate accidental-expansion
 ## Verification
 
 Run the desktop SOP gates and the native E2E suite. The suite measures repeated modal click-to-paint samples, checks focus restoration, verifies light/dark dialog bounds and horizontal overflow, and captures native screenshots. Treat these measurements as machine-specific evidence, not a universal FPS guarantee. CI packaging and Windows tests do not substitute for a real macOS visual smoke test.
+
+The expanded native matrix is configured to capture all 24 layout/palette combinations; completed-run evidence belongs in the verification receipt. DEV-only `?preview=shot&shot=control-center&theme=paper&appearance=light&lang=zh` exposes the real settings component with synthetic in-memory preferences and history, allowing every tab to be inspected without reading credentials or writing native settings.

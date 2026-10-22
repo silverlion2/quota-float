@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Refresh the full desktop visual system with clearer quota readings, quieter labels, consistent dialog surfaces and less chart and panel glow across Aurora, Graphite and Paper in both appearances.
+- Simplify repeated dialog branding, use native system text typography, and keep provider status, keyboard focus, reduced motion and native window geometry intact.
+- Add an interactive synthetic Control Center preview and capture every expanded layout/palette combination in the native visual matrix; reduce production JavaScript and CSS without increasing bundle budgets.
+- Update the development build and test tools to patched Vite 7.3.7 and Vitest 4.1.12, resolving the dependency audit advisories found during release verification.
+
 ## 0.3.29 - 2026-10-20
 
 - Correct the macOS Universal architecture check's input ordering and exercise the actual Apple tool with dual-architecture and rejected single-architecture fixtures before native compilation.

@@ -1,4 +1,4 @@
-import { ArrowClockwise, ArrowCounterClockwise, Bell, ChartLineUp, CheckCircle, ClockCounterClockwise, DownloadSimple, Eye, EyeSlash, GearSix, Heartbeat, Layout, ListStar, Monitor, Moon, Plus, Sun, Trash, UploadSimple, X } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowCounterClockwise, Bell, CheckCircle, ClockCounterClockwise, DownloadSimple, Eye, EyeSlash, GearSix, Heartbeat, Layout, Monitor, Moon, Plus, Sun, Trash, UploadSimple, X } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
 import { useModalDialog } from "../lib/modalDialog";
 import { DEFAULT_PROVIDER_ORDER, PROVIDER_CATALOG } from "../lib/providers";
@@ -270,7 +270,7 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
   return (
     <section ref={dialogRef} className="control-center" role="dialog" aria-modal="true" aria-labelledby="control-center-title" tabIndex={-1} onMouseDown={(event) => event.stopPropagation()}>
       <header className="control-header">
-        <div><p>QUOTA FLOAT · LOCAL FIRST</p><h2 id="control-center-title">{labels.title}</h2><small>{labels.subtitle}</small></div>
+        <div><h2 id="control-center-title">{labels.title}</h2><small>{labels.subtitle}</small></div>
         <button type="button" onClick={onClose} aria-label={zh ? "关闭" : "Close"} title={zh ? "关闭" : "Close"} data-dialog-initial-focus><X /></button>
       </header>
       <nav className="control-tabs" aria-label={labels.title}>
@@ -383,8 +383,8 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
           <label className="control-field color-accent-field"><span>{customizationLabels.accent}</span><input type="color" value={preferences.accentColor} onChange={(event) => onPreferences({ ...preferences, accentColor: event.target.value })} /></label>
           <div className="display-feature-options">
             <label className="display-feature-option"><Monitor /><span><strong>{labels.focusMode}</strong><small>{labels.focusModeHint}</small></span><span className="switch"><input type="checkbox" checked={preferences.resourceMode === "focus"} onChange={(event) => onPreferences({ ...preferences, resourceMode: event.target.checked ? "focus" : "balanced" })} /><i /></span></label>
-            <label className="display-feature-option"><ListStar /><span><strong>{appearanceLabels.riskFirst}</strong><small>{appearanceLabels.riskFirstHint}</small></span><span className="switch"><input type="checkbox" checked={preferences.riskFirst} onChange={(event) => onPreferences({ ...preferences, riskFirst: event.target.checked })} /><i /></span></label>
-            <label className="display-feature-option"><ChartLineUp /><span><strong>{appearanceLabels.history}</strong><small>{appearanceLabels.historyHint}</small></span><span className="switch"><input type="checkbox" checked={preferences.showHistorySparklines} onChange={(event) => onPreferences({ ...preferences, showHistorySparklines: event.target.checked })} /><i /></span></label>
+            <label className="display-feature-option"><Heartbeat /><span><strong>{appearanceLabels.riskFirst}</strong><small>{appearanceLabels.riskFirstHint}</small></span><span className="switch"><input type="checkbox" checked={preferences.riskFirst} onChange={(event) => onPreferences({ ...preferences, riskFirst: event.target.checked })} /><i /></span></label>
+            <label className="display-feature-option"><ClockCounterClockwise /><span><strong>{appearanceLabels.history}</strong><small>{appearanceLabels.historyHint}</small></span><span className="switch"><input type="checkbox" checked={preferences.showHistorySparklines} onChange={(event) => onPreferences({ ...preferences, showHistorySparklines: event.target.checked })} /><i /></span></label>
           </div>
           <div className="control-section-title"><span>{labels.savedLayouts}</span></div>
           <div className="layout-save"><input aria-label={zh ? "方案名称" : "Profile name"} value={layoutName} onChange={(event) => setLayoutName(event.target.value)} placeholder={zh ? "方案名称" : "Profile name"} /><button type="button" onClick={saveLayout}><Plus />{labels.saveLayout}</button></div>

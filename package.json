@@ -50,8 +50,8 @@
     "jsdom": "^26.1.0",
     "terser": "5.51.2",
     "typescript": "^5.9.2",
-    "vite": "^7.1.5",
-    "vitest": "4.1.11"
+    "vite": "7.3.7",
+    "vitest": "4.1.12"
   },
   "overrides": {
     "@puppeteer/browsers": "^3.2.1",

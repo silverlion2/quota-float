@@ -66,7 +66,6 @@ export function UpdatePanel({ state, language, onClose, onDownload, onInstall, o
     <section ref={dialogRef} className="update-panel" role="dialog" aria-modal="true" aria-labelledby="app-update-title" tabIndex={-1} onMouseDown={(event) => event.stopPropagation()}>
       <header className="update-header">
         <div>
-          <p className="update-kicker">UPDATE CENTER · {(state.info?.channel ?? "stable").toUpperCase()}</p>
           <h2 id="app-update-title">{t.updateCenterTitle}</h2>
           <p>{channelSubtitle}</p>
         </div>

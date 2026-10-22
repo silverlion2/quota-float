@@ -805,7 +805,7 @@ export const QuotaCard = memo(function QuotaCard({
       <div className="quota-card-content">
       <header className="quota-panel-header" aria-hidden={overlayOpen || undefined} inert={overlayOpen || undefined}>
         <div className="quota-panel-navigation">
-          <p className="quota-panel-brand">QUOTA FLOAT <span>· LOCAL FIRST</span></p>
+        <p className="quota-panel-brand">Quota Float</p>
           <div className="quota-panel-tabs" role="tablist" aria-label={language === "en" ? "Widget views" : "\u5c0f\u7ec4\u4ef6\u89c6\u56fe"} onMouseDown={(event) => event.stopPropagation()}>
             <button
               type="button"

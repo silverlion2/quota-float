@@ -5,6 +5,8 @@ import { QuotaBar, QuotaBottleneckBar, QuotaCard, QuotaOrb } from "./QuotaCard";
 import type { UpdateViewState } from "./UpdatePanel";
 import { DEFAULT_WIDGET_PREFERENCES } from "../lib/preferences";
 import { createPreviewResetForecast } from "../lib/resetForecastPreview";
+import { EMPTY_RUNTIME_STATE } from "../lib/activity";
+import { ControlCenter } from "./ControlCenter";
 
 const preview: ProviderSnapshot = {
   provider: "codex",
@@ -131,6 +133,10 @@ export function DesignPlayground() {
   const [values, setValues] = useState(defaults);
   const [previewMode, setPreviewMode] = useState<PreviewMode>(() => initialPreviewMode());
   const [selectedProvider, setSelectedProvider] = useState<ProviderId>("codex");
+  const [controlOpen, setControlOpen] = useState(() => new URLSearchParams(window.location.search).get("shot") === "control-center");
+  const [preferenceOverrides, setPreferenceOverrides] = useState<Partial<WidgetPreferences>>({});
+  const [runtimeState, setRuntimeState] = useState(() => ({ ...structuredClone(EMPTY_RUNTIME_STATE), history: previewHistory, dailyUsage: previewDailyUsage }));
+  const [autostartEnabled, setAutostartEnabled] = useState(false);
   const params = new URLSearchParams(window.location.search);
   const previewVariant = params.get("preview") ?? "";
   const screenshotMode = params.has("shot") || previewVariant.includes("shot");
@@ -138,20 +144,21 @@ export function DesignPlayground() {
   const captureMode = params.has("capture");
   const showCreditTip = params.has("creditTip");
   const visualParam = params.get("visual") ?? (previewVariant.includes("graphite") ? "graphite" : previewVariant.includes("paper") ? "paper" : "aurora");
-  const compactParam = params.get("compact");
+  const compactParam = preferenceOverrides.compactLayout ?? params.get("compact");
   const compactLayout: CompactLayout = compactParam === "bottleneck" || compactParam === "bar" || compactParam === "ring" || compactParam === "float"
     ? compactParam
     : visualParam === "island" ? "bar" : "float";
   const barLike = compactLayout === "bar" || compactLayout === "bottleneck";
-  const edgeParam = params.get("edge");
+  const edgeParam = preferenceOverrides.barEdge ?? params.get("edge");
   const barEdge: BarEdge = edgeParam === "left" || edgeParam === "right" ? edgeParam : "top";
-  const expandedParam = params.get("expanded");
+  const expandedParam = preferenceOverrides.expandedLayout ?? params.get("expanded");
   const expandedLayout: ExpandedLayout = expandedParam === "cockpit" || expandedParam === "provider-bar" || expandedParam === "stacked" || expandedParam === "dashboard"
     ? expandedParam
     : visualParam === "island" ? "provider-bar" : "dashboard";
-  const themeParam = params.get("theme") ?? visualParam;
+  const themeParam = preferenceOverrides.colorTheme ?? params.get("theme") ?? visualParam;
   const colorTheme: ColorTheme = themeParam === "graphite" || themeParam === "paper" ? themeParam : "aurora";
-  const resolvedAppearance: ResolvedAppearance = params.get("appearance") === "dark" ? "dark" : "light";
+  const appearance = preferenceOverrides.appearanceMode ?? params.get("appearance");
+  const resolvedAppearance: ResolvedAppearance = appearance === "dark" || (appearance === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
   const activePreferences: WidgetPreferences = {
     ...preferences,
     compactLayout,
@@ -162,6 +169,7 @@ export function DesignPlayground() {
     language: params.get("lang") === "zh" ? "zh-CN" : "en",
     riskFirst: params.has("risk") || previewVariant.includes("risk"),
     showHistorySparklines: true,
+    ...preferenceOverrides,
   };
   const style = useMemo(() => ({
     "--card-radius": `${values.radius}px`,
@@ -259,7 +267,7 @@ export function DesignPlayground() {
               : compactLayout === "bottleneck"
                 ? <QuotaBottleneckBar snapshot={displayedPreview} snapshots={activeSnapshots} edge={barEdge} language={params.get("lang") === "zh" ? "zh-CN" : "en"} colorTheme={colorTheme} accentColor={activePreferences.accentColor} resolvedAppearance={resolvedAppearance} onSelectProvider={setSelectedProvider} onDrag={noop} onHover={noop} />
               : <QuotaOrb snapshot={activePreview} language={activePreferences.language} compactLayout={compactLayout} colorTheme={colorTheme} accentColor={activePreferences.accentColor} resolvedAppearance={resolvedAppearance} onDrag={() => {}} onHover={() => {}} />
-            : <QuotaCard snapshot={displayedPreview} snapshots={activeSnapshots} preferences={activePreferences} resolvedAppearance={resolvedAppearance} history={previewHistory} dailyUsage={previewDailyUsage} resetForecast={previewResetForecast} onSelectProvider={setSelectedProvider} onLock={noop} onToggleStayExpanded={noop} onLanguage={noop} onDrag={noop} onHover={noop} consumingProviders={noConsumingProviders} initialShowCreditTip={showCreditTip} />}
+            : <QuotaCard snapshot={displayedPreview} snapshots={activeSnapshots} preferences={activePreferences} resolvedAppearance={resolvedAppearance} history={previewHistory} dailyUsage={previewDailyUsage} resetForecast={previewResetForecast} onSelectProvider={setSelectedProvider} onLock={noop} onToggleStayExpanded={noop} onLanguage={noop} onDrag={noop} onHover={noop} consumingProviders={noConsumingProviders} initialShowCreditTip={showCreditTip} onControlOpen={() => setControlOpen(true)} controlOpen={controlOpen} controlCenter={<ControlCenter preferences={activePreferences} runtimeState={runtimeState} snapshots={activeSnapshots} diagnostics={null} language={activePreferences.language} onClose={() => setControlOpen(false)} onRefresh={noop} onPreferences={setPreferenceOverrides} onRuntimeState={setRuntimeState} onExport={noop} onImport={noop} onRestore={noop} onCopyDiagnostics={noop} autostartEnabled={autostartEnabled} onAutostart={setAutostartEnabled} />} />}
         </div>
       </div>
     );

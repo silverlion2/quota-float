@@ -407,7 +407,6 @@ export function UsageInsightsPanel({
     <section className="usage-insights-panel" aria-label={english ? "Usage insights" : "用量洞察"} onMouseDown={(event) => event.stopPropagation()}>
       <header className="usage-insights-header">
         <div>
-          <p><ChartBar weight="fill" />VIBE USAGE · LOCAL FIRST</p>
           <h2>{snapshot.displayName} {english ? "usage panorama" : "用量全景"}</h2>
           <small>{snapshot.provider === "codex" ? (english ? "Quota signals + indexed local Codex metadata" : "额度信号 + 增量索引的本地 Codex 元数据") : (english ? "Quota signals · Token metadata is available for Codex" : "额度信号 · Token 元数据目前仅支持 Codex")}</small>
         </div>

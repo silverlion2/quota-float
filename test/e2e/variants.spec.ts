@@ -59,12 +59,7 @@ describe("Desktop presentation variants", () => {
             }));
             measurements.push({ id, ...bounds });
             for (const panel of bounds.panels) expect(panel.contentWidth).toBeLessThanOrEqual(panel.width + 2);
-            if ((expandedLayout === "dashboard" && colorTheme === "graphite" && appearanceMode === "dark")
-              || (expandedLayout === "cockpit" && colorTheme === "aurora" && appearanceMode === "light")
-              || (expandedLayout === "provider-bar" && colorTheme === "graphite" && appearanceMode === "light")
-              || (expandedLayout === "stacked" && colorTheme === "paper" && appearanceMode === "light")) {
-              await browser.saveScreenshot(`output/reset-prediction-20261014/native/${id}.png`);
-            }
+            await browser.saveScreenshot(`output/reset-prediction-20261014/native/${id}.png`);
           }
         }
       }
