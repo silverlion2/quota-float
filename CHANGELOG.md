@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.30 - 2026-10-22
 
 - Refresh the full desktop visual system with clearer quota readings, quieter labels, consistent dialog surfaces and less chart and panel glow across Aurora, Graphite and Paper in both appearances.
 - Simplify repeated dialog branding, use native system text typography, and keep provider status, keyboard focus, reduced motion and native window geometry intact.
