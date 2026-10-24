@@ -306,6 +306,17 @@ describe("Quota Float desktop widget", () => {
   });
 
   it("keeps unknown and partially priced usage distinct from zero in the native Insights panel", async () => {
+    const revealCost = async () => {
+      await browser.tauri.execute(() => {
+        document.querySelector<HTMLElement>(".usage-stat-card--cost")?.scrollIntoView({ block: "center", behavior: "instant" });
+      });
+      await browser.waitUntil(async () => browser.tauri.execute(() => {
+        const card = document.querySelector<HTMLElement>(".usage-stat-card--cost")!;
+        const rect = card.getBoundingClientRect();
+        const panel = document.querySelector<HTMLElement>(".usage-insights-panel")!.getBoundingClientRect();
+        return rect.top >= Math.max(0, panel.top) && rect.bottom <= Math.min(innerHeight, panel.bottom);
+      }), { timeoutMsg: "The native pricing card did not scroll into the visible viewport" });
+    };
     try {
       await browser.tauri.execute(() => {
         const url = new URL(window.location.href);
@@ -316,6 +327,7 @@ describe("Quota Float desktop widget", () => {
       await browser.waitUntil(async () => (await browser.$(".usage-stat-card--cost strong").getText()) === "Unpriced");
       expect(await browser.$(".usage-stat-card--forecast strong").getText()).toBe("—");
       expect(await browser.$(".usage-budget-panel").getText()).toContain("Unknown prices");
+      await revealCost();
       await browser.saveScreenshot("output/handoff/native-unpriced-usage.png");
       await browser.tauri.execute(() => {
         const url = new URL(window.location.href);
@@ -329,6 +341,7 @@ describe("Quota Float desktop widget", () => {
       expect(await browser.$(".usage-stat-card--forecast strong").getText()).toBe("—");
       const overflow = await browser.tauri.execute(() => Math.max(...Array.from(document.querySelectorAll<HTMLElement>(".usage-stat-card")).map((node) => node.scrollWidth - node.clientWidth)));
       expect(overflow).toBeLessThanOrEqual(1);
+      await revealCost();
       await browser.saveScreenshot("output/handoff/native-partial-pricing.png");
     } finally {
       await browser.tauri.execute(() => {
