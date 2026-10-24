@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CodexTokenUsageBucket, CodexTokenUsageReport } from "../types";
+import { formatUsageCost, usagePricingStatus } from "./tokenUsage";
 import { buildApiBudgetForecast, buildCurrentPeriodUsageReport, buildModelBreakdown, buildTokenFilterOptions, buildTokenHeatmap, buildTokenSeries, buildUsageBreakdown, estimateBucketCost, relativeChange, summarizeCurrentMonthTokenUsage, summarizeTokenBuckets, summarizeTokenReport, usageCoverageStart } from "./tokenUsage";
 
 const bucket = (overrides: Partial<CodexTokenUsageBucket> = {}): CodexTokenUsageBucket => ({
@@ -18,6 +19,37 @@ const bucket = (overrides: Partial<CodexTokenUsageBucket> = {}): CodexTokenUsage
   totalTokens: 1_100_000,
   requests: 4,
   ...overrides,
+});
+
+describe("pricing completeness", () => {
+  it("distinguishes unknown, partial, complete and record-free usage without guessing prices", () => {
+    const unknown = summarizeTokenBuckets([bucket({ model: "unknown-future-model" })]);
+    const partial = summarizeTokenBuckets([bucket(), bucket({ model: "unknown-future-model" })]);
+    const complete = summarizeTokenBuckets([bucket()]);
+    expect(usagePricingStatus(unknown)).toBe("unpriced");
+    expect(formatUsageCost(unknown.cost.totalUsd, "unpriced", "en")).toBe("Unpriced");
+    expect(usagePricingStatus(partial)).toBe("partial");
+    expect(partial.cost.totalUsd).toBe(complete.cost.totalUsd);
+    expect(formatUsageCost(partial.cost.totalUsd, "partial", "en")).toMatch(/^Priced subtotal \$/);
+    expect(usagePricingStatus(complete)).toBe("complete");
+    expect(usagePricingStatus(summarizeTokenBuckets([]))).toBe("no_records");
+  });
+  it("does not extrapolate unknown or partial prices into a monthly total or healthy budget", () => {
+    for (const buckets of [[bucket({ model: "unknown-future-model" })], [bucket(), bucket({ model: "unknown-future-model" })]]) {
+      const forecast = buildApiBudgetForecast(summarizeTokenBuckets(buckets), "7d", 100);
+      expect(forecast.projectedMonthlyUsd).toBeNull();
+      expect(forecast.dailyAverageUsd).toBeNull();
+      expect(["unpriced", "partial"]).toContain(forecast.status);
+      expect(forecast.utilization).toBe(0);
+    }
+  });
+  it("marks unknown-only and mixed trend buckets and heat cells", () => {
+    const report = { buckets: [bucket(), bucket({ model: "unknown-future-model" })] } as CodexTokenUsageReport;
+    const now = new Date("2026-08-16T12:00:00Z");
+    expect(buildTokenSeries(report, "7d", now).find((point) => point.totalTokens > 0)?.pricingStatus).toBe("partial");
+    expect(buildTokenHeatmap({ ...report, buckets: [bucket({ model: "unknown-future-model" })] }, "7d", now).find((cell) => cell.tokens > 0)?.pricingStatus).toBe("unpriced");
+    expect(buildTokenSeries({ ...report, buckets: [bucket({ model: "unknown-future-model" })] }, "7d", now).find((point) => point.totalTokens > 0)?.costUsd).toBeNull();
+  });
 });
 
 describe("local usage distributions", () => {

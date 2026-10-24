@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { useModalDialog } from "../lib/modalDialog";
 import { DEFAULT_PROVIDER_ORDER, PROVIDER_CATALOG } from "../lib/providers";
 import { providerRecoveryAction } from "../lib/providerRecovery";
+import type { ProviderAttemptTimes } from "../lib/refreshPolicy";
 import type { AppDiagnostics, Language, ProviderId, ProviderSnapshot, RuntimeState, SavedLayout, SnapshotStatus, WidgetPreferences } from "../types";
 import { ProviderMark } from "./ProviderMark";
 import { CodexExtensionsPanel } from "./CodexExtensionsPanel";
@@ -20,6 +21,8 @@ interface Props {
   preferences: WidgetPreferences;
   runtimeState: RuntimeState;
   snapshots: ProviderSnapshot[];
+  refreshAttempts?: ProviderAttemptTimes;
+  refreshingProviders?: readonly ProviderId[];
   diagnostics: AppDiagnostics | null;
   language: Language;
   onClose: () => void;
@@ -39,8 +42,8 @@ function toggleProvider(values: ProviderId[], provider: ProviderId): ProviderId[
   return values.includes(provider) ? values.filter((item) => item !== provider) : [...values, provider];
 }
 
-function formatCheckedAt(value: string | undefined, language: Language, fallback: string): string {
-  if (!value) return fallback;
+function formatCheckedAt(value: string | number | undefined, language: Language, fallback: string): string {
+  if (value === undefined) return fallback;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return fallback;
   return new Intl.DateTimeFormat(language === "en" ? "en" : "zh-CN", {
@@ -51,7 +54,7 @@ function formatCheckedAt(value: string | undefined, language: Language, fallback
   }).format(date);
 }
 
-export function ControlCenter({ preferences, runtimeState, snapshots, diagnostics, language, onClose, onRefresh, onPreferences, onRuntimeState, onExport, onImport, onRestore, onCopyDiagnostics, autostartEnabled, onAutostart, operation = null }: Props) {
+export function ControlCenter({ preferences, runtimeState, snapshots, refreshAttempts = {}, refreshingProviders = [], diagnostics, language, onClose, onRefresh, onPreferences, onRuntimeState, onExport, onImport, onRestore, onCopyDiagnostics, autostartEnabled, onAutostart, operation = null }: Props) {
   const dialogRef = useModalDialog<HTMLElement>(onClose);
   const [tab, setTab] = useState<Tab>("display");
   const [layoutName, setLayoutName] = useState("");
@@ -78,11 +81,14 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
   const healthLabels = zh ? {
     tab: "状态",
     title: "平台状态",
-    summary: "个平台连接正常",
+    summary: "个平台最近检查正常",
     attention: "需要处理",
     allHealthy: "所有已检测平台均已正常刷新。",
     refresh: "立即刷新",
     checked: "最近检查",
+    dataUpdated: "额度数据时间",
+    noData: "尚无有效数据",
+    checking: "正在检查…",
     neverChecked: "尚未检查",
     samples: "条采样",
     statuses: {
@@ -104,11 +110,14 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
   } : {
     tab: "Health",
     title: "Provider health",
-    summary: "providers connected",
+    summary: "providers passed their last check",
     attention: "need attention",
     allHealthy: "Every detected provider refreshed successfully.",
     refresh: "Refresh now",
     checked: "Last checked",
+    dataUpdated: "Quota data from",
+    noData: "No valid quota yet",
+    checking: "Checking…",
     neverChecked: "Not checked yet",
     samples: "samples",
     statuses: {
@@ -414,25 +423,30 @@ export function ControlCenter({ preferences, runtimeState, snapshots, diagnostic
               <strong>{healthyProviderCount}/{monitoredProviderCount} {healthLabels.summary}</strong>
               <p>{attentionProviderCount === 0 ? healthLabels.allHealthy : `${attentionProviderCount} ${healthLabels.attention}`}</p>
             </div>
-            <button type="button" onClick={onRefresh}><ArrowClockwise />{healthLabels.refresh}</button>
+            <button type="button" onClick={onRefresh} disabled={refreshingProviders.length > 0}><ArrowClockwise />{refreshingProviders.length > 0 ? healthLabels.checking : healthLabels.refresh}</button>
           </div>
           <div className="control-section-title"><span>{healthLabels.title}</span></div>
           <div className="provider-health-list">
             {PROVIDER_CATALOG.map((provider) => {
               const snapshot = snapshotsByProvider.get(provider.id);
               const paused = preferences.pausedProviders.includes(provider.id);
-              const status: SnapshotStatus | "paused" = paused ? "paused" : snapshot?.status ?? "unavailable";
+              const checking = refreshingProviders.includes(provider.id);
+              const status: SnapshotStatus | "paused" = paused ? "paused" : checking ? "loading" : snapshot?.status ?? "unavailable";
+              const hasQuotaData = snapshot && (snapshot.status === "ok" || (snapshot.status === "stale"
+                && (snapshot.shortWindow || snapshot.weeklyWindow || snapshot.monthlyWindow
+                  || snapshot.balanceRemaining != null || snapshot.resetCredits != null)));
               const recovery = providerRecoveryAction(provider.id, status, language, diagnostics?.platform);
               return (
                 <article key={provider.id} className={`provider-health-item provider-health-item--${status}`}>
                   <i aria-hidden="true" />
                   <div className="provider-health-copy">
                     <header><strong>{provider.label}</strong><span>{healthLabels.statuses[status]}</span></header>
-                    <p>{snapshot?.message || healthLabels.defaults[status]}</p>
+                    <p>{status === "loading" || status === "paused" ? healthLabels.defaults[status] : snapshot?.message || healthLabels.defaults[status]}</p>
                     {recovery ? <p>{recovery}</p> : null}
                     <footer>
                       <span>{provider.sourceLabel[language]}</span>
-                      <span>{healthLabels.checked}: {formatCheckedAt(snapshot?.updatedAt, language, healthLabels.neverChecked)}</span>
+                      <span>{healthLabels.checked}: {formatCheckedAt(refreshAttempts[provider.id], language, healthLabels.neverChecked)}</span>
+                      <span>{healthLabels.dataUpdated}: {formatCheckedAt(hasQuotaData ? snapshot.updatedAt : undefined, language, healthLabels.noData)}</span>
                       <span>{historyCounts.get(provider.id) ?? 0} {healthLabels.samples}</span>
                     </footer>
                   </div>

@@ -22,6 +22,8 @@ import { OPENAI_PRICING_CATALOG } from "../lib/openaiPricing";
 import { calculateQuotaPace, paceBaselineKey, trackedQuotaWindows } from "../lib/quotaPace";
 import {
   buildApiBudgetForecast,
+  formatUsageCost,
+  usagePricingStatus,
   buildCurrentPeriodUsageReport,
   buildModelBreakdown,
   buildUsageBreakdown,
@@ -93,7 +95,8 @@ function compactNumber(value: number, language: Language): string {
   return new Intl.NumberFormat(language === "en" ? "en-US" : "zh-CN", { notation: "compact", maximumFractionDigits: 1 }).format(value);
 }
 
-function money(value: number): string {
+function money(value: number | null): string {
+  if (value === null) return "—";
   if (value >= 1000) return `$${new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 2 }).format(value)}`;
   if (value >= 10) return `$${value.toFixed(2)}`;
   if (value >= 1) return `$${value.toFixed(3)}`;
@@ -289,6 +292,7 @@ export function UsageInsightsPanel({
       analysisNow,
       tokenReport ? usageCoverageStart(tokenReport, analysisNow) : analysisNow,
       currentMonthSummary?.cost.totalUsd ?? 0,
+      currentMonthSummary ? usagePricingStatus(currentMonthSummary) : "no_records",
     ) : null,
     [analysisNow, currentMonthSummary, preferences.monthlyApiBudgetUsd, range, tokenReport, tokenSummary],
   );
@@ -303,6 +307,8 @@ export function UsageInsightsPanel({
     [analysisNow, filters, reportPeriod, snapshot.provider, tokenReport],
   );
 
+  const costText = useCallback((summary: NonNullable<typeof tokenSummary>) => formatUsageCost(summary.cost.totalUsd, usagePricingStatus(summary), language), [language]);
+
   useEffect(() => {
     if (!budget || budget.status !== "over" || !preferences.apiBudgetAlertsEnabled || snapshot.provider !== "codex") return;
     const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -313,18 +319,19 @@ export function UsageInsightsPanel({
       () => window.localStorage.setItem(key, new Date().toISOString()),
       () => sendDesktopNotification(
         english ? "API-equivalent budget outlook" : "API 等价预算展望",
-        english ? `The ${rangeLabel(range, true)} pace projects ${money(budget.projectedMonthlyUsd)} against a ${money(budget.budgetUsd)} plan; retained month-to-date usage is ${money(budget.currentMonthUsd)}.` : `按${rangeLabel(range, false)}区间节奏外推为 ${money(budget.projectedMonthlyUsd)}，超过 ${money(budget.budgetUsd)} 的预算；本月已保留记录合计 ${money(budget.currentMonthUsd)}。`,
+        english ? `The ${rangeLabel(range, true)} pace projects ${money(budget.projectedMonthlyUsd)} against a ${money(budget.budgetUsd)} plan; retained month-to-date usage: ${currentMonthSummary ? costText(currentMonthSummary) : "—"}.` : `按${rangeLabel(range, false)}区间节奏外推为 ${money(budget.projectedMonthlyUsd)}，超过 ${money(budget.budgetUsd)} 的预算；本月已保留记录：${currentMonthSummary ? costText(currentMonthSummary) : "—"}。`,
       ),
     );
-  }, [budget, english, preferences.apiBudgetAlertsEnabled, snapshot.provider]);
+  }, [budget, costText, currentMonthSummary, english, preferences.apiBudgetAlertsEnabled, range, snapshot.provider]);
 
   const totalChange = tokenComparison ? relativeChange(tokenComparison.current.totalTokens, tokenComparison.previous.totalTokens) : null;
-  const costChange = tokenComparison ? relativeChange(tokenComparison.current.cost.totalUsd, tokenComparison.previous.cost.totalUsd) : null;
+  const costChange = tokenComparison && [tokenComparison.current, tokenComparison.previous].every((item) => usagePricingStatus(item) === "complete") ? relativeChange(tokenComparison.current.cost.totalUsd, tokenComparison.previous.cost.totalUsd) : null;
   const inputChange = tokenComparison ? relativeChange(tokenComparison.current.inputTokens, tokenComparison.previous.inputTokens) : null;
   const outputChange = tokenComparison ? relativeChange(tokenComparison.current.outputTokens, tokenComparison.previous.outputTokens) : null;
   const cachedChange = tokenComparison ? relativeChange(tokenComparison.current.cachedInputTokens, tokenComparison.previous.cachedInputTokens) : null;
-  const chartMaximum = Math.max(0, ...tokenSeries.map((point) => chartMode === "cost" ? point.costUsd : point.totalTokens));
-  const heatMaximum = Math.max(0, ...heatmap.map((cell) => chartMode === "cost" ? cell.costUsd : cell.tokens));
+  const chartMaximum = Math.max(0, ...tokenSeries.map((point) => chartMode === "cost" ? point.costUsd ?? 0 : point.totalTokens));
+  const heatMaximum = Math.max(0, ...heatmap.map((cell) => chartMode === "cost" ? cell.costUsd ?? 0 : cell.tokens));
+  const partialCost = tokenSummary !== null && usagePricingStatus(tokenSummary) === "partial";
   const knownTokenData = snapshot.provider === "codex" && tokenSummary !== null && tokenSummary.totalTokens > 0;
   const emptyTokenMessage = tokenReport && snapshot.provider === "codex"
     ? (english ? "No local Token records in this range and filter selection." : "所选区间与筛选条件下没有本地 Token 记录。")
@@ -453,7 +460,7 @@ export function UsageInsightsPanel({
       {snapshot.provider === "codex" ? <ResetOutlook id={resetOutlookId} open={resetOutlookOpen} onOpenChange={setResetOutlookOpen} snapshot={snapshot} history={history} forecast={resetForecast ?? null} loadStatus={resetForecastStatus} now={now} language={language} onOpenSource={onOpenResetForecast ?? (() => undefined)} onRefresh={onRefreshResetForecast} /> : null}
 
       <div className="usage-summary-grid usage-summary-grid--extended">
-        <article className="usage-stat-card usage-stat-card--cost"><span>{english ? "API equivalent" : "API 等价费用"}{changeLabel(costChange) ? <em>{changeLabel(costChange)}</em> : null}</span><strong>{tokenLoading && !tokenReport ? "…" : knownTokenData ? money(tokenSummary.cost.totalUsd) : "—"}</strong><small>{knownTokenData ? `${Math.round(tokenSummary.pricedTokenCoverage * 100)}% ${english ? "priced coverage" : "已定价覆盖"}` : (english ? "Codex metadata only" : "仅 Codex 元数据")}</small></article>
+        <article className="usage-stat-card usage-stat-card--cost"><span>{partialCost ? (english ? "Priced subtotal" : "已知价格小计") : (english ? "API equivalent" : "API 等价费用")}{changeLabel(costChange) ? <em>{changeLabel(costChange)}</em> : null}</span><strong aria-label={knownTokenData ? costText(tokenSummary) : undefined}>{tokenLoading && !tokenReport ? "…" : knownTokenData ? partialCost ? money(tokenSummary.cost.totalUsd) : costText(tokenSummary) : "—"}</strong><small>{knownTokenData ? `${Math.round(tokenSummary.pricedTokenCoverage * 100)}% ${english ? "priced coverage" : "已定价覆盖"}` : (english ? "Codex metadata only" : "仅 Codex 元数据")}</small></article>
         <article className="usage-stat-card"><span>{english ? "Local range Token" : "本机区间 Token"}{changeLabel(totalChange) ? <em>{changeLabel(totalChange)}</em> : null}</span><strong>{tokenValue(tokenSummary?.totalTokens ?? 0)}</strong><small>{rangeText} · {tokenReport?.truncated ? english ? "Partial index" : "部分索引" : tokenSummary ? `${tokenSummary.models} ${english ? "models" : "个模型"}` : (english ? "awaiting metadata" : "等待元数据")}</small></article>
         <article className="usage-stat-card"><span>{english ? "Input Token" : "输入 Token"}{changeLabel(inputChange) ? <em>{changeLabel(inputChange)}</em> : null}</span><strong>{tokenValue(tokenSummary?.inputTokens ?? 0)}</strong><small>{tokenSummary ? `${tokenSummary.inputOutputRatio.toFixed(1)}:1 ${english ? "input/output" : "输入/输出"}` : (english ? "includes cached input" : "包含缓存输入")}</small></article>
         <article className="usage-stat-card"><span>{english ? "Output Token" : "输出 Token"}{changeLabel(outputChange) ? <em>{changeLabel(outputChange)}</em> : null}</span><strong>{tokenValue(tokenSummary?.outputTokens ?? 0)}</strong><small>{tokenSummary ? `${compactNumber(tokenSummary.reasoningOutputTokens, language)} ${english ? "reasoning" : "推理"}` : (english ? "model output" : "模型输出")}</small></article>
@@ -467,7 +474,7 @@ export function UsageInsightsPanel({
         <article className="usage-stat-card"><span>{english ? "Used this cycle" : "本周期已用"}</span><strong>{percent(cycleUsed, 0)}</strong><small>{english ? "provider-reported quota" : "平台额度"}</small></article>
         <article className="usage-stat-card"><span>{english ? "Range observed" : "区间观测"}</span><strong>{percent(rangeObserved)}</strong><small>{rangeText} · {english ? "quota decrease" : "额度下降"}</small></article>
         <article className="usage-stat-card usage-stat-card--forecast"><span>{english ? "Monthly outlook" : "月度费用预测"}</span><strong>{budget ? money(budget.projectedMonthlyUsd) : "—"}</strong><small>{budget ? `${rangeText} ${english ? "selected-range pace" : "所选区间节奏"} · ${money(budget.dailyAverageUsd)} ${english ? "daily avg" : "日均"}` : "—"}</small></article>
-        <article className={`usage-stat-card usage-stat-card--budget usage-stat-card--${budget?.status ?? "disabled"}`}><span>{english ? "Budget status" : "预算状态"}</span><strong>{budget ? percent(budget.utilization * 100, 0) : "—"}</strong><small>{budget ? `${money(budget.budgetUsd)} ${english ? "monthly plan" : "月度预算"}` : "—"}</small></article>
+        <article className={`usage-stat-card usage-stat-card--budget usage-stat-card--${budget?.status ?? "disabled"}`}><span>{english ? "Budget status" : "预算状态"}</span><strong>{budget?.projectedMonthlyUsd != null ? percent(budget.utilization * 100, 0) : "—"}</strong><small>{budget ? budget.projectedMonthlyUsd === null ? (english ? "Pricing incomplete; budget unavailable" : "价格不完整，预算状态暂不可用") : `${money(budget.budgetUsd)} ${english ? "monthly plan" : "月度预算"}` : "—"}</small></article>
       </div>
 
       {snapshot.provider === "codex" && periodReport ? <section className={`usage-plan-comparison usage-plan-comparison--${periodReport.coverageStatus === "recorded" ? "keep" : "pending"}`} aria-label={english ? "Local period usage summary" : "本地周期用量摘要"}>
@@ -481,7 +488,7 @@ export function UsageInsightsPanel({
         <div className="usage-plan-metrics usage-period-metrics">
           <div><span>{english ? "Explicit range" : "明确区间"}</span><strong>{new Intl.DateTimeFormat(english ? "en-US" : "zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(periodReport.start))} → {new Intl.DateTimeFormat(english ? "en-US" : "zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(periodReport.end))}</strong></div>
           <div><span>{english ? "Token" : "Token"}</span><strong>{compactNumber(periodReport.summary.totalTokens, language)}</strong></div>
-          <div><span>{english ? "API equivalent" : "API 等价费用"}</span><strong>{money(periodReport.summary.cost.totalUsd)}</strong></div>
+          <div><span>{english ? "API equivalent" : "API 等价费用"}</span><strong>{costText(periodReport.summary)}</strong></div>
           <div><span>{english ? "Index evidence" : "索引证据"}</span><strong>{periodReport.coverageStatus === "truncated" ? (english ? "Known incomplete" : "确认不完整") : periodReport.coverageStatus === "no_records" ? (english ? "No records" : "无记录") : (english ? "Records found" : "已有记录")}</strong></div>
         </div>
         <p>{english
@@ -522,8 +529,9 @@ export function UsageInsightsPanel({
       </section> : null}
 
       {knownTokenData && budget ? <section className={`usage-budget-panel usage-budget-panel--${budget.status}`} aria-label={english ? "API-equivalent budget" : "API 等价预算"}>
-        <div><CurrencyDollar weight="bold" /><span>{english ? `Projected from ${rangeText} · MTD ${money(budget.currentMonthUsd)}` : `按${rangeText}区间外推 · 本月累计 ${money(budget.currentMonthUsd)}`}</span><strong>{money(budget.projectedMonthlyUsd)} / {money(budget.budgetUsd)}</strong></div>
-        <div className="usage-budget-track"><span style={{ width: `${Math.min(100, budget.utilization * 100)}%` }} /></div>
+        <div><CurrencyDollar weight="bold" /><span>{english ? `Projected from ${rangeText} · MTD ${currentMonthSummary ? costText(currentMonthSummary) : "—"}` : `按${rangeText}区间外推 · 本月累计 ${currentMonthSummary ? costText(currentMonthSummary) : "—"}`}</span><strong>{money(budget.projectedMonthlyUsd)} / {money(budget.budgetUsd)}</strong></div>
+        {budget.projectedMonthlyUsd === null ? <p>{english ? "Unknown prices: monthly outlook and budget status are unavailable." : "存在未知价格，月度预测与预算状态暂不可用。"}</p> : null}
+        {budget.projectedMonthlyUsd !== null ? <div className="usage-budget-track"><span style={{ width: `${Math.min(100, budget.utilization * 100)}%` }} /></div> : null}
         <label><span>{english ? "Budget USD" : "预算 USD"}</span><input type="number" min="0" max="1000000" step="10" value={budgetDraft} onChange={(event) => setBudgetDraft(event.target.value)} onBlur={commitBudget} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} /></label>
         <button type="button" className={preferences.apiBudgetAlertsEnabled ? "is-active" : ""} aria-pressed={preferences.apiBudgetAlertsEnabled} title={english ? "Checked only while Codex Insights is open" : "仅在打开 Codex 洞察时检查"} onClick={() => onPreferences?.({ ...preferences, apiBudgetAlertsEnabled: !preferences.apiBudgetAlertsEnabled })}>{preferences.apiBudgetAlertsEnabled ? <Bell /> : <BellSlash />}{english ? "Alert while open" : "仅打开时提醒"}</button>
       </section> : null}
@@ -554,15 +562,15 @@ export function UsageInsightsPanel({
 
       <div className="usage-insights-detail-grid">
         <article className="usage-daily-card">
-          <header><span>{range === "today" || range === "24h" ? (english ? "HOURLY TREND" : "小时趋势") : range === "all" ? (english ? "MONTHLY HISTORY" : "月度历史") : (english ? "DAILY TREND" : "每日趋势")}</span><strong>{knownTokenData ? (chartMode === "cost" ? money(tokenSummary.cost.totalUsd) : compactNumber(tokenSummary.totalTokens, language)) : "—"}</strong></header>
+          <header><span>{range === "today" || range === "24h" ? (english ? "HOURLY TREND" : "小时趋势") : range === "all" ? (english ? "MONTHLY HISTORY" : "月度历史") : (english ? "DAILY TREND" : "每日趋势")}</span><strong>{knownTokenData ? (chartMode === "cost" ? costText(tokenSummary) : compactNumber(tokenSummary.totalTokens, language)) : "—"}</strong></header>
           {knownTokenData ? <div className={`usage-bars usage-bars--${tokenSeries.length > 40 ? "dense" : "regular"}`} role="img" aria-label={chartMode === "cost" ? english ? `${rangeText} API-equivalent cost trend` : `${rangeText} API 等价费用趋势` : english ? `${rangeText} token usage trend` : `${rangeText} Token 用量趋势`}>
             {tokenSeries.map((point, index) => {
-              const value = chartMode === "cost" ? point.costUsd : point.totalTokens;
+              const value = chartMode === "cost" ? point.costUsd ?? 0 : point.totalTokens;
               const height = chartMaximum > 0 ? Math.max(value > 0 ? 3 : 0, value / chartMaximum * 100) : 0;
               const uncached = Math.max(0, point.inputTokens - point.cachedInputTokens);
               const total = Math.max(1, uncached + point.cachedInputTokens + point.outputTokens);
               const showLabel = index === 0 || index === tokenSeries.length - 1 || index % Math.max(1, Math.ceil(tokenSeries.length / 6)) === 0;
-              return <span className="usage-bar-slot" key={point.key} title={`${point.label} · ${chartMode === "cost" ? money(point.costUsd) : compactNumber(point.totalTokens, language)}`}><i className={`usage-bar${chartMode === "cost" ? " usage-bar--cost" : ""}`} style={{ "--bar-height": `${height}%` } as CSSProperties}>{chartMode === "token" ? <><b className="usage-bar-output" style={{ flexBasis: `${point.outputTokens / total * 100}%` }} /><b className="usage-bar-input" style={{ flexBasis: `${uncached / total * 100}%` }} /><b className="usage-bar-cached" style={{ flexBasis: `${point.cachedInputTokens / total * 100}%` }} /></> : null}</i>{showLabel ? <small>{point.label}</small> : null}</span>;
+              return <span className="usage-bar-slot" key={point.key} title={`${point.label} · ${chartMode === "cost" ? formatUsageCost(point.costUsd ?? 0, point.pricingStatus ?? "complete", language) : compactNumber(point.totalTokens, language)}`}><i className={`usage-bar${chartMode === "cost" ? " usage-bar--cost" : ""}`} style={{ "--bar-height": `${height}%` } as CSSProperties}>{chartMode === "token" ? <><b className="usage-bar-output" style={{ flexBasis: `${point.outputTokens / total * 100}%` }} /><b className="usage-bar-input" style={{ flexBasis: `${uncached / total * 100}%` }} /><b className="usage-bar-cached" style={{ flexBasis: `${point.cachedInputTokens / total * 100}%` }} /></> : null}</i>{chartMode === "cost" && point.pricingStatus === "unpriced" ? <small>?</small> : showLabel ? <small>{point.label}</small> : null}</span>;
             })}
           </div> : <div className="usage-chart-empty">{tokenLoading ? <><SpinnerGap />{english ? "Scanning local token metadata…" : "正在扫描本地 Token 元数据…"}</> : tokenError ?? emptyTokenMessage}</div>}
           <footer><span className="usage-legend-input" />{english ? "uncached input" : "非缓存输入"}<span className="usage-legend-cached" />{english ? "cached" : "缓存"}<span className="usage-legend-output" />{english ? "output" : "输出"}</footer>
@@ -570,7 +578,7 @@ export function UsageInsightsPanel({
 
         <article className="usage-hourly-card">
           <header><span><CalendarDots weight="duotone" />{english ? "WEEKDAY × HOUR" : "星期 × 小时"}</span><small>{rangeText} · {chartMode === "cost" ? (english ? "API equivalent" : "API 等价费用") : "Token"}</small></header>
-          {knownTokenData ? <div className="usage-hourly-matrix" role="img" aria-label={chartMode === "cost" ? english ? "Hourly API-equivalent cost heatmap" : "分时 API 等价费用热力图" : english ? "Hourly token activity heatmap" : "分时 Token 活跃热力图"}>{weekdayLabels.map((label, weekday) => <div className="usage-hour-row" key={label}><span>{label}</span><div>{heatmap.slice(weekday * 24, weekday * 24 + 24).map((cell) => { const value = chartMode === "cost" ? cell.costUsd : cell.tokens; return <i className={`usage-hour-cell usage-hour-cell--${heatLevel(value, heatMaximum)}`} key={cell.hour} title={`${label} ${String(cell.hour).padStart(2, "0")}:00 · ${chartMode === "cost" ? money(cell.costUsd) : compactNumber(cell.tokens, language)}`} />; })}</div></div>)}<div className="usage-hour-axis"><span>00</span><span>03</span><span>06</span><span>09</span><span>12</span><span>15</span><span>18</span><span>21</span></div></div> : <div className="usage-chart-empty usage-chart-empty--heat">{tokenLoading ? (english ? "Building hourly map…" : "正在生成分时图…") : tokenError ?? emptyTokenMessage}</div>}
+          {knownTokenData ? <div className="usage-hourly-matrix" role="img" aria-label={chartMode === "cost" ? english ? "Hourly API-equivalent cost heatmap" : "分时 API 等价费用热力图" : english ? "Hourly token activity heatmap" : "分时 Token 活跃热力图"}>{weekdayLabels.map((label, weekday) => <div className="usage-hour-row" key={label}><span>{label}</span><div>{heatmap.slice(weekday * 24, weekday * 24 + 24).map((cell) => { const value = chartMode === "cost" ? cell.costUsd ?? 0 : cell.tokens; return <i className={`usage-hour-cell usage-hour-cell--${heatLevel(value, heatMaximum)}`} key={cell.hour} title={`${label} ${String(cell.hour).padStart(2, "0")}:00 · ${chartMode === "cost" ? formatUsageCost(cell.costUsd ?? 0, cell.pricingStatus ?? "complete", language) : compactNumber(cell.tokens, language)}`}>{chartMode === "cost" && cell.pricingStatus === "unpriced" ? "?" : null}</i>; })}</div></div>)}<div className="usage-hour-axis"><span>00</span><span>03</span><span>06</span><span>09</span><span>12</span><span>15</span><span>18</span><span>21</span></div></div> : <div className="usage-chart-empty usage-chart-empty--heat">{tokenLoading ? (english ? "Building hourly map…" : "正在生成分时图…") : tokenError ?? emptyTokenMessage}</div>}
         </article>
       </div>
 
@@ -580,7 +588,7 @@ export function UsageInsightsPanel({
         <header><div><Database weight="duotone" /><span>{english ? "MODEL COST LEDGER" : "模型费用账本"}</span></div><small>{modelBreakdown.length} {english ? "models · filtered view" : "个模型 · 当前筛选"}</small></header>
         <div className="usage-model-table" role="table" aria-colcount={5} aria-rowcount={modelBreakdown.length + 1}>
           <div className="usage-model-row usage-model-row--head" role="row"><span role="columnheader">{english ? "Model" : "模型"}</span><span role="columnheader">Token</span><span role="columnheader">{english ? "Sessions" : "会话"}</span><span role="columnheader">{english ? "Cache" : "缓存"}</span><span role="columnheader">{english ? "API equivalent" : "API 等价费用"}</span></div>
-          {modelBreakdown.map((model) => <div className="usage-model-row" role="row" key={model.model}><span role="cell"><strong>{model.label}</strong><small>{model.model}</small></span><span role="cell"><strong>{compactNumber(model.totalTokens, language)}</strong><small>{percent(model.share * 100, 0)} {english ? "share" : "占比"}</small></span><span role="cell">{model.sessions}</span><span role="cell">{percent(model.cacheHitRate * 100, 0)}</span><span role="cell" className={model.pricedTokenCoverage < 1 ? "is-unpriced" : ""}>{model.pricedTokenCoverage > 0 ? money(model.cost.totalUsd) : (english ? "Unpriced" : "未定价")}</span></div>)}
+          {modelBreakdown.map((model) => <div className="usage-model-row" role="row" key={model.model}><span role="cell"><strong>{model.label}</strong><small>{model.model}</small></span><span role="cell"><strong>{compactNumber(model.totalTokens, language)}</strong><small>{percent(model.share * 100, 0)} {english ? "share" : "占比"}</small></span><span role="cell">{model.sessions}</span><span role="cell">{percent(model.cacheHitRate * 100, 0)}</span><span role="cell" className={model.pricedTokenCoverage < 1 ? "is-unpriced" : ""}>{model.pricedTokenCoverage > 0 ? costText(model) : (english ? "Unpriced" : "未定价")}</span></div>)}
         </div>
       </section> : null}
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Keep known plan changes out of observed quota consumption, pace comparisons, reset alerts and consumption animation; use the same continuity rule when rebuilding charts from retained history.
+- Distinguish complete estimates, known-price subtotals and unpriced usage throughout Insights, trends, budgets and exports. Incomplete pricing no longer appears as zero cost or a reliable monthly forecast; period-summary JSON uses schema version 2 with explicit nullable totals.
+- Separate the latest check time from retained quota data in Provider Health and show checks in progress. Retry transient failed monitored sources after reconnect, coalesce event bursts, and keep polling alive after backward system-clock corrections.
+- Patch development-tool transitive dependencies serialize-javascript and undici; the refreshed lockfile passes the official npm audit without reported vulnerabilities.
+
 ## 0.3.30 - 2026-10-22
 
 - Refresh the full desktop visual system with clearer quota readings, quieter labels, consistent dialog surfaces and less chart and panel glow across Aurora, Graphite and Paper in both appearances.

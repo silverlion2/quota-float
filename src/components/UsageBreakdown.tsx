@@ -1,5 +1,6 @@
 import type { Language } from "../types";
 import type { UsageBreakdownDimension, UsageBreakdownRow } from "../lib/tokenUsage";
+import { formatUsageCost } from "../lib/tokenUsage";
 
 interface Props {
   rows: UsageBreakdownRow[];
@@ -24,7 +25,7 @@ export function UsageBreakdown({ rows, dimension, onDimension, metric, language 
     {sorted.length ? <ol>{sorted.slice(0, 8).map((row) => {
       const share = metric === "cost" ? row.costShare : row.tokenShare;
       return <li key={row.key}>
-        <div><span>{row.label === "Unknown" ? en ? "Unknown" : "未知" : row.label === "Other" ? en ? "Other" : "其他" : row.label}</span><strong>{metric === "token" ? compact(row.totalTokens) : row.costUsd === null ? en ? "Unpriced / partial" : "未定价 / 部分费用" : `$${row.costUsd.toFixed(2)}`}</strong><small>{share === null ? "—" : `${Math.round(share * 100)}%`}</small></div>
+        <div><span>{row.label === "Unknown" ? en ? "Unknown" : "未知" : row.label === "Other" ? en ? "Other" : "其他" : row.label}</span><strong>{metric === "token" ? compact(row.totalTokens) : formatUsageCost(row.knownCostUsd, row.costUsd !== null ? "complete" : row.pricedTokenCoverage > 0 ? "partial" : "unpriced", language)}</strong><small>{share === null ? "—" : `${Math.round(share * 100)}%`}</small></div>
         {share !== null ? <progress aria-label={row.label} max={100} value={share * 100} /> : null}
       </li>;
     })}</ol> : <p>{en ? "No records in this selection." : "当前选择没有记录。"}</p>}

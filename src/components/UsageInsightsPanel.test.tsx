@@ -86,6 +86,46 @@ describe("UsageInsightsPanel token loading", () => {
     vi.clearAllMocks();
   });
 
+  it("keeps a complete selected-range budget alert honest about partial month-to-date prices", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-08-16T12:30:00Z"));
+    window.localStorage.clear();
+    mocks.sendDesktopNotification.mockResolvedValue(true);
+    mocks.fetchCodexTokenUsage.mockResolvedValue({ ...report, buckets: [
+      { ...report.buckets[0], bucketStart: "2026-08-16T11:00:00Z" },
+      { ...report.buckets[0], model: "gpt-future", bucketStart: "2026-08-12T11:00:00Z" },
+    ] });
+    render(<UsageInsightsPanel snapshot={snapshot("codex")} snapshots={[snapshot("codex")]} history={[]} dailyUsage={[]} paceBaselines={{}} language="en"
+      preferences={{ ...DEFAULT_WIDGET_PREFERENCES, language: "en", monthlyApiBudgetUsd: 1, apiBudgetAlertsEnabled: true }} />);
+    await vi.waitFor(() => expect(mocks.sendDesktopNotification).toHaveBeenCalled());
+    const message = mocks.sendDesktopNotification.mock.calls[0][1];
+    expect(message).toContain("pace projects $");
+    expect(message).toContain("retained month-to-date usage: Priced subtotal $");
+    expect(message).not.toMatch(/month-to-date usage (?:is|:) \$/);
+  });
+
+  it.each([false, true])("labels unknown and mixed prices without zero-cost totals or a full forecast (mixed=%s)", async (mixed) => {
+    const unknown = { ...report.buckets[0], model: "gpt-future", bucketStart: new Date().toISOString() };
+    mocks.fetchCodexTokenUsage.mockResolvedValue({ ...report, buckets: mixed ? [report.buckets[0], unknown] : [unknown] });
+    const { container } = renderPanel(snapshot("codex"));
+    await screen.findByText(/Unknown prices: monthly outlook/);
+    const costCard = container.querySelector(".usage-stat-card--cost")!;
+    expect(costCard).toHaveTextContent(mixed ? "Priced subtotal" : "Unpriced");
+    expect(costCard).not.toHaveTextContent("$0.00");
+    const amount = costCard.querySelector("strong")!;
+    if (mixed) {
+      expect(amount.textContent).toMatch(/^\$\d+\.\d{2,3}$/);
+      expect(amount).toHaveAttribute("aria-label", expect.stringMatching(/^Priced subtotal \$/));
+    }
+    const budgetCard = container.querySelector(".usage-stat-card--budget")!;
+    expect(budgetCard.querySelector("strong")).toHaveTextContent("—");
+    expect(budgetCard).not.toHaveTextContent("0%");
+    expect(budgetCard.querySelector("small")).toHaveTextContent("Pricing incomplete; budget unavailable");
+    fireEvent.click(screen.getByRole("button", { name: /^Cost$/ }));
+    expect(container.querySelector(".usage-daily-card header")).toHaveTextContent(mixed ? "Priced subtotal" : "Unpriced");
+    expect(mocks.sendDesktopNotification).not.toHaveBeenCalled();
+  });
+
   it("keeps rolling overview, distribution and Markdown on one reference time while reset freshness stays live", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-08-16T12:30:00Z"));

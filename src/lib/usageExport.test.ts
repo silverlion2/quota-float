@@ -35,6 +35,38 @@ const report: CodexTokenUsageReport = {
 };
 
 describe("usage export", () => {
+  it("distinguishes a disabled budget and record-free selection on share cards", () => {
+    const now = new Date("2026-08-16T12:00:00Z");
+    const summary = summarizeTokenReport(report, "7d", now).current;
+    const disabled = buildUsageShareSvg(summary, [], buildApiBudgetForecast(summary, "7d", 0, now), "7d", "en", now);
+    expect(disabled).toContain(">OFF<");
+    expect(disabled).not.toContain("ON TRACK");
+    const empty = summarizeTokenReport({ ...report, buckets: [] }, "7d", now).current;
+    const noRecords = buildUsageShareSvg(empty, [], buildApiBudgetForecast(empty, "7d", 100, now), "7d", "en", now);
+    expect(noRecords).toContain(">NO RECORDS<");
+    expect(noRecords).not.toContain("UNPRICED");
+    expect(noRecords).not.toContain("ON TRACK");
+  });
+  it("exports unknown prices as null/Unpriced and partial amounts as explicitly priced subtotals", () => {
+    const now = new Date("2026-08-16T12:00:00Z");
+    const unknown = { ...report, buckets: [{ ...report.buckets[0], model: "gpt-future" }] };
+    const mixed = { ...report, buckets: [...report.buckets, ...unknown.buckets] };
+    for (const source of [unknown, mixed]) {
+      const summary = summarizeTokenReport(source, "7d", now).current;
+      const budget = buildApiBudgetForecast(summary, "7d", 100, now);
+      const period = JSON.parse(buildPeriodUsageJson(buildCurrentPeriodUsageReport(source, "month", now)));
+      expect(period.schemaVersion).toBe(2);
+      expect(period.apiEquivalentUsd).toBeNull();
+      expect(period.summary.cost).toBeNull();
+      expect(period.knownApiEquivalentSubtotalUsd).toBe(source === unknown ? null : 3.94);
+      expect(period.pricingStatus).toBe(source === unknown ? "unpriced" : "partial");
+      expect(JSON.parse(buildUsageJson(source, "7d", {}, now)).rows.find((row: { model: string }) => row.model === "gpt-future").apiEquivalentUsd).toBeNull();
+      const svg = buildUsageShareSvg(summary, buildModelBreakdown(source, "7d", now), budget, "7d", "en", now);
+      expect(svg).not.toContain("ON TRACK");
+      expect(svg).toContain(source === unknown ? "UNPRICED" : "PARTIAL");
+      expect(buildUsageMarkdown(source, "7d", {}, now, "en")).toContain(source === unknown ? "Unpriced" : "Priced subtotal");
+    }
+  });
   it("exports anonymized CSV and JSON without session or project identifiers", () => {
     const now = new Date("2026-08-16T12:00:00Z");
     const csv = buildUsageCsv(report, "7d", {}, now);

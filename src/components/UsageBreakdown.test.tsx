@@ -25,6 +25,6 @@ it("keeps shares against the full selection when showing the top eight and suppo
 it("does not invent cost percentages for incomplete pricing", () => {
   render(<UsageBreakdown rows={[{ ...rows[0], costUsd: null, costShare: null, pricedTokenCoverage: .5, unpricedModels: ["unknown"] }]} dimension="project" onDimension={vi.fn()} metric="cost" language="en" />);
   expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
-  expect(screen.getByText("Unpriced / partial")).toBeInTheDocument();
+  expect(screen.getByText("Priced subtotal $2.00")).toBeInTheDocument();
   expect(screen.getByText(/cost shares are unavailable/)).toBeInTheDocument();
 });

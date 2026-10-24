@@ -1,4 +1,5 @@
-import type { ProviderSnapshot } from "../types";
+import { knownPlanChanged, priorKnownPlan } from "./quotaContinuity";
+import type { ProviderSnapshot, QuotaHistoryPoint } from "../types";
 
 export const RECENT_CODEX_RESET_MS = 6 * 60 * 60_000;
 const RESET_RECOVERY_TOLERANCE_PERCENT = 0.5;
@@ -29,8 +30,11 @@ export function detectRecentCodexReset(
   current: ProviderSnapshot,
   previous: ProviderSnapshot | null,
   now = new Date(),
+  history: readonly QuotaHistoryPoint[] = [],
 ): RecentCodexReset | null {
   if (current.provider !== "codex" || current.status !== "ok" || !current.weeklyWindow) return null;
+  const previousPlan = priorKnownPlan(previous, history, "codex", Date.parse(current.updatedAt));
+  if (knownPlanChanged(previousPlan, current.plan)) return null;
   const nowMs = now.getTime();
   if (!Number.isFinite(nowMs) || !freshSnapshot(current, nowMs)) return null;
 

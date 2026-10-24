@@ -93,6 +93,8 @@ const mockVolcengineDiagnostics: VolcengineDiagnostics = {
 
 function mockCodexTokenUsage(): CodexTokenUsageReport {
   const now = new Date();
+  // This fixture is reachable only in development or the isolated WDIO app.
+  const pricingPreview = new URLSearchParams(window.location?.search ?? "").get("pricingPreview");
   const buckets = Array.from({ length: 90 * 3 }, (_, index) => {
     const bucket = new Date(now.getTime() - (90 * 3 - index) * 8 * 3_600_000);
     bucket.setMinutes(0, 0, 0);
@@ -103,7 +105,8 @@ function mockCodexTokenUsage(): CodexTokenUsageReport {
     const outputTokens = Math.round(74_000 * pulse);
     return {
       bucketStart: bucket.toISOString(),
-      model: index < 90 ? "gpt-5.4" : index < 180 ? "gpt-5.5" : "gpt-5.6-sol",
+      model: pricingPreview === "unpriced" || (pricingPreview === "partial" && index % 2 === 0)
+        ? "unpriced-preview-model" : index < 90 ? "gpt-5.4" : index < 180 ? "gpt-5.5" : "gpt-5.6-sol",
       contextTier: index % 11 === 0 ? "long" as const : "short" as const,
       project: ["quota-float", "atlas", "research-lab"][index % 3],
       projectId: ["p-mock-quota-float", "p-mock-atlas", "p-mock-research-lab"][index % 3],

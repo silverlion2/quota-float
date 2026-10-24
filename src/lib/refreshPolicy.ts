@@ -11,6 +11,23 @@ export const FOCUS_ATTENTION_REFRESH_MS = 60 * 60_000;
 
 export type ProviderAttemptTimes = Partial<Record<ProviderId, number>>;
 
+function refreshDelay(attemptedAt: number | undefined, interval: number, now: number): number {
+  // A wall-clock correction must not strand the one-shot scheduler or extend
+  // a provider's cooldown by the size of the correction.
+  if (attemptedAt === undefined || !Number.isFinite(attemptedAt) || now < attemptedAt) return 0;
+  return Math.max(0, interval - (now - attemptedAt));
+}
+
+export function providersToRetryOnReconnect(
+  snapshots: readonly ProviderSnapshot[],
+  monitoredProviders: readonly ProviderId[],
+): ProviderId[] {
+  const monitored = new Set(monitoredProviders);
+  return snapshots.filter((snapshot) => monitored.has(snapshot.provider)
+    && (snapshot.status === "stale" || snapshot.status === "unavailable"))
+    .map((snapshot) => snapshot.provider);
+}
+
 export function monitoredProviderIds(pausedProviders: readonly ProviderId[]): ProviderId[] {
   const paused = new Set(pausedProviders);
   const monitored = DEFAULT_PROVIDER_ORDER.filter((provider) => !paused.has(provider));
@@ -37,8 +54,7 @@ export function providersDueForRefresh(
   const byProvider = new Map(snapshots.map((snapshot) => [snapshot.provider, snapshot]));
   return monitoredProviders.filter((provider) => {
     const attemptedAt = attempts[provider];
-    if (attemptedAt === undefined) return true;
-    return now - attemptedAt >= providerRefreshInterval(byProvider.get(provider), mode);
+    return refreshDelay(attemptedAt, providerRefreshInterval(byProvider.get(provider), mode), now) === 0;
   });
 }
 
@@ -53,8 +69,7 @@ export function nextProviderRefreshDelay(
   let next = Number.POSITIVE_INFINITY;
   for (const provider of monitoredProviders) {
     const attemptedAt = attempts[provider];
-    if (attemptedAt === undefined) return 0;
-    next = Math.min(next, Math.max(0, providerRefreshInterval(byProvider.get(provider), mode) - (now - attemptedAt)));
+    next = Math.min(next, refreshDelay(attemptedAt, providerRefreshInterval(byProvider.get(provider), mode), now));
   }
   return Number.isFinite(next) ? next : FOCUS_ATTENTION_REFRESH_MS;
 }

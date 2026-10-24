@@ -1,3 +1,4 @@
+import { observedQuotaDelta } from "./quotaContinuity";
 import { clampPercent } from "./format";
 import { MAX_DAILY_OBSERVED_PERCENT } from "../types";
 import type { DailyUsageSummary, ProviderId, QuotaHistoryPoint } from "../types";
@@ -60,14 +61,15 @@ function usageLevel(value: number | null): UsageCalendarDay["level"] {
 
 function usageFromHistory(history: QuotaHistoryPoint[], provider: ProviderId): Map<string, number> {
   const points = history
-    .filter((point) => point.provider === provider && point.metricKind === "percent" && point.metric !== null)
+    .filter((point) => point.provider === provider)
     .sort((left, right) => Date.parse(left.capturedAt) - Date.parse(right.capturedAt));
   const totals = new Map<string, number>();
+  let knownPlan = points[0]?.plan;
   for (let index = 1; index < points.length; index += 1) {
     const previous = points[index - 1];
     const point = points[index];
-    if (previous.resetsAt !== point.resetsAt || previous.metric === null || point.metric === null) continue;
-    const delta = Math.max(0, previous.metric - point.metric);
+    const delta = observedQuotaDelta(previous, point, knownPlan);
+    knownPlan = point.plan ?? knownPlan;
     if (delta <= 0) continue;
     const key = dateKey(new Date(point.capturedAt));
     totals.set(key, Math.min(MAX_DAILY_OBSERVED_PERCENT, (totals.get(key) ?? 0) + delta));

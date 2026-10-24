@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import type { ProviderAttemptTimes } from "../lib/refreshPolicy";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_WIDGET_PREFERENCES } from "../lib/preferences";
 import type { AppDiagnostics, ProviderSnapshot, RuntimeState, WidgetPreferences } from "../types";
@@ -63,12 +64,15 @@ function renderControlCenter(
   state = runtimeState,
   operation: ControlOperation | null = null,
   platform = "windows",
+  health: { snapshots?: ProviderSnapshot[]; attempts?: ProviderAttemptTimes; pending?: ProviderSnapshot["provider"][] } = {},
 ) {
   render(
     <ControlCenter
       preferences={preferences}
       runtimeState={state}
-      snapshots={snapshots}
+      snapshots={health.snapshots ?? snapshots}
+      refreshAttempts={health.attempts}
+      refreshingProviders={health.pending}
       diagnostics={{ ...diagnostics, platform }}
       language={preferences.language}
       onClose={vi.fn()}
@@ -88,6 +92,38 @@ function renderControlCenter(
 }
 
 describe("ControlCenter provider health", () => {
+  it("keeps a failed check time separate from retained quota data and avoids a first-failure success time", () => {
+    const attemptedAt = Date.parse("2026-07-26T02:00:00Z");
+    renderControlCenter(vi.fn(), vi.fn(), { ...DEFAULT_WIDGET_PREFERENCES, language: "en" }, vi.fn(), runtimeState, null, "windows", {
+      attempts: { codex: attemptedAt, claude: attemptedAt },
+      snapshots: [
+        { ...snapshots[0], status: "stale", weeklyWindow: { remainingPercent: 42, resetsAt: null, windowSeconds: 604800 } },
+        { ...snapshots[0], provider: "claude", status: "unavailable", updatedAt: new Date(attemptedAt).toISOString() },
+      ],
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Health" }));
+    const codex = within(screen.getByText("CODEX").closest("article")!);
+    const formatter = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    expect(codex.getByText(`Last checked: ${formatter.format(attemptedAt)}`)).toBeInTheDocument();
+    expect(codex.getByText(`Quota data from: ${formatter.format(new Date(snapshots[0].updatedAt))}`)).toBeInTheDocument();
+    const claude = within(screen.getByText("CLAUDE").closest("article")!);
+    expect(claude.getByText("Quota data from: No valid quota yet")).toBeInTheDocument();
+  });
+
+  it("shows checking without reusing a previous failure message or allowing duplicate refresh clicks", () => {
+    const onRefresh = vi.fn();
+    renderControlCenter(onRefresh, vi.fn(), { ...DEFAULT_WIDGET_PREFERENCES, language: "en" }, vi.fn(), runtimeState, null, "windows", {
+      pending: ["volcengine"], attempts: { volcengine: Date.now() },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Health" }));
+    const refresh = screen.getByRole("button", { name: "Checking…" });
+    expect(refresh).toBeDisabled();
+    fireEvent.click(refresh);
+    expect(onRefresh).not.toHaveBeenCalled();
+    expect(screen.getByText("Checking")).toBeInTheDocument();
+    expect(screen.queryByText("Volcengine login expired.")).not.toBeInTheDocument();
+  });
+
   it("does not offer Windows taskbar mode on macOS", () => {
     renderControlCenter(vi.fn(), vi.fn(), { ...DEFAULT_WIDGET_PREFERENCES, language: "en" }, vi.fn(), runtimeState, null, "macos");
     expect(screen.queryByRole("radio", { name: /Taskbar/ })).not.toBeInTheDocument();
@@ -110,14 +146,14 @@ describe("ControlCenter provider health", () => {
     renderControlCenter();
     fireEvent.click(screen.getByRole("button", { name: "Health" }));
 
-    expect(screen.getByText("1/7 providers connected")).toBeInTheDocument();
+    expect(screen.getByText("1/7 providers passed their last check")).toBeInTheDocument();
     expect(screen.getByText("Healthy")).toBeInTheDocument();
     expect(screen.getByText("Sign-in required")).toBeInTheDocument();
     expect(screen.getByText("Codex local session")).toBeInTheDocument();
     expect(screen.getByText("Volcengine login expired.")).toBeInTheDocument();
     expect(screen.getByText(/Sign in through Ark CLI/)).toBeInTheDocument();
     expect(screen.getByText("1 samples")).toBeInTheDocument();
-    expect(screen.getAllByText(/Not checked yet/)).toHaveLength(5);
+    expect(screen.getAllByText(/Not checked yet/)).toHaveLength(7);
   });
 
   it("requests an immediate refresh from the health summary", () => {
@@ -252,7 +288,7 @@ describe("ControlCenter provider health", () => {
   it("excludes paused providers from the health denominator", () => {
     renderControlCenter(vi.fn(), vi.fn(), { ...DEFAULT_WIDGET_PREFERENCES, language: "en", pausedProviders: ["volcengine"] });
     fireEvent.click(screen.getByRole("button", { name: "Health" }));
-    expect(screen.getByText("1/6 providers connected")).toBeInTheDocument();
+    expect(screen.getByText("1/6 providers passed their last check")).toBeInTheDocument();
     expect(screen.getByText("Paused")).toBeInTheDocument();
   });
 

@@ -17,6 +17,19 @@ const history: QuotaHistoryPoint[] = [
 ];
 
 describe("usage insights", () => {
+  it("excludes known plan boundary deltas when rebuilding historical usage", () => {
+    const plans = ["PLUS", null, "PRO", "PRO"];
+    const metrics = [90, 80, 40, 35];
+    const samples: QuotaHistoryPoint[] = plans.map((plan, index) => ({
+      provider: "codex", plan, metric: metrics[index], metricKind: "percent", status: "ok",
+      resetsAt: "2026-08-10T00:00:00Z", capturedAt: `2026-08-08T0${index + 1}:00:00Z`,
+    }));
+    const calendar = buildUsageCalendar([], samples, "codex", new Date("2026-08-08T08:00:00Z"), 1);
+    expect(calendar[0].observedUsedPercent).toBe(15);
+    const legacy = buildUsageCalendar([], samples.map((point) => ({ ...point, plan: undefined })), "codex", new Date("2026-08-08T08:00:00Z"), 1);
+    expect(legacy[0].observedUsedPercent).toBe(55);
+  });
+
   it("builds an honest 90-day calendar and recovers observed use from history", () => {
     const days = buildUsageCalendar([], history, "codex", new Date("2026-08-08T08:00:00Z"));
     expect(days).toHaveLength(90);

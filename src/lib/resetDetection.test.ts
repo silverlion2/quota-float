@@ -19,6 +19,18 @@ function codex(remainingPercent: number, resetsAt: string, resetCredits = 0): Pr
 describe("recent Codex reset detection", () => {
   const now = new Date("2026-07-18T02:00:00Z");
 
+  it("does not report plan changes as a window reset or observed refill", () => {
+    const previous = { ...codex(5, "2026-07-18T03:00:00Z", 1), plan: "PLUS" };
+    const current = codex(96, "2026-07-25T01:00:00Z", 0);
+    expect(detectRecentCodexReset(current, previous, now)).toBeNull();
+    const unknown = { ...previous, plan: null };
+    expect(detectRecentCodexReset(current, unknown, now, [{
+      provider: "codex", capturedAt: "2026-07-18T01:00:00Z", plan: "PLUS", metric: 8,
+      metricKind: "percent", status: "ok", resetsAt: previous.weeklyWindow!.resetsAt,
+    }])).toBeNull();
+    expect(detectRecentCodexReset(current, unknown, now)?.source).toBe("observed");
+  });
+
   it("detects a weekly window that started recently", () => {
     const value = detectRecentCodexReset(codex(100, "2026-07-25T01:00:00Z"), null, now);
     expect(value).toEqual({

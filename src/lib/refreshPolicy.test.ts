@@ -9,6 +9,7 @@ import {
   nextProviderRefreshDelay,
   providerRefreshInterval,
   providersDueForRefresh,
+  providersToRetryOnReconnect,
 } from "./refreshPolicy";
 
 function snapshot(provider: ProviderSnapshot["provider"], status: ProviderSnapshot["status"] = "ok"): ProviderSnapshot {
@@ -26,6 +27,28 @@ function snapshot(provider: ProviderSnapshot["provider"], status: ProviderSnapsh
 }
 
 describe("provider refresh policy", () => {
+  it("keeps due selection and scheduling consistent after a backward clock correction", () => {
+    const now = 10_000_000;
+    const attempts = { codex: now + 3_600_000, claude: now - 10_000 };
+    const snapshots = [snapshot("codex", "stale"), snapshot("claude")];
+    expect(providersDueForRefresh(snapshots, ["codex", "claude"], attempts, "focus", now)).toEqual(["codex"]);
+    expect(nextProviderRefreshDelay(snapshots, ["codex", "claude"], attempts, "focus", now)).toBe(0);
+    expect(nextProviderRefreshDelay(snapshots, ["codex"], { codex: now }, "focus", now)).toBe(FOCUS_ATTENTION_REFRESH_MS);
+  });
+
+  it("makes overdue and invalid clocks due without changing attention cooldowns", () => {
+    const now = 10_000_000;
+    expect(providersDueForRefresh([snapshot("codex")], ["codex"], { codex: Number.NaN }, "balanced", now)).toEqual(["codex"]);
+    expect(nextProviderRefreshDelay([], ["codex"], { codex: now - FOCUS_ATTENTION_REFRESH_MS }, "focus", now)).toBe(0);
+  });
+
+  it("retries only transient failed monitored sources after reconnect", () => {
+    expect(providersToRetryOnReconnect([
+      snapshot("codex", "stale"), snapshot("claude", "unavailable"),
+      snapshot("qoder", "unavailable"), snapshot("trae", "signed_out"), snapshot("workbuddy"),
+    ], ["codex", "claude", "trae", "workbuddy"])).toEqual(["codex", "claude"]);
+  });
+
   it("isolates healthy and unavailable provider clocks", () => {
     const now = 10_000_000;
     const snapshots = [snapshot("codex"), snapshot("antigravity", "unavailable")];

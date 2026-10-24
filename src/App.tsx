@@ -22,7 +22,8 @@ import { loadStartupState } from "./lib/startup";
 import { runSingleFlight, type SingleFlightState } from "./lib/singleFlight";
 import { requestLatest, type LatestRequestState } from "./lib/latestRequest";
 import { settleResetForecast, type ResetForecastLoadStatus } from "./lib/resetForecast";
-import { monitoredProviderIds, nextProviderRefreshDelay, providersDueForRefresh, type ProviderAttemptTimes } from "./lib/refreshPolicy";
+import { monitoredProviderIds, nextProviderRefreshDelay, providersDueForRefresh, providersToRetryOnReconnect, type ProviderAttemptTimes } from "./lib/refreshPolicy";
+import { knownPlanChanged, priorKnownPlan } from "./lib/quotaContinuity";
 import { buildDiagnosticReport } from "./lib/diagnosticReport";
 import type { AppDiagnostics, CockpitRegion, ProviderId, ProviderSnapshot, ResetForecast, RuntimeState, VolcengineDiagnostics, WidgetPreferences } from "./types";
 
@@ -63,6 +64,8 @@ export default function App() {
   const [systemDark, setSystemDark] = useState(systemPrefersDark);
   const snapshotsRef = useRef<ProviderSnapshot[]>([]);
   const providerAttempts = useRef<ProviderAttemptTimes>({});
+  const [providerChecks, setProviderChecks] = useState<{ attempts: ProviderAttemptTimes; pending: ProviderId[] }>({ attempts: {}, pending: [] });
+  const reconnectPending = useRef(false);
   const resetForecastRef = useRef<ResetForecast | null>(null);
   const resetForecastRequest = useRef<LatestRequestState>({ sequence: 0 });
   const previousMetric = useRef(new Map<string, number>());
@@ -256,7 +259,7 @@ export default function App() {
     requestLatest(resetForecastRequest.current, fetchCodexResetForecast, commitForecast, () => commitForecast(null));
   }, []);
 
-  const refresh = useCallback((force = false) => runSingleFlight(refreshFlight.current, async () => {
+  const refresh = useCallback((force = false, urgent = force) => runSingleFlight(refreshFlight.current, async () => {
     const preferenceSnapshot = preferencesRef.current;
     const monitored = monitoredProviderIds(preferenceSnapshot.pausedProviders);
     const providerIds = force
@@ -269,6 +272,7 @@ export default function App() {
     activeSnapshotRequest.current = requestId;
     const attemptedAt = Date.now();
     for (const provider of providerIds) providerAttempts.current[provider] = attemptedAt;
+    setProviderChecks({ attempts: { ...providerAttempts.current }, pending: providerIds });
     if (providerIds.includes("codex")) {
       refreshResetForecast();
     }
@@ -278,16 +282,24 @@ export default function App() {
         if (!merged) return;
         snapshotsRef.current = merged;
         setSnapshots(merged);
+        setProviderChecks((current) => ({ ...current, pending: current.pending.filter((provider) => provider !== progress.providerId) }));
       });
       if (!finalizeSnapshotProgress(progressState, activeSnapshotRequest.current)) return;
       // Progressive events update view state only. History, reset detection, and notifications run once below.
       for (const item of values) {
+        const planChanged = knownPlanChanged(priorKnownPlan(snapshotsBeforeRefresh.find((previous) => previous.provider === item.provider), runtimeStateRef.current.history, item.provider, Date.parse(item.updatedAt)), item.plan);
         const percentWindows = trackedQuotaWindows(item);
         const nextMetric = percentWindows.length > 0
           ? percentWindows.reduce((total, value) => total + value.window.remainingPercent, 0)
           : item.balanceRemaining ?? undefined;
         const previous = previousMetric.current.get(item.provider);
-        if (nextMetric !== undefined && previous !== undefined && nextMetric < previous) {
+        if (planChanged) {
+          const oldTimer = consumptionTimers.current.get(item.provider);
+          if (oldTimer !== undefined) window.clearTimeout(oldTimer);
+          consumptionTimers.current.delete(item.provider);
+          setConsumingProviders((current) => { const next = new Set(current); next.delete(item.provider); return next; });
+        }
+        if (!planChanged && nextMetric !== undefined && previous !== undefined && nextMetric < previous) {
           setConsumingProviders((current) => new Set(current).add(item.provider));
           const oldTimer = consumptionTimers.current.get(item.provider);
           if (oldTimer !== undefined) window.clearTimeout(oldTimer);
@@ -303,8 +315,9 @@ export default function App() {
       let detectedReset: RecentCodexReset | null = null;
       const nextCodex = values.find((item) => item.provider === "codex");
       if (nextCodex) {
-        detectedReset = detectRecentCodexReset(nextCodex, snapshotsBeforeRefresh.find((item) => item.provider === "codex") ?? null, now);
-        setRecentCodexReset((current) => detectedReset ?? (isRecentCodexReset(current, now) ? current : null));
+        const planChanged = knownPlanChanged(priorKnownPlan(snapshotsBeforeRefresh.find((item) => item.provider === "codex"), runtimeStateRef.current.history, "codex", Date.parse(nextCodex.updatedAt)), nextCodex.plan);
+        detectedReset = detectRecentCodexReset(nextCodex, snapshotsBeforeRefresh.find((item) => item.provider === "codex") ?? null, now, runtimeStateRef.current.history);
+        setRecentCodexReset((current) => planChanged ? null : detectedReset ?? (isRecentCodexReset(current, now) ? current : null));
       }
       const activity = recordSnapshotActivity(runtimeStateRef.current, snapshotsBeforeRefresh, values, detectedReset, preferencesRef.current.alertThreshold, now, preferencesRef.current.language, preferencesRef.current.notificationCooldownMinutes, resetForecastRef.current);
       let nextRuntimeState = activity.state;
@@ -321,14 +334,13 @@ export default function App() {
         }
       }
       commitRuntimeState(nextRuntimeState);
-      setSnapshots((current) => {
-        const merged = mergeSnapshots(current, values, providerIds);
-        snapshotsRef.current = merged;
-        return merged;
-      });
+      const merged = mergeSnapshots(snapshotsRef.current, values, providerIds);
+      snapshotsRef.current = merged;
+      setSnapshots(merged);
     } catch {
       if (activeSnapshotRequest.current !== requestId) return;
-      setSnapshots((current) => {
+      {
+        const current = snapshotsRef.current;
         const missingProviders = providerIds.filter((provider) => !progressState.receivedProviders.has(provider));
         const represented = new Set(current.map((item) => item.provider));
         const next = current.map((item) => missingProviders.includes(item.provider)
@@ -338,12 +350,15 @@ export default function App() {
           if (!represented.has(provider)) next.push({ provider, displayName: provider.toUpperCase(), plan: null, shortWindow: null, weeklyWindow: null, resetCredits: null, resetCreditExpiresAt: [], updatedAt: new Date().toISOString(), status: "unavailable" as const, message: "Quota is temporarily unavailable. It will retry automatically." });
         }
         snapshotsRef.current = next;
-        return next;
-      });
+        setSnapshots(next);
+      }
     } finally {
-      if (activeSnapshotRequest.current === requestId) activeSnapshotRequest.current = null;
+      if (activeSnapshotRequest.current === requestId) {
+        activeSnapshotRequest.current = null;
+        setProviderChecks((current) => ({ ...current, pending: [] }));
+      }
     }
-  }, force), [commitRuntimeState, refreshResetForecast]);
+  }, urgent), [commitRuntimeState, refreshResetForecast]);
 
   const loadVolcengineDiagnostics = useCallback(async () => {
     const sequence = ++diagnosticsSequence.current;
@@ -449,6 +464,29 @@ export default function App() {
       window.removeEventListener("focus", refreshWhenActive);
       document.removeEventListener("visibilitychange", refreshWhenActive);
     };
+  }, [refresh]);
+
+  useEffect(() => {
+    let lastReconnectAt: number | null = null;
+    let cancelled = false;
+    const refreshAfterReconnect = () => {
+      const now = Date.now();
+      if (reconnectPending.current || (lastReconnectAt !== null && now >= lastReconnectAt && now - lastReconnectAt < 30_000)) return;
+      const retry = providersToRetryOnReconnect(snapshotsRef.current, monitoredProviderIds(preferencesRef.current.pausedProviders));
+      if (retry.length === 0 && !refreshFlight.current.current) return;
+      lastReconnectAt = now;
+      reconnectPending.current = true;
+      // Wait for an existing batch before invalidating cooldowns. Its results
+      // may recover the source, and progressive events must keep one owner.
+      void Promise.resolve(refreshFlight.current.current).catch(() => undefined).then(() => {
+        if (cancelled) return;
+        const failed = providersToRetryOnReconnect(snapshotsRef.current, monitoredProviderIds(preferencesRef.current.pausedProviders));
+        for (const provider of failed) delete providerAttempts.current[provider];
+        if (failed.length > 0) return refresh(false, true);
+      }).finally(() => { reconnectPending.current = false; }).catch(() => undefined);
+    };
+    window.addEventListener("online", refreshAfterReconnect);
+    return () => { cancelled = true; window.removeEventListener("online", refreshAfterReconnect); };
   }, [refresh]);
 
   const orderedSnapshots = useMemo(() => {
@@ -1117,6 +1155,8 @@ export default function App() {
             preferences={preferences}
             runtimeState={runtimeState}
             snapshots={snapshots}
+            refreshAttempts={providerChecks.attempts}
+            refreshingProviders={providerChecks.pending}
             diagnostics={appDiagnostics}
             language={language}
             onClose={() => closeModal("control")}

@@ -90,25 +90,47 @@ export interface TokenSeriesPoint {
   cachedInputTokens: number;
   outputTokens: number;
   totalTokens: number;
-  costUsd: number;
+  costUsd: number | null;
+  pricingStatus?: PricingStatus;
 }
 
 export interface TokenHeatCell {
   weekday: number;
   hour: number;
   tokens: number;
-  costUsd: number;
+  costUsd: number | null;
+  pricingStatus?: PricingStatus;
 }
 
 export interface ApiBudgetForecast {
   budgetUsd: number;
-  selectedRangeUsd: number;
-  currentMonthUsd: number;
-  projectedMonthlyUsd: number;
-  dailyAverageUsd: number;
+  selectedRangeUsd: number | null;
+  currentMonthUsd: number | null;
+  projectedMonthlyUsd: number | null;
+  dailyAverageUsd: number | null;
+  pricingStatus: PricingStatus;
   utilization: number;
-  status: "disabled" | "on_track" | "warning" | "over";
+  status: "disabled" | "on_track" | "warning" | "over" | "partial" | "unpriced";
   daysInMonth: number;
+}
+
+export type PricingStatus = "complete" | "partial" | "unpriced" | "no_records";
+
+export function usagePricingStatus(summary: Pick<TokenUsageSummary, "totalTokens" | "pricedTokenCoverage" | "unpricedModels">): PricingStatus {
+  return summary.totalTokens <= 0 ? "no_records" : !summary.unpricedModels.length ? "complete"
+    : summary.pricedTokenCoverage > 0 ? "partial" : "unpriced";
+}
+
+/** A partial amount is a lower bound; zero known prices is never a zero total. */
+export function formatUsageCost(value: number, status: PricingStatus, language: "en" | "zh-CN", digits = 2): string {
+  if (status === "no_records") return "—";
+  if (status === "unpriced") return language === "en" ? "Unpriced" : "未定价";
+  return `${status === "partial" ? language === "en" ? "Priced subtotal " : "已知价格小计 " : ""}$${value.toFixed(digits)}`;
+}
+
+function mergePricingStatus(status: PricingStatus, priced: boolean): PricingStatus {
+  const next = priced ? "complete" : "unpriced";
+  return status === "no_records" || status === next ? next : "partial";
 }
 
 export interface PeriodUsageReport {
@@ -422,7 +444,7 @@ export function buildCurrentPeriodUsageReport(
   };
 }
 
-export function buildApiBudgetForecast(summary: TokenUsageSummary, range: UsageRange, budgetUsd: number, now = new Date(), coverageStart = now, currentMonthUsd = summary.cost.totalUsd): ApiBudgetForecast {
+export function buildApiBudgetForecast(summary: TokenUsageSummary, range: UsageRange, budgetUsd: number, now = new Date(), coverageStart = now, currentMonthUsd = summary.cost.totalUsd, currentMonthPricing = usagePricingStatus(summary)): ApiBudgetForecast {
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   const elapsedToday = Math.max(1 / 24, (now.getTime() - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) / 86_400_000);
   const customBounds = typeof range !== "string" ? usageRangeBounds(range, now) : null;
@@ -438,8 +460,14 @@ export function buildApiBudgetForecast(summary: TokenUsageSummary, range: UsageR
   const safeBudget = Number.isFinite(budgetUsd) ? Math.max(0, budgetUsd) : 0;
   const safeCurrentMonthUsd = Number.isFinite(currentMonthUsd) ? Math.max(0, currentMonthUsd) : 0;
   const utilization = safeBudget > 0 ? projectedMonthlyUsd / safeBudget : 0;
-  const status = safeBudget <= 0 ? "disabled" : utilization > 1 ? "over" : utilization >= .8 ? "warning" : "on_track";
-  return { budgetUsd: safeBudget, selectedRangeUsd: summary.cost.totalUsd, currentMonthUsd: safeCurrentMonthUsd, projectedMonthlyUsd, dailyAverageUsd, utilization, status, daysInMonth };
+  const pricing = usagePricingStatus(summary);
+  const complete = pricing === "complete";
+  const status = safeBudget <= 0 ? "disabled" : !complete ? pricing === "partial" ? "partial" : "unpriced"
+    : utilization > 1 ? "over" : utilization >= .8 ? "warning" : "on_track";
+  return { budgetUsd: safeBudget, selectedRangeUsd: pricing === "complete" || pricing === "partial" ? summary.cost.totalUsd : null,
+    currentMonthUsd: currentMonthPricing === "complete" || currentMonthPricing === "partial" ? safeCurrentMonthUsd : null,
+    projectedMonthlyUsd: complete ? projectedMonthlyUsd : null, dailyAverageUsd: complete ? dailyAverageUsd : null,
+    pricingStatus: pricing, utilization: complete ? utilization : 0, status, daysInMonth };
 }
 
 export function relativeChange(current: number, previous: number): number | null {
@@ -486,7 +514,7 @@ export function buildTokenSeries(report: CodexTokenUsageReport, range: UsageRang
   const bounds = usageRangeBounds(range, now, usageCoverageStart(report, now));
   const hourly = range === "today" || range === "24h";
   const monthly = range === "all";
-  const points = new Map(seriesKeys(range, bounds.end, bounds.start).map((item) => [item.key, { ...item, inputTokens: 0, cachedInputTokens: 0, outputTokens: 0, totalTokens: 0, costUsd: 0 }]));
+  const points = new Map<string, TokenSeriesPoint>(seriesKeys(range, bounds.end, bounds.start).map((item) => [item.key, { ...item, inputTokens: 0, cachedInputTokens: 0, outputTokens: 0, totalTokens: 0, costUsd: 0, pricingStatus: "no_records" }]));
   for (const bucket of bucketsInWindow(report.buckets, bounds.start, bounds.end, filters)) {
     const date = new Date(bucket.bucketStart);
     const key = hourly
@@ -500,20 +528,24 @@ export function buildTokenSeries(report: CodexTokenUsageReport, range: UsageRang
     point.cachedInputTokens += bucket.cachedInputTokens;
     point.outputTokens += bucket.outputTokens;
     point.totalTokens += bucket.totalTokens;
-    point.costUsd += estimateBucketCost(bucket)?.totalUsd ?? 0;
+    const cost = estimateBucketCost(bucket);
+    point.costUsd = (point.costUsd ?? 0) + (cost?.totalUsd ?? 0);
+    point.pricingStatus = mergePricingStatus(point.pricingStatus!, cost !== null);
   }
-  return [...points.values()];
+  return [...points.values()].map((point) => ({ ...point, costUsd: point.pricingStatus === "unpriced" || point.pricingStatus === "no_records" ? null : point.costUsd }));
 }
 
 export function buildTokenHeatmap(report: CodexTokenUsageReport, range: UsageRange, now = new Date(), filters: TokenUsageFilters = {}): TokenHeatCell[] {
   const bounds = usageRangeBounds(range, now, usageCoverageStart(report, now));
-  const cells = Array.from({ length: 7 * 24 }, (_, index) => ({ weekday: Math.floor(index / 24), hour: index % 24, tokens: 0, costUsd: 0 }));
+  const cells: TokenHeatCell[] = Array.from({ length: 7 * 24 }, (_, index) => ({ weekday: Math.floor(index / 24), hour: index % 24, tokens: 0, costUsd: 0, pricingStatus: "no_records" }));
   for (const bucket of bucketsInWindow(report.buckets, bounds.start, bounds.end, filters)) {
     const date = new Date(bucket.bucketStart);
     const weekday = (date.getDay() + 6) % 7;
     const cell = cells[weekday * 24 + date.getHours()];
     cell.tokens += bucket.totalTokens;
-    cell.costUsd += estimateBucketCost(bucket)?.totalUsd ?? 0;
+    const cost = estimateBucketCost(bucket);
+    cell.costUsd = (cell.costUsd ?? 0) + (cost?.totalUsd ?? 0);
+    cell.pricingStatus = mergePricingStatus(cell.pricingStatus!, cost !== null);
   }
-  return cells;
+  return cells.map((cell) => ({ ...cell, costUsd: cell.pricingStatus === "unpriced" || cell.pricingStatus === "no_records" ? null : cell.costUsd }));
 }

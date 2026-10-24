@@ -131,8 +131,8 @@ to{transform:rotate(360deg);}}
 .provider-health-copy header strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .provider-health-copy header span{flex:none;font-weight:600;}
 .provider-health-copy p{margin:2px 0 4px;overflow:hidden;line-height:1.35;text-overflow:ellipsis;white-space:nowrap;}
-.provider-health-copy footer{justify-content:flex-start;}
-.provider-health-copy footer span + span::before{content:"·";margin-right:6px;}
+.provider-health-copy footer{justify-content:flex-start;align-items:baseline;flex-wrap:wrap;gap:4px 10px;}
+.provider-health-copy footer span{max-width:100%;}
 .layout-save{display:grid;grid-template-columns:minmax(0, 1fr) auto;}
 .layout-save button, .backup-actions button, .diagnostic-summary button{display:inline-flex;align-items:center;justify-content:center;gap:4px;border:1px solid rgba(35,73,119,.13);border-radius:7px;cursor:pointer;font-weight:600;}
 .layout-save svg, .backup-actions svg{width:10px;height:10px;}

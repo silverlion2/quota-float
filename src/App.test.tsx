@@ -5,7 +5,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_WIDGET_PREFERENCES } from "./lib/preferences";
 import { EMPTY_RUNTIME_STATE } from "./lib/activity";
-import { fetchCodexResetForecast, resizeWidgetToContent, setWidgetExpanded, syncTaskbarIndicator } from "./lib/bridge";
+import { fetchCodexResetForecast, fetchSnapshotsProgressively, resizeWidgetToContent, setWidgetExpanded, syncTaskbarIndicator } from "./lib/bridge";
+import type { ProviderSnapshot } from "./types";
 
 type Deferred<T> = { promise: Promise<T>; resolve: (value: T) => void; reject: (reason?: unknown) => void };
 
@@ -100,11 +101,13 @@ vi.mock("./lib/bridge", () => {
 });
 
 vi.mock("./components/ControlCenter", () => ({
-  ControlCenter: ({ onClose, onExport, operation }: { onClose: () => void; onExport: () => void; operation?: { pending: boolean; message: string } | null }) => (
+  ControlCenter: ({ onClose, onExport, operation, refreshAttempts, refreshingProviders }: { onClose: () => void; onExport: () => void; operation?: { pending: boolean; message: string } | null; refreshAttempts?: object; refreshingProviders?: string[] }) => (
     <section role="dialog" aria-label="Control center">
       <button type="button" onClick={onClose}>Close control</button>
       <button type="button" onClick={onExport} disabled={operation?.pending}>Export system</button>
       {operation ? <output>{operation.message}</output> : null}
+      <output aria-label="Refresh attempts">{JSON.stringify(refreshAttempts)}</output>
+      <output aria-label="Checking providers">{refreshingProviders?.join(",")}</output>
     </section>
   ),
 }));
@@ -118,10 +121,12 @@ vi.mock("./components/QuotaCard", () => {
       <button type="button" onClick={() => props.onPreferences({ ...props.preferences, accentColor: "#112233" })}>Save first</button>
       <button type="button" onClick={() => props.onPreferences({ ...props.preferences, accentColor: "#223344" })}>Save second</button>
       <button type="button" onClick={() => props.onPreferences({ ...props.preferences, stayExpanded: true, compactLayout: "bar" })}>Pin as bar</button>
+      <button type="button" onClick={() => props.onPreferences({ ...props.preferences, pausedProviders: [...props.preferences.pausedProviders, "claude"] })}>Pause Claude</button>
       <button type="button" onClick={() => props.onProviderListPreferenceChange(false)}>Collapse providers</button>
       <button type="button" onClick={() => props.onHover(false)}>Leave widget</button>
       <output aria-label="Provider list choice">{String(props.providerListPreference)}</output>
       <button type="button" onClick={props.onRefreshResetForecast}>Retry forecast</button>
+      <button type="button" onClick={props.onRefresh}>Refresh quota</button>
       <output aria-label="Forecast state">{props.resetForecastStatus}:{props.resetForecast?.score ?? "none"}</output>
       <output>{props.preferences.accentColor}</output>
       {props.updateOpen ? <section role="dialog" aria-label="Update dialog">{props.updateState.phase}<button type="button" onClick={props.onUpdateClose}>Close update</button></section> : null}
@@ -132,6 +137,7 @@ vi.mock("./components/QuotaCard", () => {
 });
 
 import App from "./App";
+const defaultSnapshotFetcher = vi.mocked(fetchSnapshotsProgressively).getMockImplementation()!;
 
 afterEach(() => {
   cleanup();
@@ -149,6 +155,7 @@ beforeEach(() => {
   testState.widgetExpandRequest = null;
   testState.desktopHandlers = null;
   vi.mocked(fetchCodexResetForecast).mockReset().mockResolvedValue(null);
+  vi.mocked(fetchSnapshotsProgressively).mockReset().mockImplementation(defaultSnapshotFetcher);
 });
 
 async function renderExpandedApp() {
@@ -158,6 +165,73 @@ async function renderExpandedApp() {
 }
 
 describe("App modal and preference lifecycle", () => {
+  it("does not retry a provider paused while a reconnect is waiting for an active request", async () => {
+    testState.initialPreferences = { ...DEFAULT_WIDGET_PREFERENCES, pausedProviders: ["qoder", "trae", "workbuddy", "volcengine", "antigravity"] };
+    const request = deferred<ProviderSnapshot[]>();
+    const healthy: ProviderSnapshot = { provider: "codex", displayName: "CODEX", plan: "PRO", shortWindow: null, weeklyWindow: { remainingPercent: 70, resetsAt: null, windowSeconds: 604800 }, resetCredits: null, status: "ok", message: null, updatedAt: new Date().toISOString() };
+    vi.mocked(fetchSnapshotsProgressively).mockImplementationOnce(() => request.promise);
+    render(<App />);
+    await waitFor(() => expect(fetchSnapshotsProgressively).toHaveBeenCalledTimes(1));
+    fireEvent(window, new Event("online"));
+    // Resolve a visible progressive result while the other provider is pending.
+    const [requestId, ids, progress] = vi.mocked(fetchSnapshotsProgressively).mock.calls[0];
+    act(() => progress({ requestId, requestedProviderIds: ids!, providerId: "codex", snapshots: [healthy] }));
+    fireEvent.click(await screen.findByRole("button", { name: "Expand widget" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Pause Claude" }));
+    await act(async () => { request.resolve([healthy, { ...healthy, provider: "claude", status: "unavailable", weeklyWindow: null }]); await request.promise; });
+    await act(async () => { await Promise.resolve(); });
+    expect(fetchSnapshotsProgressively).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not lose a reconnect event when the first in-flight check fails afterward", async () => {
+    testState.initialPreferences = { ...DEFAULT_WIDGET_PREFERENCES, pausedProviders: ["claude", "qoder", "trae", "workbuddy", "volcengine", "antigravity"] };
+    const request = deferred<ProviderSnapshot[]>();
+    vi.mocked(fetchSnapshotsProgressively).mockImplementationOnce(() => request.promise).mockResolvedValueOnce([]);
+    render(<App />);
+    await waitFor(() => expect(fetchSnapshotsProgressively).toHaveBeenCalledTimes(1));
+    fireEvent(window, new Event("online"));
+    await act(async () => { request.reject(new Error("connection recovered after request failed")); await request.promise.catch(() => undefined); });
+    await waitFor(() => expect(fetchSnapshotsProgressively).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(fetchSnapshotsProgressively).mock.calls[1][1]).toEqual(["codex"]);
+  });
+
+  it("retries only failed monitored providers on reconnect and coalesces event bursts", async () => {
+    testState.initialPreferences = { ...DEFAULT_WIDGET_PREFERENCES, pausedProviders: ["qoder", "trae", "workbuddy", "volcengine", "antigravity"] };
+    const healthy: ProviderSnapshot = { provider: "codex", displayName: "CODEX", plan: "PRO", shortWindow: null, weeklyWindow: { remainingPercent: 70, resetsAt: null, windowSeconds: 604800 }, resetCredits: null, status: "ok", message: null, updatedAt: new Date().toISOString() };
+    const failed: ProviderSnapshot = { ...healthy, provider: "claude", status: "unavailable", weeklyWindow: null };
+    const retry = deferred<ProviderSnapshot[]>();
+    vi.mocked(fetchSnapshotsProgressively).mockResolvedValueOnce([healthy, failed]).mockImplementationOnce(() => retry.promise);
+    await renderExpandedApp();
+    await waitFor(() => expect(fetchSnapshotsProgressively).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Control center" }));
+    await waitFor(() => expect(screen.getByLabelText("Checking providers")).toHaveTextContent(/^$/));
+    fireEvent(window, new Event("online"));
+    fireEvent(window, new Event("online"));
+    fireEvent.focus(window);
+    await waitFor(() => expect(fetchSnapshotsProgressively).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(fetchSnapshotsProgressively).mock.calls[1][1]).toEqual(["claude"]);
+    expect(screen.getByLabelText("Checking providers")).toHaveTextContent(/^claude$/);
+    await act(async () => { retry.resolve([failed]); await retry.promise; });
+    await waitFor(() => expect(screen.getByLabelText("Checking providers")).toHaveTextContent(/^$/));
+    fireEvent(window, new Event("online"));
+    await act(async () => { await Promise.resolve(); });
+    expect(fetchSnapshotsProgressively).toHaveBeenCalledTimes(2);
+  });
+
+  it("records each attempted provider and clears pending state after a rejected refresh", async () => {
+    testState.initialPreferences = { ...DEFAULT_WIDGET_PREFERENCES, pausedProviders: ["claude", "qoder", "trae", "workbuddy", "volcengine", "antigravity"] };
+    const request = deferred<ProviderSnapshot[]>();
+    const healthy: ProviderSnapshot = { provider: "codex", displayName: "CODEX", plan: "PRO", shortWindow: null, weeklyWindow: { remainingPercent: 70, resetsAt: null, windowSeconds: 604800 }, resetCredits: null, status: "ok", message: null, updatedAt: new Date().toISOString() };
+    vi.mocked(fetchSnapshotsProgressively).mockResolvedValueOnce([healthy]).mockImplementationOnce(() => request.promise);
+    await renderExpandedApp();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh quota" }));
+    fireEvent.click(screen.getByRole("button", { name: "Control center" }));
+    await waitFor(() => expect(screen.getByLabelText("Checking providers")).toHaveTextContent(/^codex$/));
+    expect(JSON.parse(screen.getByLabelText("Refresh attempts").textContent!)).toEqual({ codex: expect.any(Number) });
+    await act(async () => { request.reject(new Error("offline")); await request.promise.catch(() => undefined); });
+    await waitFor(() => expect(screen.getByLabelText("Checking providers")).toHaveTextContent(/^$/));
+  });
+
   it("retains a valid public forecast on empty responses and errors, then recovers", async () => {
     const forecast = { score: 42, windowHours: 48, fetchedAt: new Date().toISOString(), resetAnnounced: false, sourceUrl: "https://codex-reset.com/" };
     vi.mocked(fetchCodexResetForecast).mockResolvedValueOnce(forecast);

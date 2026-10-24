@@ -74,6 +74,30 @@ describe("activity timeline and notification policy", () => {
     expect(upgraded.state.history.map((point) => point.plan)).toEqual(["PLUS", "PRO"]);
   });
 
+  it("does not count a known plan switch as use or notify a cross-plan threshold/reset", () => {
+    const plus = { ...snapshot(90), plan: "PLUS" };
+    const pro = { ...snapshot(10), plan: "PRO" };
+    const first = recordSnapshotActivity(EMPTY_RUNTIME_STATE, [], [plus], null, 15, new Date("2026-07-19T01:00:00Z"));
+    const switched = recordSnapshotActivity(first.state, [plus], [pro], { detectedAt: "2026-07-19T01:05:00Z", resetAt: "2026-07-19T01:05:00Z", source: "observed" }, 15, new Date("2026-07-19T01:05:00Z"));
+    expect(switched.state.dailyUsage[0].observedUsedPercent).toBe(0);
+    expect(switched.createdEvents.filter((event) => ["quota", "pace", "reset"].includes(event.kind))).toEqual([]);
+    expect(switched.notificationCandidates).toEqual([]);
+    expect(switched.state.dailyPaceBaselines["codex:weekly"].remainingPercent).toBe(10);
+    const used = recordSnapshotActivity(switched.state, [pro], [{ ...pro, weeklyWindow: { ...pro.weeklyWindow!, remainingPercent: 5 } }], null, 15, new Date("2026-07-19T01:36:00Z"));
+    expect(used.state.dailyUsage[0].observedUsedPercent).toBe(5);
+  });
+
+  it("remembers the last known plan across unknown samples without dropping legacy use", () => {
+    const plus = { ...snapshot(90), plan: "PLUS" };
+    const unknown = { ...snapshot(80), plan: null };
+    const pro = { ...snapshot(40), plan: "PRO" };
+    const first = recordSnapshotActivity(EMPTY_RUNTIME_STATE, [], [plus], null, 15, new Date("2026-07-19T01:00:00Z"));
+    const legacy = recordSnapshotActivity(first.state, [plus], [unknown], null, 15, new Date("2026-07-19T01:31:00Z"));
+    expect(legacy.state.dailyUsage[0].observedUsedPercent).toBe(10);
+    const switched = recordSnapshotActivity(legacy.state, [unknown], [pro], null, 15, new Date("2026-07-19T01:36:00Z"));
+    expect(switched.state.dailyUsage[0].observedUsedPercent).toBe(10);
+  });
+
   it("samples changing numeric usage at a bounded thirty-minute cadence", () => {
     const first = recordSnapshotActivity(EMPTY_RUNTIME_STATE, [], [snapshot(90)], null, 15, new Date("2026-07-19T01:00:00Z"));
     const recentChange = recordSnapshotActivity(first.state, [snapshot(90)], [snapshot(85)], null, 15, new Date("2026-07-19T01:10:00Z"));

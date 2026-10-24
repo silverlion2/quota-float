@@ -1,3 +1,4 @@
+import { knownPlanChanged, observedQuotaDelta } from "./quotaContinuity";
 import { MAX_DAILY_OBSERVED_PERCENT } from "../types";
 import type { ActivityEvent, DailyPaceBaseline, DailyUsageSummary, Language, ProviderId, ProviderSnapshot, QuotaHistoryPoint, ResetForecast, RuntimeState } from "../types";
 import type { RecentCodexReset } from "./resetDetection";
@@ -350,12 +351,10 @@ function recordDailyUsage(
   current: DailyUsageSummary[],
   previous: QuotaHistoryPoint | undefined,
   point: QuotaHistoryPoint,
+  knownPlan: string | null | undefined,
 ): DailyUsageSummary[] {
   if (point.metricKind !== "percent" || point.metric === null) return current;
-  const sameCycle = previous?.metricKind === "percent"
-    && previous.metric !== null
-    && previous.resetsAt === point.resetsAt;
-  const observedDelta = sameCycle ? Math.max(0, previous.metric! - point.metric) : 0;
+  const observedDelta = observedQuotaDelta(previous, point, knownPlan);
   const day = localDateKey(point.capturedAt);
   const index = current.findIndex((item) => item.provider === point.provider && item.localDate === day);
   const next = [...current];
@@ -507,9 +506,13 @@ export function recordSnapshotActivity(
   const occurredAt = now.toISOString();
   const retainedHistory = compactQuotaHistory(current.history, now);
   let dailyUsage = current.dailyUsage;
-  const isNewReset = recentReset !== null
+  const knownPlans = new Map<ProviderId, string>();
+  for (const point of retainedHistory) if (point.plan != null) knownPlans.set(point.provider, point.plan);
+  for (const snapshot of previousSnapshots) if (snapshot.plan != null) knownPlans.set(snapshot.provider, snapshot.plan);
+  const changedPlans = new Set(nextSnapshots.filter((snapshot) => knownPlanChanged(knownPlans.get(snapshot.provider), snapshot.plan)).map((snapshot) => snapshot.provider));
+  const isNewReset = recentReset !== null && !changedPlans.has("codex")
     && !current.events.some((item) => item.kind === "reset" && item.occurredAt === recentReset.resetAt);
-  const resetProviders = isNewReset ? new Set<string>(["codex"]) : new Set<string>();
+  const resetProviders = isNewReset ? new Set<string>(["codex", ...changedPlans]) : new Set<string>(changedPlans);
   const dailyPaceBaselines = refreshDailyPaceBaselines(current.dailyPaceBaselines, nextSnapshots, now, resetProviders, resetForecast);
   const lastNotifications = isNewReset
     ? Object.fromEntries(Object.entries(current.lastNotifications).filter(([key]) => !key.split(":").includes("codex")))
@@ -543,7 +546,7 @@ export function recordSnapshotActivity(
     const sampleDue = !latest || now.getTime() - new Date(latest.capturedAt).getTime() >= HISTORY_SAMPLE_INTERVAL_MS;
     if (contextChanged || sampleDue) {
       additions.push(point);
-      dailyUsage = recordDailyUsage(dailyUsage, latest, point);
+      dailyUsage = recordDailyUsage(dailyUsage, latest, point, knownPlans.get(snapshot.provider));
     }
 
     const previous = previousByProvider.get(snapshot.provider);
@@ -553,6 +556,7 @@ export function recordSnapshotActivity(
     } else if (previous.status === "ok" && snapshot.status !== "ok") {
       createdEvents.push(event("warning", snapshot.provider, occurredAt, `status-${snapshot.status}`, `${snapshot.displayName} needs attention`, `Provider status changed to ${snapshot.status}; automatic retry is active.`));
     }
+    if (changedPlans.has(snapshot.provider)) continue;
     const quotaWindows = trackedQuotaWindows(snapshot);
     if (quotaWindows.length > 0) {
       const previousWindows = new Map(trackedQuotaWindows(previous).map((item) => [item.period, item.window]));

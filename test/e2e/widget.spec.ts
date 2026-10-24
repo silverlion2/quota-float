@@ -288,6 +288,58 @@ describe("Quota Float desktop widget", () => {
     });
   });
 
+  it("separates health check timestamps from quota capture timestamps without horizontal overflow", async () => {
+    await openControlCenter();
+    await browser.tauri.execute(() => {
+      Array.from(document.querySelectorAll<HTMLButtonElement>(".control-tabs button")).find((button) => button.textContent?.trim() === "Health")?.click();
+    });
+    await browser.$(".provider-health-list").waitForDisplayed();
+    const health = await browser.tauri.execute(() => {
+      const row = document.querySelector<HTMLElement>(".provider-health-item")!;
+      return { text: row.textContent ?? "", overflow: Math.max(...Array.from(row.querySelectorAll<HTMLElement>("footer, .provider-health-copy")).map((node) => node.scrollWidth - node.clientWidth)) };
+    });
+    expect(health.text).toContain("Last checked:");
+    expect(health.text).toContain("Quota data from:");
+    expect(health.text).not.toContain("Not checked yet");
+    expect(health.overflow).toBeLessThanOrEqual(1);
+    await browser.saveScreenshot("output/handoff/native-health-timestamps.png");
+  });
+
+  it("keeps unknown and partially priced usage distinct from zero in the native Insights panel", async () => {
+    try {
+      await browser.tauri.execute(() => {
+        const url = new URL(window.location.href);
+        url.searchParams.set("pricingPreview", "unpriced");
+        window.history.replaceState(null, "", url);
+        document.querySelectorAll<HTMLButtonElement>(".quota-panel-tabs button")[1]?.click();
+      });
+      await browser.waitUntil(async () => (await browser.$(".usage-stat-card--cost strong").getText()) === "Unpriced");
+      expect(await browser.$(".usage-stat-card--forecast strong").getText()).toBe("—");
+      expect(await browser.$(".usage-budget-panel").getText()).toContain("Unknown prices");
+      await browser.saveScreenshot("output/handoff/native-unpriced-usage.png");
+      await browser.tauri.execute(() => {
+        const url = new URL(window.location.href);
+        url.searchParams.set("pricingPreview", "partial");
+        window.history.replaceState(null, "", url);
+        document.querySelector<HTMLButtonElement>(".usage-refresh")?.click();
+      });
+      await browser.waitUntil(async () => (await browser.$(".usage-stat-card--cost strong").getAttribute("aria-label"))?.includes("Priced subtotal") === true);
+      expect(await browser.$(".usage-stat-card--cost > span").getText()).toContain("Priced subtotal");
+      expect(await browser.$(".usage-stat-card--budget strong").getText()).toBe("—");
+      expect(await browser.$(".usage-stat-card--forecast strong").getText()).toBe("—");
+      const overflow = await browser.tauri.execute(() => Math.max(...Array.from(document.querySelectorAll<HTMLElement>(".usage-stat-card")).map((node) => node.scrollWidth - node.clientWidth)));
+      expect(overflow).toBeLessThanOrEqual(1);
+      await browser.saveScreenshot("output/handoff/native-partial-pricing.png");
+    } finally {
+      await browser.tauri.execute(() => {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("pricingPreview");
+        window.history.replaceState(null, "", url);
+        document.querySelectorAll<HTMLButtonElement>(".quota-panel-tabs button")[0]?.click();
+      });
+    }
+  });
+
   it("opens the update dialog without navigating away", async () => {
     const opened = await browser.tauri.execute(() => {
       const button = document.querySelector<HTMLButtonElement>(".update-action");
