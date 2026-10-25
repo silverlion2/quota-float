@@ -20,6 +20,19 @@ function snapshot(remainingPercent: number, status: ProviderSnapshot["status"] =
   };
 }
 
+it("persists credits changes immediately without replacing plan percentages", () => {
+  const first = { ...snapshot(70), balanceRemaining: 100, balanceUnit: "credits" };
+  const next = { ...first, balanceRemaining: 80, resetCredits: 0 };
+  const initial = recordSnapshotActivity(EMPTY_RUNTIME_STATE, [], [first], null, 15, new Date("2026-07-19T01:00:00Z"));
+  const update = recordSnapshotActivity(initial.state, [first], [next], null, 15, new Date("2026-07-19T01:01:00Z"));
+  expect(update.state.history).toHaveLength(2);
+  expect(update.state.history[1]).toMatchObject({ metric: 70, metricKind: "percent", credits: { reset: 0, balance: 80, unit: "credits" } });
+  expect(normalizeRuntimeState(JSON.parse(JSON.stringify(update.state))).history.at(-1)?.credits?.balance).toBe(80);
+  const unlimited = recordSnapshotActivity(update.state, [next], [{ ...next, balanceUnit: "unlimited", balanceRemaining: 0 }], null, 15, new Date("2026-07-19T01:02:00Z"));
+  expect(unlimited.state.history.at(-1)?.metricKind).toBe("percent");
+  expect(unlimited.state.history.at(-1)?.metric).toBe(70);
+});
+
 describe("activity timeline and notification policy", () => {
   it("detects when a refresh produces no persistable runtime changes", () => {
     const signedOut = snapshot(0, "signed_out");

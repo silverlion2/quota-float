@@ -123,6 +123,20 @@ impl ProviderDescriptor {
         if snapshot.balance_remaining.is_none() {
             snapshot.balance_unit = None;
         }
+        snapshot.balance_grants = snapshot
+            .balance_grants
+            .into_iter()
+            .take(32)
+            .map(|mut grant| {
+                grant.remaining = grant
+                    .remaining
+                    .filter(|value| value.is_finite() && *value >= 0.0);
+                grant.expires_at = grant
+                    .expires_at
+                    .filter(|value| chrono::DateTime::parse_from_rfc3339(value).is_ok());
+                grant
+            })
+            .collect();
         snapshot.reset_credit_expires_at = snapshot
             .reset_credit_expires_at
             .into_iter()
@@ -154,6 +168,7 @@ impl ProviderDescriptor {
             snapshot.monthly_window = None;
             snapshot.reset_credits = None;
             snapshot.reset_credit_expires_at.clear();
+            snapshot.balance_grants.clear();
             snapshot.balance_remaining = None;
             snapshot.balance_unit = None;
             snapshot.message = safe_diagnostic_message(snapshot.message).or_else(|| {
@@ -399,12 +414,33 @@ mod tests {
                 "2026-09-01T00:00:00Z".into(),
                 "private raw value".into(),
             ],
+            balance_grants: Vec::new(),
             balance_remaining: Some(f64::NAN),
             balance_unit: Some("credits".into()),
             updated_at: "not-a-date".into(),
             status: "ok".into(),
             message: Some("raw success detail".into()),
         }
+    }
+
+    #[test]
+    fn credit_grants_are_bounded_sanitized_and_cleared_on_failure() {
+        let descriptor = PROVIDERS[0];
+        let mut value = successful_snapshot();
+        value.balance_grants = (0..40)
+            .map(|_| crate::models::CreditGrant {
+                remaining: Some(f64::NAN),
+                expires_at: Some("bad".into()),
+            })
+            .collect();
+        let mut conformed = descriptor.conform(value);
+        assert_eq!(conformed.balance_grants.len(), 32);
+        assert!(conformed
+            .balance_grants
+            .iter()
+            .all(|grant| grant.remaining.is_none() && grant.expires_at.is_none()));
+        conformed.status = "stale".into();
+        assert!(descriptor.conform(conformed).balance_grants.is_empty());
     }
 
     #[test]
@@ -601,6 +637,7 @@ mod tests {
                 monthly_window: None,
                 reset_credits: None,
                 reset_credit_expires_at: Vec::new(),
+                balance_grants: Vec::new(),
                 balance_remaining: None,
                 balance_unit: None,
                 updated_at: chrono::Utc::now().to_rfc3339(),

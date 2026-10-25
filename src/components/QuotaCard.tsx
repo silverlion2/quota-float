@@ -12,6 +12,7 @@ import { recentQuotaTrend, type QuotaTrendPoint } from "../lib/usageInsights";
 import type { BarEdge, CockpitRegion, ColorTheme, CompactLayout, DailyPaceBaseline, DailyUsageSummary, Language, ProviderId, ProviderSnapshot, QuotaHistoryPoint, ResetForecast, ResolvedAppearance, VolcengineDiagnostics, WidgetPreferences } from "../types";
 import { compactBarSize } from "../lib/compactGeometry";
 import { ProviderMark } from "./ProviderMark";
+import { CreditTracker } from "./CreditTracker";
 import { ProviderLogoSlider } from "./ProviderLogoSlider";
 import { QuotaHistoryCurve } from "./QuotaHistoryCurve";
 import { EMPTY_UPDATE_STATE, UpdatePanel, type UpdateViewState } from "./UpdatePanel";
@@ -238,10 +239,9 @@ function ProviderLedgerRow({
   const balance = snapshot?.balanceRemaining ?? null;
   const unlimited = snapshot?.balanceUnit === "unlimited";
   const unlimitedLabel = language === "en" ? "Unlimited" : "不限量";
-  const value = unlimited
-    ? "∞"
-    : remaining !== null
+  const value = remaining !== null
     ? `${remaining}%`
+    : unlimited ? "∞"
     : balance !== null
       ? new Intl.NumberFormat(language === "en" ? "en-US" : "zh-CN", { maximumFractionDigits: 1 }).format(balance)
       : "--";
@@ -255,10 +255,10 @@ function ProviderLedgerRow({
           ? t.notSignedIn
             : snapshot.status !== "ok"
               ? t.temporarilyUnavailable
-            : unlimited
-              ? unlimitedLabel
             : quotaWindow
               ? `${quotaWindow.label} · ${formatResetDate(quotaWindow.window.resetsAt, language)}`
+            : unlimited
+              ? unlimitedLabel
               : snapshot.balanceUnit ?? t.balanceRemaining;
 
   return (
@@ -582,7 +582,6 @@ export const QuotaCard = memo(function QuotaCard({
   collapsing = false,
 }: Props) {
   const now = useMinuteClock(snapshot.updatedAt);
-  const [showCreditTip, setShowCreditTip] = useState(initialShowCreditTip);
   const [insightsOpen, setInsightsOpen] = useState(initialInsightsOpen);
   const [resetOutlookOpen, setResetOutlookOpen] = useState(false);
   const resetOutlookId = useId();
@@ -632,7 +631,7 @@ export const QuotaCard = memo(function QuotaCard({
       : singleQuotaWindow?.period === "monthly"
         ? t.monthlyShort
         : null;
-  const metricTitle = showQuotaWindowList ? t.quotaWindows : unlimited ? unlimitedLabel : singleWindowTitle ?? (balance !== null ? t.balanceRemaining : t.unavailableStatus);
+  const metricTitle = showQuotaWindowList ? t.quotaWindows : singleWindowTitle ?? (unlimited ? unlimitedLabel : balance !== null ? t.balanceRemaining : t.unavailableStatus);
   const metricLabel = showQuotaWindowList
     ? t.quotaWindows
     : singleRemaining !== null && singleQuotaWindow
@@ -661,9 +660,6 @@ export const QuotaCard = memo(function QuotaCard({
   const quotaTabLabel = language === "en" ? "Quota" : "\u989d\u5ea6";
   const insightsTabLabel = language === "en" ? "Insights" : "\u6d1e\u5bdf";
   const updateAttention = !["idle", "current"].includes(updateState.phase);
-  const creditExpirations = useMemo(() => (snapshot.resetCreditExpiresAt ?? []).map((value, index) => {
-    return t.creditItem(index, formatDateTime(value, language));
-  }), [language, snapshot.resetCreditExpiresAt, t]);
   const snapshotsByProvider = useMemo(() => new Map(snapshots.map((item) => [item.provider, item])), [snapshots]);
   const providerDefinitions = useMemo(() => {
     const byProvider = new Map(PROVIDER_CATALOG.map((definition) => [definition.id, definition]));
@@ -967,19 +963,8 @@ export const QuotaCard = memo(function QuotaCard({
               </>
             )}
             <footer className={`primary-footer${showQuotaWindowList ? " primary-footer--windows" : ""}`}>
-              {!showQuotaWindowList && (singleQuotaWindow?.period === "weekly" || snapshot.resetCredits !== null) ? <div className="quota-meta">
+              {!showQuotaWindowList && singleQuotaWindow?.period === "weekly" ? <div className="quota-meta">
                 {singleQuotaWindow?.period === "weekly" ? <p>{t.weeklyResetDate(formatResetDate(singleQuotaWindow.window.resetsAt, language))}</p> : null}
-                <div className="reset-credit-row" onMouseDown={(event) => event.stopPropagation()}>
-                  <span>{snapshot.resetCredits === null ? t.resetCreditUnknown : t.resetCredits(snapshot.resetCredits)}</span>
-                  {snapshot.resetCredits !== null && snapshot.resetCredits > 0 ? (
-                    <button type="button" className="reset-credit-button" onClick={() => setShowCreditTip((value) => !value)} aria-expanded={showCreditTip} aria-label={t.view}>{t.view}</button>
-                  ) : null}
-                </div>
-                {showCreditTip ? (
-                  <div className="reset-credit-tip" role="status" onMouseDown={(event) => event.stopPropagation()}>
-                    {creditExpirations.length > 0 ? creditExpirations.map((item) => <p key={item}>{item}</p>) : <p>{t.noCreditExpiration}</p>}
-                  </div>
-                ) : null}
               </div> : null}
               {!showQuotaWindowList ? <ProviderMark provider={snapshot.provider} label={snapshot.displayName} /> : null}
             </footer>
@@ -1058,6 +1043,7 @@ export const QuotaCard = memo(function QuotaCard({
       </>
       )}
       {!insightsOpen && snapshot.provider === "codex" ? <ResetOutlook id={resetOutlookId} open={resetOutlookOpen} onOpenChange={setResetOutlookOpen} snapshot={snapshot} history={history} forecast={visibleResetForecast} loadStatus={resetForecastStatus} now={now} language={language} onOpenSource={onOpenResetForecast} onRefresh={onRefreshResetForecast} /> : null}
+      {!insightsOpen ? <CreditTracker key={snapshot.provider} snapshot={snapshot} history={history} now={now} language={language} defaultExpanded={initialShowCreditTip} /> : null}
       </div>
 
       <div

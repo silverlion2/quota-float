@@ -16,6 +16,7 @@ const preview: ProviderSnapshot = {
   weeklyWindow: { remainingPercent: 74, resetsAt: new Date(Date.now() + 3.2 * 86_400_000).toISOString(), windowSeconds: 604_800 },
   resetCredits: 1,
   resetCreditExpiresAt: [new Date(Date.now() + 9 * 86_400_000).toISOString()],
+  balanceRemaining: 120.5, balanceUnit: "credits", balanceGrants: [],
   updatedAt: new Date().toISOString(),
   status: "ok",
   message: null,
@@ -32,6 +33,7 @@ const peerPreviews: ProviderSnapshot[] = [{
   resetCredits: null, balanceRemaining: 1280, balanceUnit: "credits", updatedAt: new Date().toISOString(), status: "ok", message: null,
 }, {
   provider: "trae", displayName: "TRAE", plan: "Pro", shortWindow: null, weeklyWindow: null,
+  balanceGrants: [{ remaining: 250, expiresAt: new Date(Date.now() + 3 * 86_400_000).toISOString() }, { remaining: 100, expiresAt: null }],
   resetCredits: null, balanceRemaining: 350, balanceUnit: "credits", updatedAt: new Date().toISOString(), status: "ok", message: null,
 }, {
   provider: "workbuddy", displayName: "WORKBUDDY", plan: null, shortWindow: null, weeklyWindow: null,
@@ -58,6 +60,7 @@ const previewHistory: QuotaHistoryPoint[] = [96, 91, 89, 81, 79, 74].map((metric
   metricKind: "percent",
   status: "ok",
   resetsAt: preview.weeklyWindow?.resetsAt ?? null,
+  credits: { reset: 1, balance: 145.5 - index * 5, unit: "credits" },
 }));
 const previewDailyUsage: DailyUsageSummary[] = Array.from({ length: 90 }, (_, index) => {
   const date = new Date();

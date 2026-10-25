@@ -2,6 +2,8 @@
 
 ## 自动化与代码级验证
 
+2026-10-25 Credits 专项：Codex 套餐额度、重置次数与额外余额分离，明确到期与未知日期、TRAE 分批余额、零值与不限量、本地变化连续性，以及展开明细的原生窗口高度。数据边界与验证记录见 [Credits 追踪](CREDITS-TRACKING-2026-10-25.md)。
+
 2026-10-25 数据完整性专项：套餐变化与未知样本连续性、未定价/部分定价的预算和导出语义、检查时间与数据时间分离、联网恢复与系统时间回拨。最终结果与证据边界见 [数据解释与恢复更新](DATA-RELIABILITY-2026-10-25.md)。
 
 v0.3.22 已公开：423 项本地前端/流程测试、123 项 Windows Rust 测试、112 项 macOS CI Rust 测试、13 项 Windows 原生测试通过；平台跳过、发布产物校验和手工实测限制见 [发布验收](RELEASE-0.3.22.md)。
@@ -66,7 +68,7 @@ v0.3.15 完成 318 项前端、102 项 Windows Rust 和 10 项 Windows 原生测
 | 用量导出 | CSV、JSON、SVG、价格目录 | 项目匿名化、会话键与正文排除；价格版本可追溯；原生写入限制格式和大小 | TypeScript 导出测试、Rust 命令审查 |
 | 隐私 | 浏览器与诊断 | 浏览器只用合成数据；诊断不含 token、账号、auth 路径或原始响应 | 桥接测试、静态审查 |
 | 原生 E2E | 编译桌面进程、Tauri bridge、暂停恢复持久化、分离窗口、控制中心、更新弹窗 | 合成数据真实 WebView 启动；原生命令可调用；窗口可创建、渲染和关闭 | [2026-09-08 Windows 原生实测：5 项通过](NATIVE-E2E-2026-09-08.md) |
-| 性能预算 | 入口与懒加载 chunk | 入口 JS ≤ 430 KiB、总 JS ≤ 600 KiB、gzip JS ≤ 180 KiB、CSS ≤ 150 KiB | `npm run build` + `npm run check:bundle`、CI gate |
+| 性能预算 | 入口与懒加载 chunk | 入口 JS ≤ 430 KiB、总 JS ≤ 600 KiB、gzip JS ≤ 182 KiB、CSS ≤ 150 KiB | `npm run build` + `npm run check:bundle`、CI gate |
 | 供应链 | npm/Rust advisories | 高风险 npm advisory 为零；RustSec vulnerability 为零 | `npm audit --audit-level=high`、`cargo audit`、Dependabot/security workflow |
 
 交付时执行 `docs/DESKTOP-DEVELOPMENT-SOP.md` 的完整 fast handoff gate；本轮实际测试数量和命令结果记录在任务交付说明中，避免文档数字随测试增删而失真。

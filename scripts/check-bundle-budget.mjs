@@ -6,7 +6,8 @@ const root = path.resolve("dist");
 const limits = {
   entryJavaScript: 430 * 1024,
   totalJavaScript: 600 * 1024,
-  totalJavaScriptGzip: 180 * 1024,
+  // Credits history and grant expiry add a dependency-free panel; see CREDITS-TRACKING-2026-10-25.md.
+  totalJavaScriptGzip: 182 * 1024,
   totalCss: 150 * 1024,
 };
 

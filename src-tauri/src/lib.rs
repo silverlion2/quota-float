@@ -1906,6 +1906,7 @@ mod snapshot_cache_tests {
             monthly_window: None,
             reset_credits: None,
             reset_credit_expires_at: Vec::new(),
+            balance_grants: Vec::new(),
             balance_remaining: None,
             balance_unit: None,
             updated_at: "2026-09-07T00:00:00Z".into(),

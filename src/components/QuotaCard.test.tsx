@@ -121,6 +121,15 @@ describe("QuotaCard platform ledger", () => {
     consumingProviders: new Set<string>(),
   };
 
+  it("keeps plan quota primary when Codex has unlimited extra credits", () => {
+    const active = { ...codex, balanceRemaining: 0, balanceUnit: "unlimited" };
+    const { container } = render(<QuotaCard {...adaptiveProps} snapshot={active} snapshots={[active, qoder]} />);
+    expect(container.querySelector('.primary-pane .primary-metric')).toHaveTextContent("74");
+    expect(container.querySelector('.provider-row[data-provider="codex"]')?.textContent ?? container.querySelector('.provider-row-shell[data-provider-id="codex"]')?.textContent).toContain("74%");
+    expect(within(screen.getByRole("region", { name: "Credits" })).getByText("Extra credits")).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Credits" })).getByText("∞")).toBeInTheDocument();
+  });
+
   it("keeps keyboard interaction open when the pointer leaves and releases it when focus exits", () => {
     const onHover = vi.fn();
     const { container } = render(<><QuotaCard {...adaptiveProps} onHover={onHover} /><button>Outside widget</button></>);

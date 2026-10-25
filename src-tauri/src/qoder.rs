@@ -155,6 +155,7 @@ mod windows {
                     monthly_window: None,
                     reset_credits: None,
                     reset_credit_expires_at: Vec::new(),
+                    balance_grants: Vec::new(),
                     balance_remaining: Some(if exceeded { 0.0 } else { quota }),
                     balance_unit: Some("credits".into()),
                     updated_at: chrono::Utc::now().to_rfc3339(),

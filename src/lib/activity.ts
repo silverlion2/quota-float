@@ -1,4 +1,5 @@
 import { knownPlanChanged, observedQuotaDelta } from "./quotaContinuity";
+import { creditSamplesEqual, normalizeCreditSample, snapshotCredits } from "./credits";
 import { MAX_DAILY_OBSERVED_PERCENT } from "../types";
 import type { ActivityEvent, DailyPaceBaseline, DailyUsageSummary, Language, ProviderId, ProviderSnapshot, QuotaHistoryPoint, ResetForecast, RuntimeState } from "../types";
 import type { RecentCodexReset } from "./resetDetection";
@@ -71,6 +72,7 @@ function historyPoint(value: unknown): QuotaHistoryPoint | null {
     status: candidate.status as QuotaHistoryPoint["status"],
     resetsAt,
     ...(plan !== undefined ? { plan } : {}),
+    ...(candidate.credits !== undefined ? { credits: normalizeCreditSample(candidate.credits) } : {}),
   };
 }
 
@@ -405,16 +407,23 @@ function compactQuotaHistory(values: QuotaHistoryPoint[], now: Date): QuotaHisto
       retained.add(numeric.reduce((lowest, point) => point.metric! < lowest.metric! ? point : lowest));
       retained.add(numeric.reduce((highest, point) => point.metric! > highest.metric! ? point : highest));
     }
+    for (const counter of ["reset", "balance"] as const) {
+      const credits = day.filter((point) => point.status === "ok" && point.credits?.[counter] != null);
+      if (credits.length > 0) {
+        retained.add(credits.reduce((low, point) => point.credits![counter]! < low.credits![counter]! ? point : low));
+        retained.add(credits.reduce((high, point) => point.credits![counter]! > high.credits![counter]! ? point : high));
+      }
+    }
   }
 
   return sorted.filter((point) => retained.has(point)).slice(-MAX_HISTORY_POINTS);
 }
 
 function metric(snapshot: ProviderSnapshot): Pick<QuotaHistoryPoint, "metric" | "metricKind" | "resetsAt"> {
-  if (snapshot.balanceUnit === "unlimited") return { metric: null, metricKind: "unlimited", resetsAt: null };
   const percentageWindows = trackedQuotaWindows(snapshot);
   const percentageWindow = percentageWindows.find((item) => item.period === "weekly") ?? percentageWindows[0] ?? null;
   if (percentageWindow) return { metric: percentageWindow.window.remainingPercent, metricKind: "percent", resetsAt: percentageWindow.window.resetsAt };
+  if (snapshot.balanceUnit === "unlimited") return { metric: null, metricKind: "unlimited", resetsAt: null };
   if (snapshot.balanceRemaining !== null && snapshot.balanceRemaining !== undefined) return { metric: snapshot.balanceRemaining, metricKind: "balance", resetsAt: null };
   return { metric: null, metricKind: "none", resetsAt: null };
 }
@@ -536,13 +545,15 @@ export function recordSnapshotActivity(
       status: snapshot.status,
       plan: snapshot.plan,
       ...value,
+      ...(snapshotCredits(snapshot) ? { credits: snapshotCredits(snapshot) } : {}),
     };
     const latest = latestHistory.get(snapshot.provider);
     const contextChanged = !latest
       || latest.metricKind !== point.metricKind
       || latest.status !== point.status
       || latest.resetsAt !== point.resetsAt
-      || latest.plan !== point.plan;
+      || latest.plan !== point.plan
+      || !creditSamplesEqual(latest.credits, point.credits);
     const sampleDue = !latest || now.getTime() - new Date(latest.capturedAt).getTime() >= HISTORY_SAMPLE_INTERVAL_MS;
     if (contextChanged || sampleDue) {
       additions.push(point);

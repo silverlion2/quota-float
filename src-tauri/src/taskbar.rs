@@ -140,11 +140,30 @@ fn indicator_tooltip(
     if let Some(snapshot) = snapshot {
         if let Some(balance) = snapshot.balance_remaining.filter(|value| value.is_finite()) {
             let unit = snapshot.balance_unit.as_deref().unwrap_or("");
-            let value = format_balance(balance, unit);
-            lines.push(if english {
-                format!("Balance: {value}")
+            let value = if unit == "unlimited" {
+                if english {
+                    "Unlimited".into()
+                } else {
+                    "不限量".into()
+                }
             } else {
-                format!("余额：{value}")
+                format_balance(balance, unit)
+            };
+            let label = if snapshot.provider == "codex" {
+                if english {
+                    "Extra credits"
+                } else {
+                    "额外 credits"
+                }
+            } else if english {
+                "Balance"
+            } else {
+                "余额"
+            };
+            lines.push(if english {
+                format!("{label}: {value}")
+            } else {
+                format!("{label}：{value}")
             });
         }
         let status = if paused {
@@ -434,6 +453,7 @@ mod tests {
             monthly_window: None,
             reset_credits: None,
             reset_credit_expires_at: Vec::new(),
+            balance_grants: Vec::new(),
             balance_remaining: Some(12.5),
             balance_unit: Some("credits".into()),
             updated_at: "2026-09-22T00:00:00Z".into(),
@@ -451,7 +471,7 @@ mod tests {
         let indicator = indicator(&[snapshot()], &preferences, Some("codex"));
         assert_eq!(indicator.remaining_percent, Some(19));
         assert!(indicator.tooltip.contains("Remaining: 19% (1w window)"));
-        assert!(indicator.tooltip.contains("Balance: 12.50 credits"));
+        assert!(indicator.tooltip.contains("Extra credits: 12.50 credits"));
         assert!(indicator.tooltip.contains("Status: up to date"));
         assert_eq!(indicator.rgba.len(), (ICON_SIZE * ICON_SIZE * 4) as usize);
         assert!(indicator
@@ -460,6 +480,21 @@ mod tests {
             .0
             .iter()
             .any(|pixel| pixel[3] == 255));
+    }
+
+    #[test]
+    fn unlimited_extra_credits_do_not_replace_plan_quota() {
+        let mut value = snapshot();
+        value.balance_remaining = Some(0.0);
+        value.balance_unit = Some("unlimited".into());
+        let preferences = WidgetPreferences {
+            language: "en".into(),
+            ..Default::default()
+        };
+        let result = indicator(&[value], &preferences, Some("codex"));
+        assert_eq!(result.remaining_percent, Some(19));
+        assert!(result.tooltip.contains("Extra credits: Unlimited"));
+        assert!(!result.tooltip.contains("0 unlimited"));
     }
 
     #[test]

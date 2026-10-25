@@ -353,6 +353,28 @@ describe("Quota Float desktop widget", () => {
     }
   });
 
+  it("keeps Codex extra credits separate and expiration details bounded in the native window", async () => {
+    await browser.$(".credit-tracker").waitForDisplayed();
+    expect(await browser.$(".credit-tracker").getText()).toContain("Extra credits");
+    expect(await browser.$(".credit-tracker").getText()).toContain("120.5");
+    expect(await browser.$(".credit-tracker").getText()).toContain("Expiry not provided");
+    await browser.tauri.execute(() => document.querySelector<HTMLButtonElement>(".credit-tracker__heading button")!.click());
+    await browser.$(".credit-tracker__details").waitForDisplayed();
+    expect(await browser.$(".credit-tracker__details").getText()).toContain("per-purchase expiry dates");
+    await browser.waitUntil(async () => browser.tauri.execute(() => {
+      const card = document.querySelector<HTMLElement>(".quota-card")!.getBoundingClientRect();
+      return card.bottom <= innerHeight + 1;
+    }), { timeout: 3000, timeoutMsg: "Credits expansion exceeded the native viewport" });
+    const metrics = await browser.tauri.execute(() => {
+      const details = document.querySelector<HTMLElement>(".credit-tracker__details")!;
+      return { height: details.clientHeight, overflow: details.scrollWidth - details.clientWidth };
+    });
+    expect(metrics.height).toBeLessThanOrEqual(190);
+    expect(metrics.overflow).toBeLessThanOrEqual(1);
+    await browser.saveScreenshot("output/handoff/native-credits-details.png");
+    await browser.tauri.execute(() => document.querySelector<HTMLButtonElement>(".credit-tracker__heading button")!.click());
+  });
+
   it("opens the update dialog without navigating away", async () => {
     const opened = await browser.tauri.execute(() => {
       const button = document.querySelector<HTMLButtonElement>(".update-action");

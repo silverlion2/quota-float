@@ -10,6 +10,13 @@ pub struct UsageWindow {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CreditGrant {
+    pub remaining: Option<f64>,
+    pub expires_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProviderSnapshot {
     pub provider: String,
     pub display_name: String,
@@ -19,6 +26,7 @@ pub struct ProviderSnapshot {
     pub monthly_window: Option<UsageWindow>,
     pub reset_credits: Option<u64>,
     pub reset_credit_expires_at: Vec<String>,
+    pub balance_grants: Vec<CreditGrant>,
     pub balance_remaining: Option<f64>,
     pub balance_unit: Option<String>,
     pub updated_at: String,
@@ -46,6 +54,7 @@ impl ProviderSnapshot {
             monthly_window: None,
             reset_credits: None,
             reset_credit_expires_at: Vec::new(),
+            balance_grants: Vec::new(),
             balance_remaining: None,
             balance_unit: None,
             updated_at: chrono::Utc::now().to_rfc3339(),

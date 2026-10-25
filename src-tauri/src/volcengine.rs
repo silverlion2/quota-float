@@ -337,6 +337,7 @@ fn parse_snapshot(value: &Value) -> Result<ProviderSnapshot, &'static str> {
         monthly_window,
         reset_credits: None,
         reset_credit_expires_at: Vec::new(),
+        balance_grants: Vec::new(),
         balance_remaining: None,
         balance_unit: None,
         updated_at,

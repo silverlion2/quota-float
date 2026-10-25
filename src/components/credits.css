@@ -1,0 +1,22 @@
+.credit-tracker{grid-column:1/-1;min-width:0;padding:9px 10px;border:1px solid var(--ui-border);border-radius:9px;color:var(--ui-text);background:var(--ui-surface);font-size:11px;line-height:1.45;overflow-wrap:anywhere;}
+.credit-tracker__heading,.credit-tracker__metric{display:flex;align-items:baseline;justify-content:space-between;gap:8px;min-width:0;}
+.credit-tracker__heading{font-weight:600;margin-bottom:6px;}
+.credit-tracker__heading button{display:flex;align-items:center;gap:7px;min-height:24px;padding:2px 5px;border:1px solid transparent;border-radius:4px;background:transparent;color:var(--ui-muted,var(--ui-text));font:inherit;cursor:pointer;}
+.credit-tracker__heading button:hover{background:var(--ui-surface-hover);color:var(--ui-text);}
+.credit-tracker__heading button:focus-visible{outline:2px solid var(--accent-color,var(--ui-text));outline-offset:2px;}
+.credit-tracker__pools{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,130px),1fr));gap:7px 14px;}
+.credit-tracker__pool{min-width:0;}
+.credit-tracker__metric strong{font-size:15px;font-variant-numeric:tabular-nums;}
+.credit-tracker p{margin:3px 0;color:var(--ui-muted,var(--ui-text));font-size:10px;}
+.credit-tracker .credit-tracker__status{color:var(--ui-warning);margin:0 0 6px;}
+.credit-tracker time{font-variant-numeric:tabular-nums;}
+.credit-tracker__expiry time{display:block;}
+.credit-tracker__badge{display:inline-block;margin:2px 0 0 5px;color:var(--ui-warning);font-size:10px;font-weight:600;}
+.credit-tracker__details{max-height:180px;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--ui-muted) transparent;margin-top:8px;padding-top:7px;border-top:1px solid var(--ui-border);}
+.credit-tracker__ledger{margin:9px 0;min-width:0;}
+.credit-tracker h4{margin:7px 0 3px;font-size:10px;font-weight:600;}
+.credit-tracker ul{list-style:none;padding:0;margin:0;}
+.credit-tracker li{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 8px;margin:4px 0;font-size:10px;}
+.credit-tracker li>span,.credit-tracker li>time{min-width:0;max-width:100%;}
+.credit-tracker small{color:var(--ui-muted,var(--ui-text));font-size:inherit;}
+@media(prefers-reduced-motion:reduce){.credit-tracker *{animation:none!important;transition:none!important;}}

@@ -219,49 +219,81 @@ fn timestamp(value: &Value, keys: &[&str]) -> Option<String> {
     })
 }
 
-fn collect_reset_credit_expirations(value: &Value) -> Vec<String> {
-    fn visit(value: &Value, output: &mut Vec<String>) {
-        match value {
-            Value::Array(items) => {
-                for item in items {
-                    visit(item, output);
-                }
-            }
-            Value::Object(map) => {
-                if let Some(time) = timestamp(
-                    value,
-                    &[
-                        "expires_at",
-                        "expiresAt",
-                        "expiration_time",
-                        "expirationTime",
-                        "expires",
-                    ],
-                ) {
-                    output.push(time);
-                }
-                for key in [
-                    "credits",
-                    "reset_credits",
-                    "resetCredits",
-                    "available",
-                    "items",
-                    "grants",
-                ] {
-                    if let Some(child) = map.get(key) {
-                        visit(child, output);
-                    }
-                }
-            }
-            _ => {}
+fn credit_timestamp(value: &Value) -> Option<chrono::DateTime<chrono::Utc>> {
+    if let Some(text) = value.as_str() {
+        if let Ok(time) = chrono::DateTime::parse_from_rfc3339(text) {
+            return Some(time.with_timezone(&chrono::Utc));
         }
     }
+    let number = value
+        .as_i64()
+        .or_else(|| value.as_str()?.parse::<i64>().ok())?;
+    if number <= 0 {
+        return None;
+    }
+    if number > 10_000_000_000 {
+        chrono::DateTime::from_timestamp_millis(number)
+    } else {
+        chrono::DateTime::from_timestamp(number, 0)
+    }
+}
 
-    let mut expirations = Vec::new();
-    visit(value, &mut expirations);
-    expirations.sort();
-    expirations.dedup();
-    expirations
+fn reset_credit_details(value: &Value) -> Option<(u64, Vec<String>)> {
+    let count = integer(
+        value,
+        &[
+            "available_count",
+            "availableCount",
+            "remaining",
+            "count",
+            "quantity",
+        ],
+    )?;
+    let mut dates = Vec::new();
+    if count > 0 {
+        if let Some(grants) = value.get("credits").and_then(Value::as_array) {
+            for grant in grants.iter().take(1024) {
+                if grant.get("status").and_then(Value::as_str) != Some("available") {
+                    continue;
+                }
+                if let Some(time) = grant
+                    .get("expires_at")
+                    .and_then(credit_timestamp)
+                    .filter(|time| *time > chrono::Utc::now())
+                {
+                    dates.push(time);
+                }
+            }
+        }
+    }
+    dates.sort();
+    dates.dedup();
+    Some((
+        count,
+        dates
+            .into_iter()
+            .take(32)
+            .map(|time| time.to_rfc3339())
+            .collect(),
+    ))
+}
+
+fn usage_credit_balance(usage: &Value) -> (Option<f64>, Option<String>) {
+    let Some(credits) = usage.get("credits") else {
+        return (None, None);
+    };
+    if credits.get("unlimited").and_then(Value::as_bool) == Some(true) {
+        return (Some(0.0), Some("unlimited".into()));
+    }
+    let balance = credits
+        .get("balance")
+        .and_then(|value| {
+            value
+                .as_f64()
+                .or_else(|| value.as_str()?.parse::<f64>().ok())
+        })
+        .filter(|value| value.is_finite() && *value >= 0.0);
+    (balance, balance.map(|_| "credits".into()))
 }
 
 fn scale_ratio_field(key: &str, value: f64) -> bool {
@@ -516,59 +548,34 @@ pub async fn fetch_snapshot(client: &reqwest::Client) -> ProviderSnapshot {
         ],
         604_800,
     ));
-    if weekly_window.is_none() {
-        return ProviderSnapshot::failure(
-            "unavailable",
-            "Quota response is missing the weekly window.",
-        );
-    }
-
     let usage_credits = usage
         .get("rate_limit_reset_credits")
         .or_else(|| usage.get("rateLimitResetCredits"));
-    let usage_reset_credits = usage_credits.and_then(|value| {
-        integer(
-            value,
-            &[
-                "available_count",
-                "availableCount",
-                "remaining",
-                "count",
-                "quantity",
-            ],
-        )
-    });
-    let usage_reset_credit_expires_at = usage_credits
-        .map(collect_reset_credit_expirations)
-        .unwrap_or_default();
-
-    let (reset_credits, reset_credit_expires_at) = match credits_result {
-        Ok(response) if response.status().is_success() => match limited_json(response).await.ok() {
-            Some(value) => (
-                integer(
-                    &value,
-                    &[
-                        "available_count",
-                        "availableCount",
-                        "remaining",
-                        "count",
-                        "quantity",
-                    ],
-                )
-                .or(usage_reset_credits),
-                {
-                    let expirations = collect_reset_credit_expirations(&value);
-                    if expirations.is_empty() {
-                        usage_reset_credit_expires_at
-                    } else {
-                        expirations
-                    }
-                },
-            ),
-            None => (usage_reset_credits, usage_reset_credit_expires_at),
-        },
-        _ => (usage_reset_credits, usage_reset_credit_expires_at),
+    let usage_reset = usage_credits.and_then(reset_credit_details);
+    let endpoint_reset = match credits_result {
+        Ok(response) if response.status().is_success() => limited_json(response)
+            .await
+            .ok()
+            .as_ref()
+            .and_then(reset_credit_details),
+        _ => None,
     };
+    // Keep the count and expiry from the same successful source.
+    let (reset_credits, reset_credit_expires_at) = endpoint_reset
+        .or(usage_reset)
+        .map(|(count, dates)| (Some(count), dates))
+        .unwrap_or_default();
+    let (balance_remaining, balance_unit) = usage_credit_balance(&usage);
+    if short_window.is_none()
+        && weekly_window.is_none()
+        && reset_credits.is_none()
+        && balance_remaining.is_none()
+    {
+        return ProviderSnapshot::failure(
+            "unavailable",
+            "Quota response contains no measurable quota or credits.",
+        );
+    }
 
     ProviderSnapshot {
         provider: "codex".into(),
@@ -579,8 +586,9 @@ pub async fn fetch_snapshot(client: &reqwest::Client) -> ProviderSnapshot {
         monthly_window: None,
         reset_credits,
         reset_credit_expires_at,
-        balance_remaining: None,
-        balance_unit: None,
+        balance_grants: Vec::new(),
+        balance_remaining,
+        balance_unit,
         updated_at: chrono::Utc::now().to_rfc3339(),
         status: "ok".into(),
         message: None,
@@ -590,6 +598,67 @@ pub async fn fetch_snapshot(client: &reqwest::Client) -> ProviderSnapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn purchased_credits_are_separate_precise_and_preserve_zero() {
+        for balance in [
+            serde_json::json!(0),
+            serde_json::json!("0"),
+            serde_json::json!("12.375"),
+        ] {
+            let usage = serde_json::json!({"credits":{"has_credits":false,"unlimited":false,"balance":balance}});
+            let result = usage_credit_balance(&usage);
+            assert_eq!(result.1.as_deref(), Some("credits"));
+            assert_eq!(
+                result.0,
+                usage["credits"]["balance"]
+                    .as_f64()
+                    .or_else(|| usage["credits"]["balance"].as_str()?.parse().ok())
+            );
+            assert!(reset_credit_details(&usage["credits"]).is_none());
+        }
+        for balance in [
+            serde_json::json!(null),
+            serde_json::json!("NaN"),
+            serde_json::json!(-1),
+        ] {
+            assert_eq!(
+                usage_credit_balance(&serde_json::json!({"credits":{"balance":balance}})),
+                (None, None)
+            );
+        }
+        assert_eq!(
+            usage_credit_balance(&serde_json::json!({"credits":{"has_credits":true}})),
+            (None, None)
+        );
+        assert_eq!(
+            usage_credit_balance(&serde_json::json!({"credits":{"unlimited":true}})),
+            (Some(0.0), Some("unlimited".into()))
+        );
+    }
+
+    #[test]
+    fn reset_grants_filter_redeemed_and_sort_actual_instants() {
+        let details = reset_credit_details(&serde_json::json!({"available_count":2,"credits":[
+            {"status":"available","expires_at":"2099-01-01T05:00:00+08:00"},
+            {"status":"available","expires_at":"2099-01-01T00:00:00Z"},
+            {"status":"redeemed","expires_at":"2098-01-01T00:00:00Z"},
+            {"status":"available","expires_at":1},
+            {"status":"available","expires_at":"invalid"}
+        ]}))
+        .unwrap();
+        assert_eq!(details.0, 2);
+        assert_eq!(
+            details.1,
+            ["2098-12-31T21:00:00+00:00", "2099-01-01T00:00:00+00:00"]
+        );
+        assert_eq!(
+            credit_timestamp(&serde_json::json!(4070908800i64)),
+            credit_timestamp(&serde_json::json!("4070908800000"))
+        );
+        assert_eq!(reset_credit_details(&serde_json::json!({"available_count":0,"credits":[{"status":"available","expires_at":"2099-01-01T00:00:00Z"}]})).unwrap(), (0,Vec::new()));
+        assert!(reset_credit_details(&serde_json::json!({"credits":[]})).is_none());
+    }
 
     #[test]
     fn profile_cache_identity_changes_for_switches_and_token_rotation() {

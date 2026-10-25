@@ -247,6 +247,7 @@ pub async fn fetch_snapshot(client: &reqwest::Client) -> Option<ProviderSnapshot
         monthly_window,
         reset_credits: None,
         reset_credit_expires_at: Vec::new(),
+        balance_grants: Vec::new(),
         balance_remaining: None,
         balance_unit: None,
         updated_at: chrono::Utc::now().to_rfc3339(),

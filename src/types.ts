@@ -24,6 +24,17 @@ export interface UsageWindow {
   windowSeconds: number;
 }
 
+export interface CreditGrant {
+  remaining: number | null;
+  expiresAt: string | null;
+}
+
+export interface CreditSample {
+  reset: number | null;
+  balance: number | null;
+  unit: string | null;
+}
+
 export interface ProviderSnapshot {
   provider: ProviderId;
   displayName: string;
@@ -35,6 +46,7 @@ export interface ProviderSnapshot {
   resetCreditExpiresAt?: string[];
   balanceRemaining?: number | null;
   balanceUnit?: string | null;
+  balanceGrants?: CreditGrant[];
   updatedAt: string;
   status: SnapshotStatus;
   message: string | null;
@@ -162,6 +174,8 @@ export interface QuotaHistoryPoint {
   resetsAt: string | null;
   /** Provider-reported plan label captured with the sample. Legacy samples omit it. */
   plan?: string | null;
+  /** Separate credits counters; never substituted for percentage quota. */
+  credits?: CreditSample;
 }
 
 export interface DailyUsageSummary {

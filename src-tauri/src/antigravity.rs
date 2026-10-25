@@ -422,6 +422,7 @@ fn parse_snapshot(
         monthly_window: None,
         reset_credits: None,
         reset_credit_expires_at: Vec::new(),
+        balance_grants: Vec::new(),
         balance_remaining,
         balance_unit: balance_remaining.map(|_| "credits".into()),
         updated_at: now.to_rfc3339(),

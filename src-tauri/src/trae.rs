@@ -207,14 +207,15 @@ mod windows {
             .ok_or("TRAE response is missing entitlement quota data.")?;
         let mut fast_total = 0.0;
         let mut fast_used = 0.0;
-        let mut basic_total = 0.0;
-        let mut basic_used = 0.0;
+        let mut legacy_credit_remaining = 0.0;
         let mut has_credit_quota = false;
         let mut current_credit_remaining = 0.0;
         let mut has_current_credit_quota = false;
         let mut unlimited_current_credits = false;
         let mut best_plan = ("Free", 0u8);
         let mut active_packs = 0usize;
+        let mut current_grants = Vec::new();
+        let mut legacy_grants = Vec::new();
         for pack in packs.iter().filter(|pack| active_pack(pack)) {
             active_packs += 1;
             let base = pack.get("entitlement_base_info").unwrap_or(pack);
@@ -225,15 +226,37 @@ mod windows {
             if plan.1 > best_plan.1 {
                 best_plan = plan;
             }
+            let expires_at = pack
+                .get("expire_time")
+                .or_else(|| pack.pointer("/entitlement_base_info/end_time"))
+                .and_then(|value| {
+                    value
+                        .as_i64()
+                        .or_else(|| value.as_str()?.parse::<i64>().ok())
+                })
+                .filter(|value| *value > 0)
+                .and_then(|value| {
+                    if value > 10_000_000_000 {
+                        chrono::DateTime::from_timestamp_millis(value)
+                    } else {
+                        chrono::DateTime::from_timestamp(value, 0)
+                    }
+                })
+                .map(|value| value.to_rfc3339());
             match number(quota, &["credits_limit"]) {
                 Some(limit) if (limit + 1.0).abs() < f64::EPSILON => {
                     has_current_credit_quota = true;
                     unlimited_current_credits = true;
                 }
-                Some(limit) if limit > 0.0 => {
+                Some(limit) if limit >= 0.0 => {
                     has_current_credit_quota = true;
                     let used = number(usage, &["credits_amount"]).unwrap_or(0.0).max(0.0);
-                    current_credit_remaining += (limit - used).max(0.0);
+                    let remaining = (limit - used).max(0.0);
+                    current_credit_remaining += remaining;
+                    current_grants.push(crate::models::CreditGrant {
+                        remaining: Some(remaining),
+                        expires_at: expires_at.clone(),
+                    });
                 }
                 _ => {}
             }
@@ -254,6 +277,7 @@ mod windows {
                 .get("no_bonus_quota")
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
+            let mut pack_legacy_remaining = None;
             for (limit_key, used_key, enabled) in [
                 ("basic_usage_limit", "basic_usage_amount", true),
                 ("bonus_usage_limit", "bonus_usage_amount", !no_bonus),
@@ -265,9 +289,16 @@ mod windows {
                 };
                 if let Some(limit) = limit.filter(|limit| *limit >= 0.0) {
                     has_credit_quota = true;
-                    basic_total += limit;
-                    basic_used += number(usage, &[used_key]).unwrap_or(0.0).max(0.0);
+                    let used = number(usage, &[used_key]).unwrap_or(0.0).max(0.0);
+                    legacy_credit_remaining += (limit - used).max(0.0);
+                    *pack_legacy_remaining.get_or_insert(0.0) += (limit - used).max(0.0);
                 }
+            }
+            if let Some(remaining) = pack_legacy_remaining {
+                legacy_grants.push(crate::models::CreditGrant {
+                    remaining: Some(remaining),
+                    expires_at,
+                });
             }
         }
         let (remaining, unit) = if unlimited_current_credits {
@@ -275,7 +306,7 @@ mod windows {
         } else if has_current_credit_quota {
             (current_credit_remaining, "credits")
         } else if has_credit_quota {
-            ((basic_total - basic_used).max(0.0), "credits")
+            (legacy_credit_remaining, "credits")
         } else if fast_total > 0.0 {
             ((fast_total - fast_used).max(0.0), "requests")
         } else if active_packs > 0 && best_plan.1 == 0 {
@@ -298,6 +329,15 @@ mod windows {
             monthly_window: None,
             reset_credits: None,
             reset_credit_expires_at: Vec::new(),
+            balance_grants: if unlimited_current_credits {
+                Vec::new()
+            } else if has_current_credit_quota {
+                current_grants
+            } else if has_credit_quota {
+                legacy_grants
+            } else {
+                Vec::new()
+            },
             balance_remaining: Some(remaining),
             balance_unit: Some(unit.into()),
             updated_at,
@@ -414,6 +454,53 @@ mod windows {
     mod tests {
         use super::*;
         use cbc::cipher::BlockEncryptMut;
+
+        #[test]
+        fn zero_current_credit_limit_is_measurable_and_overrides_fallbacks() {
+            let snapshot = parse_snapshot(&serde_json::json!({"user_entitlement_pack_list":[{
+                "entitlement_base_info":{"quota":{"credits_limit":0,"basic_usage_limit":500,"premium_model_fast_request_limit":100}},
+                "usage":{"credits_amount":0}
+            }]})).unwrap();
+            assert_eq!(snapshot.balance_remaining, Some(0.0));
+            assert_eq!(snapshot.balance_unit.as_deref(), Some("credits"));
+            assert_eq!(snapshot.balance_grants.len(), 1);
+            assert_eq!(snapshot.balance_grants[0].remaining, Some(0.0));
+        }
+
+        #[test]
+        fn legacy_overuse_cannot_consume_another_bucket_or_pack() {
+            let snapshot = parse_snapshot(&serde_json::json!({"user_entitlement_pack_list":[
+                {"entitlement_base_info":{"quota":{"basic_usage_limit":100,"bonus_usage_limit":50}},"usage":{"basic_usage_amount":200,"bonus_usage_amount":10}},
+                {"entitlement_base_info":{"quota":{"basic_usage_limit":100}},"usage":{"basic_usage_amount":25}}
+            ]})).unwrap();
+            assert_eq!(snapshot.balance_remaining, Some(115.0));
+            assert_eq!(snapshot.balance_grants.len(), 2);
+            assert_eq!(snapshot.balance_grants[0].remaining, Some(40.0));
+            assert_eq!(snapshot.balance_grants[1].remaining, Some(75.0));
+            assert_eq!(
+                snapshot
+                    .balance_grants
+                    .iter()
+                    .filter_map(|grant| grant.remaining)
+                    .sum::<f64>(),
+                snapshot.balance_remaining.unwrap()
+            );
+        }
+
+        #[test]
+        fn credit_pack_grants_keep_explicit_expiry_and_unknown_separate() {
+            let snapshot = parse_snapshot(&serde_json::json!({"user_entitlement_pack_list":[
+                {"expire_time":4070908800000i64,"entitlement_base_info":{"quota":{"credits_limit":100}},"usage":{"credits_amount":25}},
+                {"entitlement_base_info":{"quota":{"credits_limit":50}},"usage":{"credits_amount":50}},
+                {"expire_time":1,"entitlement_base_info":{"quota":{"credits_limit":500}},"usage":{"credits_amount":0}}
+            ]})).unwrap();
+            assert_eq!(snapshot.balance_remaining, Some(75.0));
+            assert_eq!(snapshot.balance_grants.len(), 2);
+            assert_eq!(snapshot.balance_grants[0].remaining, Some(75.0));
+            assert!(snapshot.balance_grants[0].expires_at.is_some());
+            assert_eq!(snapshot.balance_grants[1].remaining, Some(0.0));
+            assert!(snapshot.balance_grants[1].expires_at.is_none());
+        }
 
         #[test]
         fn decrypts_current_trae_storage_format() {
