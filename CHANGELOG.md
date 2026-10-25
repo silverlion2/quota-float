@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.32 - 2026-10-25
 
 - Track Codex extra usage credits independently from reset credits and plan quota. Show explicit expiry dates, partial or unavailable expiry information, and recent local balance changes across all expanded layouts.
 - Preserve same-source reset-credit counts and available grant dates, expose TRAE per-pack expiry and balances, and correct zero-credit and cross-pack overuse handling.
