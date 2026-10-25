@@ -572,9 +572,9 @@ to{transform:translate3d(5%, 4%, 0) scale(1.16) rotate(2deg);}}
 .recent-reset svg,
 .reset-forecast svg{width:10px;height:10px;}
 .quota-window footer{margin-top:3px;}
-.quota-meta p,
-.quota-meta span,
 .provider-mark{width:34px;height:34px;padding:5px;border-radius:10px;}
+.quota-meta{min-width:0;}
+.quota-meta p{font-size:11px;line-height:1.4;color:var(--ui-muted);overflow-wrap:anywhere;}
 .ledger-header{height:auto;flex-direction:column;align-items:stretch;justify-content:flex-start;}
 .ledger-header:not(:has(.card-actions)){min-height:28px;justify-content:flex-end;}
 .ledger-header > p{order:2;margin:0;line-height:1;}

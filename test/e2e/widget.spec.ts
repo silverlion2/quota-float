@@ -355,6 +355,17 @@ describe("Quota Float desktop widget", () => {
 
   it("keeps Codex extra credits separate and expiration details bounded in the native window", async () => {
     await browser.$(".credit-tracker").waitForDisplayed();
+    const resetCopy = await browser.tauri.execute(() => {
+      const copy = document.querySelector<HTMLElement>(".primary-footer .quota-meta p")!;
+      const footer = copy.closest<HTMLElement>(".primary-footer")!;
+      const pane = copy.closest<HTMLElement>(".primary-pane")!;
+      return { overflow: copy.scrollHeight - copy.clientHeight,
+        footerOverflow: copy.getBoundingClientRect().bottom - footer.getBoundingClientRect().bottom,
+        paneOverflow: footer.getBoundingClientRect().bottom - pane.getBoundingClientRect().bottom };
+    });
+    expect(resetCopy.overflow).toBeLessThanOrEqual(1);
+    expect(resetCopy.footerOverflow).toBeLessThanOrEqual(1);
+    expect(resetCopy.paneOverflow).toBeLessThanOrEqual(1);
     expect(await browser.$(".credit-tracker").getText()).toContain("Extra credits");
     expect(await browser.$(".credit-tracker").getText()).toContain("120.5");
     expect(await browser.$(".credit-tracker").getText()).toContain("Expiry not provided");
