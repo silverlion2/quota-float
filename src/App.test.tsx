@@ -5,7 +5,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_WIDGET_PREFERENCES } from "./lib/preferences";
 import { EMPTY_RUNTIME_STATE } from "./lib/activity";
-import { fetchCodexResetForecast, fetchSnapshotsProgressively, resizeWidgetToContent, setWidgetExpanded, syncTaskbarIndicator } from "./lib/bridge";
+import { fetchCodexResetForecast, fetchSnapshotsProgressively, getWidgetContentHeightLimit, resizeWidgetToContent, setWidgetExpanded, syncTaskbarIndicator } from "./lib/bridge";
 import type { ProviderSnapshot } from "./types";
 
 type Deferred<T> = { promise: Promise<T>; resolve: (value: T) => void; reject: (reason?: unknown) => void };
@@ -28,6 +28,7 @@ const testState = vi.hoisted(() => ({
   initialPreferences: null as typeof DEFAULT_WIDGET_PREFERENCES | null,
   widgetExpandRequest: null as Deferred<void> | null,
   desktopHandlers: null as { onShow?: () => void } | null,
+  geometryPanels: false,
 }));
 
 vi.mock("./lib/appUpdate", () => ({
@@ -115,7 +116,8 @@ vi.mock("./components/ControlCenter", () => ({
 vi.mock("./components/QuotaCard", () => {
   const compact = ({ onHover }: { onHover: (value: boolean) => void }) => <button type="button" onClick={() => onHover(true)}>Expand widget</button>;
   const card = (props: any) => (
-    <main className="quota-card" data-content-width={props.controlOpen || props.updateOpen ? 552 : 400} onMouseEnter={() => props.onHover(true)} onMouseLeave={() => props.onHover(false)}>
+    <main className={`quota-card${testState.geometryPanels ? " quota-card--expanded-stacked" : ""}`} data-content-width={props.controlOpen || props.updateOpen ? 552 : 400} onMouseEnter={() => props.onHover(true)} onMouseLeave={() => props.onHover(false)}>
+      {testState.geometryPanels ? <section className="quota-tab-panel"><aside className="provider-ledger" /><details className="reset-outlook" open><div className="reset-outlook-body" /></details><section className="credit-tracker" /></section> : null}
       <button type="button" aria-label="App update" onClick={props.onUpdateOpen}>Update</button>
       <button type="button" aria-label="Control center" onClick={props.onControlOpen}>Control</button>
       <button type="button" onClick={() => props.onPreferences({ ...props.preferences, accentColor: "#112233" })}>Save first</button>
@@ -154,6 +156,8 @@ beforeEach(() => {
   testState.initialPreferences = null;
   testState.widgetExpandRequest = null;
   testState.desktopHandlers = null;
+  testState.geometryPanels = false;
+  vi.mocked(getWidgetContentHeightLimit).mockResolvedValue(1000);
   vi.mocked(fetchCodexResetForecast).mockReset().mockResolvedValue(null);
   vi.mocked(fetchSnapshotsProgressively).mockReset().mockImplementation(defaultSnapshotFetcher);
 });
@@ -165,6 +169,53 @@ async function renderExpandedApp() {
 }
 
 describe("App modal and preference lifecycle", () => {
+  it("caps native cards even with all expandable details closed", async () => {
+    vi.stubGlobal("__TAURI_INTERNALS__", {});
+    vi.mocked(getWidgetContentHeightLimit).mockResolvedValue(600);
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
+      return this.style.getPropertyValue("--native-content-max-height") ? 600 : 1000;
+    });
+    await renderExpandedApp();
+    await waitFor(() => expect(screen.getByRole("main").style.getPropertyValue("--native-content-max-height")).toBe("600px"));
+    await waitFor(() => expect(resizeWidgetToContent).toHaveBeenLastCalledWith(600, 400));
+    expect(document.querySelector(".reset-outlook[open]")).toBeNull();
+  });
+
+  it("rebudgets internal details using natural height while the outer card stays capped", async () => {
+    vi.stubGlobal("__TAURI_INTERNALS__", {});
+    testState.geometryPanels = true;
+    vi.mocked(getWidgetContentHeightLimit).mockResolvedValue(600);
+    let extraHeight = 0;
+    let notifyResize: ResizeObserverCallback | undefined;
+    const observe = vi.fn();
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(callback: ResizeObserverCallback) { notifyResize = callback; }
+      observe = observe;
+      disconnect() {}
+    });
+    const partHeight = (element: HTMLElement, property: string, initial: number) => Number.parseFloat(element.closest<HTMLElement>(".quota-card")?.style.getPropertyValue(property) || String(initial));
+    const naturalHeight = (card: HTMLElement) => 284 + extraHeight
+      + partHeight(card, "--reset-ledger-max-height", 96) + partHeight(card, "--reset-outlook-max-height", 260);
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
+      if (this.classList.contains("provider-ledger")) return partHeight(this, "--reset-ledger-max-height", 96);
+      if (this.classList.contains("reset-outlook-body")) return partHeight(this, "--reset-outlook-max-height", 260);
+      return this.classList.contains("quota-card") ? Math.min(naturalHeight(this), Number.parseFloat(this.style.getPropertyValue("--native-content-max-height") || "Infinity")) : 0;
+    });
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(function (this: HTMLElement) { return Math.max(0, this.offsetHeight - 2); });
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains("quota-card") ? naturalHeight(this) - 2 : this.classList.contains("provider-ledger") ? 96 : this.offsetHeight;
+    });
+    await renderExpandedApp();
+    const card = screen.getByRole("main");
+    await waitFor(() => expect(card.style.getPropertyValue("--reset-outlook-max-height")).toBe("220px"));
+    expect(observe).toHaveBeenCalledWith(card.querySelector(".quota-tab-panel"));
+    expect(card.offsetHeight).toBe(600);
+    extraHeight = 100;
+    act(() => notifyResize?.([], {} as ResizeObserver));
+    await waitFor(() => expect(card.style.getPropertyValue("--reset-outlook-max-height")).toBe("160px"));
+    expect(card.offsetHeight).toBe(600);
+    expect(card.scrollHeight).toBeGreaterThan(card.clientHeight);
+  });
   it("does not retry a provider paused while a reconnect is waiting for an active request", async () => {
     testState.initialPreferences = { ...DEFAULT_WIDGET_PREFERENCES, pausedProviders: ["qoder", "trae", "workbuddy", "volcengine", "antigravity"] };
     const request = deferred<ProviderSnapshot[]>();

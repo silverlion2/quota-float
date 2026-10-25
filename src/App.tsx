@@ -947,6 +947,21 @@ export default function App() {
       }
       const resetBody = card.querySelector<HTMLElement>(".reset-outlook[open] .reset-outlook-body");
       const providerLedger = card.querySelector<HTMLElement>(".provider-ledger");
+      // Native windows stop growing at the monitor work area. A collapsed
+      // stacked layout can already exceed it, before either details panel opens.
+      // Bound the outer card as a final fallback so all content remains reachable.
+      if (contentHeightLimit !== null) {
+        const limit = `${contentHeightLimit}px`;
+        if (card.style.getPropertyValue("--native-content-max-height") !== limit) {
+          card.style.setProperty("--native-content-max-height", limit);
+          measurement = undefined;
+        }
+      } else {
+        card.style.removeProperty("--native-content-max-height");
+      }
+      // offsetHeight is capped now; local detail budgets need the natural
+      // content height, including borders excluded by scrollHeight.
+      const naturalCardHeight = Math.max(card.offsetHeight, card.scrollHeight + card.offsetHeight - card.clientHeight);
       if ((!resetBody || !card.classList.contains("quota-card--expanded-stacked")) && card.hasAttribute("data-reset-ledger-bounded")) {
         card.removeAttribute("data-reset-ledger-bounded");
         card.style.removeProperty("--reset-ledger-max-height");
@@ -959,7 +974,7 @@ export default function App() {
           // In the stacked layout the full provider list can consume the whole
           // work area. Keep a useful prediction viewport and scroll providers
           // locally instead of reducing the prediction body to zero.
-          const otherHeight = card.offsetHeight - resetBody.offsetHeight - providerLedger.offsetHeight;
+          const otherHeight = naturalCardHeight - resetBody.offsetHeight - providerLedger.offsetHeight;
           const naturalLedgerHeight = Math.max(providerLedger.offsetHeight, providerLedger.scrollHeight);
           const ledgerLimit = Math.max(96, Math.min(naturalLedgerHeight, contentHeightLimit - otherHeight - 160));
           if (ledgerLimit < naturalLedgerHeight) {
@@ -982,8 +997,10 @@ export default function App() {
         // The native window can stop growing at the monitor work-area limit.
         // Keep the rest of the card visible and let prediction details scroll
         // inside the space that is actually available on this monitor.
-        const restHeight = card.offsetHeight - resetBody.offsetHeight;
-        const bodyLimit = `${Math.max(0, Math.min(260, contentHeightLimit - restHeight))}px`;
+        const restHeight = naturalCardHeight - resetBody.offsetHeight;
+        // Keep prediction details useful even when the surrounding summary is
+        // taller than the work area; the outer card can scroll as a fallback.
+        const bodyLimit = `${Math.max(Math.min(160, contentHeightLimit), Math.min(260, contentHeightLimit - restHeight))}px`;
         if (card.style.getPropertyValue("--reset-outlook-max-height") !== bodyLimit) {
           card.style.setProperty("--reset-outlook-max-height", bodyLimit);
           measurement = undefined;
@@ -1032,6 +1049,9 @@ export default function App() {
     scheduleSync();
     const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(scheduleSync);
     resizeObserver?.observe(card);
+    // Internal content may grow while the outer card stays capped. Observe its
+    // normal-flow panels as well so reset budgets and native sizing resync.
+    card.querySelectorAll<HTMLElement>(".quota-tab-panel, .credit-tracker").forEach((panel) => resizeObserver?.observe(panel));
     const layoutObserver = new MutationObserver(scheduleSync);
     layoutObserver.observe(card, { attributes: true, attributeFilter: ["data-content-width"] });
     return () => {
@@ -1039,6 +1059,7 @@ export default function App() {
       window.removeEventListener("resize", refreshHeightLimit);
       resizeObserver?.disconnect();
       layoutObserver.disconnect();
+      card.style.removeProperty("--native-content-max-height");
       if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);
     };
   }, [compact, nativeExpandedReady, Boolean(current)]);

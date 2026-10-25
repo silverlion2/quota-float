@@ -759,16 +759,23 @@ export const QuotaCard = memo(function QuotaCard({
       className={`quota-card quota-card--${snapshot.status} quota-card--${tier} quota-card--layout-${preferences.layoutMode} quota-card--expanded-${preferences.expandedLayout} quota-card--style-${preferences.colorTheme} quota-card--theme-${resolvedAppearance} quota-card--origin-${preferences.compactLayout === "bar" || preferences.compactLayout === "bottleneck" ? preferences.barEdge : "center"}${overlayOpen ? " quota-card--overlay-open" : ""}${diagnosticsOpen ? " quota-card--diagnostics-open" : ""}${updateOpen ? " quota-card--update-open" : ""}${insightsOpen ? " quota-card--insights-open" : ""}${collapsing ? " quota-card--collapsing" : ""}`}
       data-content-width={contentWidth}
       data-provider-list={providerListExpanded ? "expanded" : "collapsed"}
+      tabIndex={0}
       style={{ "--accent-color": preferences.accentColor, "--widget-content-width": `${contentWidth}px` } as CSSProperties}
       onMouseEnter={() => onHover(true)}
-      onMouseLeave={(event) => { if (!event.currentTarget.querySelector(":focus-visible")) onHover(false); }}
+      onMouseLeave={(event) => { if (!event.currentTarget.matches(":focus-visible") && !event.currentTarget.querySelector(":focus-visible")) onHover(false); }}
       onFocusCapture={(event) => {
         if (!(event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) && event.target.matches(":focus-visible")) onHover(true);
       }}
       onBlurCapture={(event) => {
         if (!(event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) && !event.currentTarget.matches(":hover")) onHover(false);
       }}
-      onMouseDown={(event) => { if (event.button === 0) void onDrag(); }}
+      onMouseDown={(event) => {
+        if (event.button !== 0) return;
+        const card = event.currentTarget;
+        // Leave both classic and overlay scrollbars free to scroll the card.
+        if (card.scrollHeight > card.clientHeight && event.clientX >= card.getBoundingClientRect().right - Math.max(12, card.offsetWidth - card.clientWidth)) return;
+        void onDrag();
+      }}
     >
       <div className="aurora" aria-hidden="true" />
       <span className="sr-only" aria-live="polite">{available ? metricLabel : message}</span>

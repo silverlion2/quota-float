@@ -121,6 +121,27 @@ describe("QuotaCard platform ledger", () => {
     consumingProviders: new Set<string>(),
   };
 
+  it("keeps the outer scrollbar usable without starting native window dragging", () => {
+    const onDrag = vi.fn();
+    const onHover = vi.fn();
+    render(<QuotaCard {...adaptiveProps} onDrag={onDrag} onHover={onHover} />);
+    const card = screen.getByRole("main");
+    expect(card).toHaveAttribute("tabindex", "0");
+    Object.defineProperties(card, {
+      scrollHeight: { value: 800 }, clientHeight: { value: 600 },
+      offsetWidth: { value: 400 }, clientWidth: { value: 398 },
+    });
+    vi.spyOn(card, "getBoundingClientRect").mockReturnValue({ left: 0, right: 400 } as DOMRect);
+    fireEvent.mouseDown(card, { button: 0, clientX: 396 });
+    expect(onDrag).not.toHaveBeenCalled();
+    fireEvent.mouseDown(card, { button: 0, clientX: 100 });
+    expect(onDrag).toHaveBeenCalledOnce();
+    act(() => card.focus());
+    onHover.mockClear();
+    fireEvent.mouseLeave(card);
+    expect(onHover).not.toHaveBeenCalledWith(false);
+  });
+
   it("keeps plan quota primary when Codex has unlimited extra credits", () => {
     const active = { ...codex, balanceRemaining: 0, balanceUnit: "unlimited" };
     const { container } = render(<QuotaCard {...adaptiveProps} snapshot={active} snapshots={[active, qoder]} />);

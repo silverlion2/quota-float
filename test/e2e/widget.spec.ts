@@ -365,12 +365,17 @@ describe("Quota Float desktop widget", () => {
       const card = document.querySelector<HTMLElement>(".quota-card")!.getBoundingClientRect();
       return card.bottom <= innerHeight + 1;
     }), { timeout: 3000, timeoutMsg: "Credits expansion exceeded the native viewport" });
+    await browser.tauri.execute(() => document.querySelector<HTMLElement>(".credit-tracker__details")!.scrollIntoView({ block: "end" }));
     const metrics = await browser.tauri.execute(() => {
       const details = document.querySelector<HTMLElement>(".credit-tracker__details")!;
-      return { height: details.clientHeight, overflow: details.scrollWidth - details.clientWidth };
+      const bounds = details.getBoundingClientRect();
+      return { height: details.clientHeight, overflow: details.scrollWidth - details.clientWidth, top: bounds.top, bottom: bounds.bottom, viewport: innerHeight };
     });
+    expect(metrics.height).toBeGreaterThan(100);
     expect(metrics.height).toBeLessThanOrEqual(190);
     expect(metrics.overflow).toBeLessThanOrEqual(1);
+    expect(metrics.top).toBeGreaterThanOrEqual(0);
+    expect(metrics.bottom).toBeLessThanOrEqual(metrics.viewport + 1);
     await browser.saveScreenshot("output/handoff/native-credits-details.png");
     await browser.tauri.execute(() => document.querySelector<HTMLButtonElement>(".credit-tracker__heading button")!.click());
   });
