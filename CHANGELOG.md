@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.33 - 2026-10-31
 
 - Add escalating reset-card and credits-expiry reminders, a persistent action queue, short snoozes, compact attention markers and direct Codex usage navigation.
 - Catch low quota on startup and retry after quiet hours or notification failure; distinguish stale expiry and unknown grant balances from verified availability.
