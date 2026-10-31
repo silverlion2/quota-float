@@ -391,6 +391,37 @@ describe("Quota Float desktop widget", () => {
     await browser.tauri.execute(() => document.querySelector<HTMLButtonElement>(".credit-tracker__heading button")!.click());
   });
 
+  it("keeps imminent reset actions visible, snoozes them and exposes the full queue", async () => {
+    await browser.$(".action-alerts").waitForDisplayed();
+    const reminders = await browser.$(".action-alerts").getText();
+    expect(reminders).toContain("reset");
+    expect(reminders).toContain("80%");
+    expect(reminders).toContain("Open usage settings");
+    await browser.tauri.execute(() => {
+      document.querySelector<HTMLButtonElement>(".action-alerts__heading button")!.click();
+    });
+    await browser.$(".action-alerts__queue").waitForDisplayed();
+    const geometry = await browser.tauri.execute(() => {
+      const panel = document.querySelector<HTMLElement>(".action-alerts")!;
+      panel.scrollIntoView({ block: "start" });
+      const queue = document.querySelector<HTMLElement>(".action-alerts__queue")!;
+      return { overflow: panel.scrollWidth - panel.clientWidth, height: queue.clientHeight, count: queue.querySelectorAll("article").length };
+    });
+    expect(geometry.overflow).toBeLessThanOrEqual(1);
+    expect(geometry.height).toBeLessThanOrEqual(235);
+    expect(geometry.count).toBeGreaterThanOrEqual(2);
+    await browser.saveScreenshot("output/handoff/native-action-reminders.png");
+    await browser.tauri.execute(() => {
+      document.querySelector<HTMLButtonElement>(".action-alerts__queue article .action-alerts__actions button:nth-child(2)")!.click();
+    });
+    await browser.$(".action-alerts__paused").waitForDisplayed();
+    await browser.waitUntil(async () => browser.tauri.execute(async (tauri) => {
+      const runtime = await tauri.core.invoke("get_runtime_state") as { alertSnoozes?: Record<string, string> };
+      return Object.keys(runtime.alertSnoozes ?? {}).some((key) => key.startsWith("action:codex:reset-expiry:"));
+    }), { timeout: 3000, timeoutMsg: "Reminder snooze was not persisted" });
+    await browser.tauri.execute(() => document.querySelector<HTMLButtonElement>(".action-alerts__heading button")!.click());
+  });
+
   it("opens the update dialog without navigating away", async () => {
     const opened = await browser.tauri.execute(() => {
       const button = document.querySelector<HTMLButtonElement>(".update-action");

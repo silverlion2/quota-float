@@ -79,6 +79,7 @@ interface Props {
   isConsuming?: boolean;
   consumingProviders: ReadonlySet<string>;
   notice?: ReactNode;
+  actionAlerts?: ReactNode;
   controlCenter?: ReactNode;
   controlOpen?: boolean;
   onControlOpen?: () => void;
@@ -571,6 +572,7 @@ export const QuotaCard = memo(function QuotaCard({
   isConsuming = false,
   consumingProviders,
   notice = null,
+  actionAlerts = null,
   controlCenter = null,
   controlOpen = false,
   onControlOpen = () => undefined,
@@ -869,6 +871,8 @@ export const QuotaCard = memo(function QuotaCard({
         ) : null}
       </header>
 
+      {!overlayOpen && !insightsOpen ? actionAlerts : null}
+
       <div
         className="quota-tab-panel quota-tab-panel--quota"
         id={quotaPanelId}
@@ -1087,7 +1091,7 @@ export const QuotaCard = memo(function QuotaCard({
   );
 });
 
-export const QuotaOrb = memo(function QuotaOrb({ snapshot, onDrag, onHover, language = "zh-CN", compactLayout = "float", colorTheme = "aurora", accentColor = "#397ae0", resolvedAppearance = "light" }: Pick<Props, "snapshot" | "onDrag" | "onHover"> & { language?: Language; compactLayout?: CompactLayout; colorTheme?: ColorTheme; accentColor?: string; resolvedAppearance?: ResolvedAppearance }) {
+export const QuotaOrb = memo(function QuotaOrb({ snapshot, onDrag, onHover, language = "zh-CN", compactLayout = "float", colorTheme = "aurora", accentColor = "#397ae0", resolvedAppearance = "light", attentionLabel }: Pick<Props, "snapshot" | "onDrag" | "onHover"> & { language?: Language; compactLayout?: CompactLayout; colorTheme?: ColorTheme; accentColor?: string; resolvedAppearance?: ResolvedAppearance; attentionLabel?: string }) {
   const now = useMinuteClock();
   const [idle, setIdle] = useState(false);
   const idleTimer = useRef<number | null>(null);
@@ -1138,11 +1142,13 @@ export const QuotaOrb = memo(function QuotaOrb({ snapshot, onDrag, onHover, lang
 
   return (
     <main
+      data-has-attention={attentionLabel ? "true" : undefined}
+      title={attentionLabel ? `${activeLanguage === "en" ? "Pending action across providers" : "全部平台待办提醒"}: ${attentionLabel}` : undefined}
       className={`quota-orb quota-card--${snapshot.status} quota-card--${tier} quota-card--compact-${compactLayout} quota-card--style-${colorTheme} quota-card--theme-${resolvedAppearance}${idle ? " quota-orb--idle" : ""}`}
       style={{ "--accent-color": accentColor, "--quota-progress-angle": `${Math.round(compactProgress * 36) / 10}deg` } as CSSProperties}
       role="button"
       tabIndex={0}
-      aria-description={activeLanguage === "en" ? "Press Enter or Space to expand quota details. Drag to move." : "按 Enter 或空格展开额度详情，拖动可移动。"}
+      aria-description={`${activeLanguage === "en" ? "Press Enter or Space to expand quota details. Drag to move." : "按 Enter 或空格展开额度详情，拖动可移动。"}${attentionLabel ? ` ${activeLanguage === "en" ? "Pending action across providers" : "全部平台待办提醒"}: ${attentionLabel}` : ""}`}
       onFocus={() => { if (idleTimer.current !== null) window.clearTimeout(idleTimer.current); setIdle(false); }}
       onBlur={scheduleIdle}
       onKeyDown={(event) => {
@@ -1156,6 +1162,7 @@ export const QuotaOrb = memo(function QuotaOrb({ snapshot, onDrag, onHover, lang
       onMouseDown={(event) => { if (event.button === 0) void onDrag(); }}
       aria-label={available ? `${staleUsable ? `${t.dataStale} · ` : ""}${accessibleLabel}` : snapshot.status === "loading" ? stateLabel : localizedBackendMessage(snapshot.message, activeLanguage, snapshot.displayName) ?? t.unavailableStatus}
     >
+      {attentionLabel ? <span className="compact-action-badge" role="img" aria-label={`${activeLanguage === "en" ? "Pending action across providers" : "全部平台待办提醒"}: ${attentionLabel}`} title={`${activeLanguage === "en" ? "Pending action across providers" : "全部平台待办提醒"}: ${attentionLabel}`}>!</span> : null}
       <div className="aurora" aria-hidden="true" />
       {available ? (
         <section className="orb-metric">
@@ -1194,6 +1201,7 @@ function compactFreshness(value: string, now = new Date()): string {
 }
 
 interface QuotaBarProps {
+  attentionLabel?: string;
   snapshot: ProviderSnapshot;
   snapshots: ProviderSnapshot[];
   edge: BarEdge;
@@ -1214,6 +1222,7 @@ export const QuotaBar = memo(function QuotaBar({
   colorTheme = "aurora",
   accentColor = "#397ae0",
   resolvedAppearance = "dark",
+  attentionLabel,
   onSelectProvider,
   onDrag,
   onHover,
@@ -1267,6 +1276,9 @@ export const QuotaBar = memo(function QuotaBar({
   return (
     <main
       className={`quota-bar quota-bar--${edge} quota-card--${snapshot.status} quota-card--${quotaTier(remaining)} quota-card--compact-bar quota-card--style-${colorTheme} quota-card--theme-${resolvedAppearance}`}
+      data-has-attention={attentionLabel ? "true" : undefined}
+      title={attentionLabel ? `${activeLanguage === "en" ? "Pending action across providers" : "全部平台待办提醒"}: ${attentionLabel}` : undefined}
+      aria-description={attentionLabel ? `${activeLanguage === "en" ? "Pending action across providers" : "全部平台待办提醒"}: ${attentionLabel}` : undefined}
       data-provider-count={dimensions.count}
       style={{ "--accent-color": accentColor, "--bar-progress": `${progress}%`, "--compact-width": `${dimensions.width}px`, "--compact-height": `${dimensions.height}px`, "--compact-count": dimensions.count } as CSSProperties}
       onMouseOver={(event) => {
@@ -1314,6 +1326,7 @@ export const QuotaBar = memo(function QuotaBar({
       </span>
       <span className="bar-freshness" title={activeLanguage === "en" ? `Updated ${freshness}` : `更新于 ${freshness}`}>{activeLanguage === "en" ? `Updated ${freshness}` : `更新 ${freshness}`}</span>
       </button>
+      {attentionLabel ? <span className="compact-action-badge" role="img" aria-label={`${activeLanguage === "en" ? "Pending action across providers" : "全部平台待办提醒"}: ${attentionLabel}`} title={`${activeLanguage === "en" ? "Pending action across providers" : "全部平台待办提醒"}: ${attentionLabel}`}>!</span> : null}
       <span className="bar-progress" aria-hidden="true"><i /></span>
     </main>
   );
@@ -1349,6 +1362,7 @@ export const QuotaBottleneckBar = memo(function QuotaBottleneckBar({
   colorTheme = "aurora",
   accentColor = "#397ae0",
   resolvedAppearance = "dark",
+  attentionLabel,
   onSelectProvider,
   onDrag,
   onHover,
@@ -1395,6 +1409,9 @@ export const QuotaBottleneckBar = memo(function QuotaBottleneckBar({
   return (
     <main
       className={`quota-bar quota-bottleneck-bar quota-bar--${edge} quota-card--${lead.status} quota-card--${quotaTier(leadRemaining)} quota-card--compact-bottleneck quota-card--style-${colorTheme} quota-card--theme-${resolvedAppearance}`}
+      data-has-attention={attentionLabel ? "true" : undefined}
+      title={attentionLabel ? `${activeLanguage === "en" ? "Pending action across providers" : "全部平台待办提醒"}: ${attentionLabel}` : undefined}
+      aria-description={attentionLabel ? `${activeLanguage === "en" ? "Pending action across providers" : "全部平台待办提醒"}: ${attentionLabel}` : undefined}
       data-provider-count={dimensions.count}
       style={{ "--accent-color": accentColor, "--bar-progress": `${leadMetric.progress}%`, "--bottleneck-count": dimensions.count, "--compact-width": `${dimensions.width}px`, "--compact-height": `${dimensions.height}px`, "--compact-count": dimensions.count } as CSSProperties}
       onMouseOver={(event) => {
@@ -1451,6 +1468,7 @@ export const QuotaBottleneckBar = memo(function QuotaBottleneckBar({
         <b>{leadMetric.value}</b>
         <ArrowSquareOut />
       </button>
+      {attentionLabel ? <span className="compact-action-badge" role="img" aria-label={`${activeLanguage === "en" ? "Pending action across providers" : "全部平台待办提醒"}: ${attentionLabel}`} title={`${activeLanguage === "en" ? "Pending action across providers" : "全部平台待办提醒"}: ${attentionLabel}`}>!</span> : null}
       <span className="bar-progress" aria-hidden="true"><i /></span>
     </main>
   );

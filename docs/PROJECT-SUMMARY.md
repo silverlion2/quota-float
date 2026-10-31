@@ -107,3 +107,7 @@ npm run tauri dev
 - 平台应用或 CLI 更新后优先验证适配器解析与失败降级，不对缺失字段猜测额度。
 - 提交、推送、打包、签名、标签和发布均是独立授权边界，不由路线图或测试结果自动触发。
 - 日常发布优先用 `npm run publish:release -- patch --yes`，正式流程本身包含验证，无需重复 dry run。双平台并行打包、单步骤生成清单、Windows 升级测试与 macOS 重叠；断线用 `--resume` 恢复，公开文件自动下载验签并记录耗时。具体实现与待实测提速见 [发布性能记录](RELEASE-PERFORMANCE-2026-09-19.md)；本地发布脚本保留为回退路径。
+
+## Actionable reminders (2026-10-31)
+
+Priority reminders now cover imminent reset-card/credit expiry, low quota and sign-in recovery, with staged urgency, short persistent snoozes, direct Codex usage navigation and refresh confirmation. See [source boundaries and controls](ACTION-ALERTS-2026-10-31.md).

@@ -170,7 +170,7 @@ fn validate_runtime_state(value: &Value) -> Result<(), String> {
     {
         return Err("runtime state usageMemory section is invalid".to_string());
     }
-    for field in ["lastNotifications", "dailyPaceBaselines"] {
+    for field in ["lastNotifications", "dailyPaceBaselines", "alertSnoozes"] {
         if state.get(field).is_some_and(|section| !section.is_object()) {
             return Err(format!("runtime state {field} section is invalid"));
         }

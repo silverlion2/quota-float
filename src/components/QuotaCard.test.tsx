@@ -1181,3 +1181,15 @@ describe("QuotaCard platform ledger", () => {
     expect(onReorderProviders).toHaveBeenCalledWith(["qoder", "claude", "codex", "trae", "workbuddy", "volcengine", "antigravity"]);
   });
 });
+
+describe("compact all-provider action badge", () => {
+  it.each(["orb", "bar", "bottleneck"])("exposes the pending action in %s without changing its geometry", (layout) => {
+    const props = { snapshot: codex, snapshots: [codex], edge: "top" as const, language: "en" as const, onSelectProvider: vi.fn(), onDrag: vi.fn(), onHover: vi.fn() };
+    const Component = layout === "orb" ? QuotaOrb : layout === "bar" ? QuotaBar : QuotaBottleneckBar;
+    const { rerender } = render(<Component {...props} />);
+    expect(screen.queryByRole("img", { name: /Pending action across providers/ })).not.toBeInTheDocument();
+    rerender(<Component {...props} attentionLabel="Claude needs attention" />);
+    expect(screen.getByRole("img", { name: "Pending action across providers: Claude needs attention" })).toHaveTextContent("!");
+    expect(document.querySelector("main")).toHaveAttribute("data-has-attention", "true");
+  });
+});

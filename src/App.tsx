@@ -1,5 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { ActionAlerts } from "./components/ActionAlerts";
+import { useActionAlerts } from "./lib/useActionAlerts";
+import { actionAlertSnoozed } from "./lib/actionAlerts";
 import { QuotaBar, QuotaBottleneckBar, QuotaCard, QuotaOrb } from "./components/QuotaCard";
 import { EMPTY_UPDATE_STATE } from "./components/UpdatePanel";
 import type { UpdateViewState } from "./components/UpdatePanel";
@@ -61,6 +64,9 @@ export default function App() {
   const [appDiagnostics, setAppDiagnostics] = useState<AppDiagnostics | null>(null);
   const [autostartEnabled, setAutostartState] = useState(false);
   const [controlOperation, setControlOperation] = useState<ControlOperation | null>(null);
+  const [controlInitialTab, setControlInitialTab] = useState<"display" | "health" | "alerts">("display");
+  const [notificationTest, setNotificationTest] = useState<string | null>(null);
+  const [actionGuidance, setActionGuidance] = useState<string | null>(null);
   const [systemDark, setSystemDark] = useState(systemPrefersDark);
   const snapshotsRef = useRef<ProviderSnapshot[]>([]);
   const providerAttempts = useRef<ProviderAttemptTimes>({});
@@ -177,6 +183,8 @@ export default function App() {
     setRuntimeState(next);
     void updateRuntimeState(next).catch(() => setOperationError("Activity history could not be saved."));
   }, []);
+
+  const actionReminders = useActionAlerts(snapshots, preferences, runtimeStateRef, commitRuntimeState);
 
   const startUpdateDownload = useCallback(async (info: AppUpdateInfo, reveal = false) => {
     const sequence = ++updateSequence.current;
@@ -320,20 +328,21 @@ export default function App() {
         setRecentCodexReset((current) => planChanged ? null : detectedReset ?? (isRecentCodexReset(current, now) ? current : null));
       }
       const activity = recordSnapshotActivity(runtimeStateRef.current, snapshotsBeforeRefresh, values, detectedReset, preferencesRef.current.alertThreshold, now, preferencesRef.current.language, preferencesRef.current.notificationCooldownMinutes, resetForecastRef.current);
-      let nextRuntimeState = activity.state;
+      commitRuntimeState(activity.state);
       const notificationPreferences = preferencesRef.current;
       if (notificationPreferences.notificationsEnabled && !isQuietHour(now.getHours(), notificationPreferences.quietHoursStart, notificationPreferences.quietHoursEnd)) {
         for (const candidate of activity.notificationCandidates) {
           const item = candidate.event;
-          const enabled = item.kind === "reset" ? notificationPreferences.notifyOnReset : item.kind === "recovered" ? notificationPreferences.notifyOnRecovery : item.kind === "quota" || item.kind === "warning";
+          // Persistent actionable reminders own low-quota and signed-out delivery.
+          if (item.kind === "quota" || item.id.includes("status-signed_out")) continue;
+          const enabled = item.kind === "reset" ? notificationPreferences.notifyOnReset : item.kind === "recovered" ? notificationPreferences.notifyOnRecovery : item.kind === "warning";
           const key = candidate.key;
-          if (!enabled || !canSendNotification(nextRuntimeState, key, notificationPreferences.notificationCooldownMinutes, now)) continue;
+          if (!enabled || !canSendNotification(runtimeStateRef.current, key, notificationPreferences.notificationCooldownMinutes, now)) continue;
           if (await sendDesktopNotification(item.title, item.detail).catch(() => false)) {
-            nextRuntimeState = { ...nextRuntimeState, lastNotifications: { ...nextRuntimeState.lastNotifications, [key]: now.toISOString() } };
+            commitRuntimeState({ ...runtimeStateRef.current, lastNotifications: { ...runtimeStateRef.current.lastNotifications, [key]: now.toISOString() } });
           }
         }
       }
-      commitRuntimeState(nextRuntimeState);
       const merged = mergeSnapshots(snapshotsRef.current, values, providerIds);
       snapshotsRef.current = merged;
       setSnapshots(merged);
@@ -1051,7 +1060,7 @@ export default function App() {
     resizeObserver?.observe(card);
     // Internal content may grow while the outer card stays capped. Observe its
     // normal-flow panels as well so reset budgets and native sizing resync.
-    card.querySelectorAll<HTMLElement>(".quota-tab-panel, .credit-tracker").forEach((panel) => resizeObserver?.observe(panel));
+    card.querySelectorAll<HTMLElement>(".quota-tab-panel, .credit-tracker, .action-alerts").forEach((panel) => resizeObserver?.observe(panel));
     const layoutObserver = new MutationObserver(scheduleSync);
     layoutObserver.observe(card, { attributes: true, attributeFilter: ["data-content-width"] });
     return () => {
@@ -1067,12 +1076,15 @@ export default function App() {
   if (!current) return <div className="loading-card" aria-label={t.loadingQuota}><span /><span /><span /></div>;
 
   if (compact) {
+    const attentionLabel = actionReminders.alerts.find((alert) => alert.severity !== "notice"
+      && !actionAlertSnoozed(alert, runtimeState.alertSnoozes, actionReminders.now))?.title;
     const selectCompactProvider = (provider: ProviderId) => {
       const index = orderedSnapshots.findIndex((item) => item.provider === provider);
       if (index >= 0) setActiveIndex(index);
     };
     return preferences.compactLayout === "bar" ? (
       <QuotaBar
+        attentionLabel={attentionLabel}
         snapshot={current}
         snapshots={orderedSnapshots}
         language={language}
@@ -1086,6 +1098,7 @@ export default function App() {
       />
     ) : preferences.compactLayout === "bottleneck" ? (
       <QuotaBottleneckBar
+        attentionLabel={attentionLabel}
         snapshot={current}
         snapshots={orderedSnapshots}
         language={language}
@@ -1099,6 +1112,7 @@ export default function App() {
       />
     ) : (
       <QuotaOrb
+        attentionLabel={attentionLabel}
         snapshot={current}
         language={language}
         compactLayout={preferences.compactLayout}
@@ -1113,6 +1127,22 @@ export default function App() {
 
   return (
     <QuotaCard
+      actionAlerts={<>
+        <ActionAlerts alerts={actionReminders.alerts} language={language} now={actionReminders.now}
+          snoozes={runtimeState.alertSnoozes} onSnooze={actionReminders.snooze} onRefresh={() => void refresh(true)}
+          onAction={(alert) => {
+            if (alert.kind === "stale-expiry") {
+              void refresh(true);
+            } else if (alert.action === "codex-usage") {
+              void openExternalUrl("https://chatgpt.com/settings/usage").catch(() => setOperationError(language === "en" ? "Could not open Usage settings. Open Codex Settings → Usage & billing, or CLI /usage." : "无法打开用量设置。请在 Codex 打开 Settings → Usage & billing，或输入 CLI /usage。"));
+            } else {
+              setActionGuidance(`${alert.title} — ${alert.detail}`);
+              setControlInitialTab("health");
+              openModal("control");
+            }
+          }} />
+        {actionReminders.deliveryIssue ? <p className="action-delivery-note" role="status">{language === "en" ? "Desktop alert was not submitted. Reminders remain here." : "桌面提醒未能发送，待办仍保留在这里。"} <button type="button" onClick={() => { setControlInitialTab("alerts"); openModal("control"); }}>{language === "en" ? "Check notifications" : "检查通知设置"}</button></p> : null}
+      </>}
       snapshot={current}
       snapshots={orderedSnapshots}
       providerListPreference={providerListPreference}
@@ -1166,6 +1196,8 @@ export default function App() {
       onUpdateRelease={handleUpdateRelease}
       controlOpen={controlOpen}
       onControlOpen={() => {
+        setActionGuidance(null);
+        setControlInitialTab("display");
         openModal("control");
         void getAppDiagnostics().then(setAppDiagnostics).catch(() => undefined);
       }}
@@ -1173,6 +1205,17 @@ export default function App() {
         <ErrorBoundary language={language} resetKey={controlOpen}>
           <Suspense fallback={<div className="loading-card" role="status" aria-label={language === "en" ? "Loading control center" : "正在加载控制中心"}><span /><span /><span /></div>}>
             <ControlCenter
+            initialTab={controlInitialTab}
+            actionGuidance={actionGuidance}
+            notificationTest={notificationTest}
+            onTestNotification={() => {
+              setNotificationTest(language === "en" ? "Sending…" : "正在发送…");
+              void sendDesktopNotification("Quota Float", language === "en" ? "Test reminder: open the widget to act on expiring resets and credits." : "提醒测试：重置卡和 credits 临期时，请打开悬浮窗处理待办。")
+                .then((sent) => setNotificationTest(sent
+                  ? (language === "en" ? "Submitted to the system. Check notification settings if no banner appears." : "已提交系统；若没看到横幅，请检查系统通知和勿扰设置。")
+                  : (language === "en" ? "Not submitted. Enable Quota Float notifications in system settings. Browser preview cannot send desktop alerts." : "未发送。请在系统设置中允许 Quota Float 通知；浏览器预览无法发送桌面通知。")))
+                .catch(() => setNotificationTest(language === "en" ? "Notification failed. Check system permissions." : "通知发送失败，请检查系统权限。"));
+            }}
             preferences={preferences}
             runtimeState={runtimeState}
             snapshots={snapshots}

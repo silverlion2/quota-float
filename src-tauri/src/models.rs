@@ -118,6 +118,10 @@ pub struct WidgetPreferences {
     pub notify_on_reset: bool,
     #[serde(default = "default_true")]
     pub notify_on_recovery: bool,
+    #[serde(default = "default_true")]
+    pub notify_on_credit_expiry: bool,
+    #[serde(default)]
+    pub urgent_expiry_during_quiet_hours: bool,
     #[serde(default = "default_quiet_start")]
     pub quiet_hours_start: u8,
     #[serde(default = "default_quiet_end")]
@@ -240,6 +244,8 @@ impl Default for WidgetPreferences {
             notifications_enabled: true,
             notify_on_reset: true,
             notify_on_recovery: true,
+            notify_on_credit_expiry: true,
+            urgent_expiry_during_quiet_hours: false,
             quiet_hours_start: default_quiet_start(),
             quiet_hours_end: default_quiet_end(),
             notification_cooldown_minutes: default_notification_cooldown(),
@@ -482,6 +488,29 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(preferences.normalized().skipped_update_version, None);
+    }
+
+    #[test]
+    fn expiry_alert_preferences_migrate_and_round_trip() {
+        let mut legacy = serde_json::to_value(WidgetPreferences::default()).unwrap();
+        legacy
+            .as_object_mut()
+            .unwrap()
+            .remove("notifyOnCreditExpiry");
+        legacy
+            .as_object_mut()
+            .unwrap()
+            .remove("urgentExpiryDuringQuietHours");
+        let migrated: WidgetPreferences = serde_json::from_value(legacy).unwrap();
+        assert!(migrated.notify_on_credit_expiry);
+        assert!(!migrated.urgent_expiry_during_quiet_hours);
+        let mut changed = migrated;
+        changed.notify_on_credit_expiry = false;
+        changed.urgent_expiry_during_quiet_hours = true;
+        let restored: WidgetPreferences =
+            serde_json::from_value(serde_json::to_value(changed).unwrap()).unwrap();
+        assert!(!restored.notify_on_credit_expiry);
+        assert!(restored.urgent_expiry_during_quiet_hours);
     }
 
     #[test]

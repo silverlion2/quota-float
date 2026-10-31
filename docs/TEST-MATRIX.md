@@ -114,3 +114,7 @@ v0.3.15 完成 318 项前端、102 项 Windows Rust 和 10 项 Windows 原生测
 - 对目标发布平台完成安装、启动、拖动、锁定、托盘/菜单栏、置顶、更新、回滚与卸载烟测。
 - 严重和高风险问题清零；签名/公证状态明确记录。
 - 提交、推送、打包、签名、标签和发布分别获得授权。
+
+## Action-reminder regression coverage (2026-10-31)
+
+See [actionable reminders](ACTION-ALERTS-2026-10-31.md): test expiry stages, stale/unknown data, startup and quiet-hour catch-up, permission retry, persistent snoozes, compact badges, and native queue bounds. Provider/account fixtures are synthetic; OS banner visibility is distinct from submission.

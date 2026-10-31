@@ -19,6 +19,7 @@ export const EMPTY_RUNTIME_STATE: RuntimeState = {
   events: [],
   savedLayouts: [],
   lastNotifications: {},
+  alertSnoozes: {},
   dailyPaceBaselines: {},
 };
 
@@ -327,6 +328,9 @@ export function normalizeRuntimeState(value: unknown): RuntimeState {
     events: Array.isArray(candidate.events) ? candidate.events.map(activityEvent).filter((item): item is ActivityEvent => item !== null).slice(0, 200) : [],
     savedLayouts: Array.isArray(candidate.savedLayouts) ? candidate.savedLayouts.map(savedLayout).filter((item): item is RuntimeState["savedLayouts"][number] => item !== null).slice(0, 12) : [],
     lastNotifications,
+    alertSnoozes: Object.fromEntries(Object.entries(record(candidate.alertSnoozes) ?? {})
+      .filter(([key, value]) => key.startsWith("action:") && key.length <= 160 && validDate(value))
+      .slice(-256)) as Record<string, string>,
     dailyPaceBaselines,
   };
 }
@@ -459,6 +463,7 @@ export function runtimeStatesEqual(left: RuntimeState, right: RuntimeState): boo
     && sameArrayEntries(left.events, right.events)
     && sameArrayEntries(left.savedLayouts, right.savedLayouts)
     && sameRecordEntries(left.lastNotifications, right.lastNotifications)
+    && sameRecordEntries(left.alertSnoozes ?? {}, right.alertSnoozes ?? {})
     && sameRecordEntries(left.dailyPaceBaselines, right.dailyPaceBaselines);
 }
 
@@ -524,7 +529,7 @@ export function recordSnapshotActivity(
   const resetProviders = isNewReset ? new Set<string>(["codex", ...changedPlans]) : new Set<string>(changedPlans);
   const dailyPaceBaselines = refreshDailyPaceBaselines(current.dailyPaceBaselines, nextSnapshots, now, resetProviders, resetForecast);
   const lastNotifications = isNewReset
-    ? Object.fromEntries(Object.entries(current.lastNotifications).filter(([key]) => !key.split(":").includes("codex")))
+    ? Object.fromEntries(Object.entries(current.lastNotifications).filter(([key]) => key.startsWith("action:") || !key.split(":").includes("codex")))
     : current.lastNotifications;
   const previousByProvider = new Map(previousSnapshots.map((snapshot) => [snapshot.provider, snapshot]));
   const latestHistory = new Map<ProviderId, QuotaHistoryPoint>();

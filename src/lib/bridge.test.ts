@@ -24,6 +24,7 @@ import {
   updatePreferences,
   updateRuntimeState,
   usesSyntheticData,
+  sendDesktopNotification,
 } from "./bridge";
 import { DEFAULT_WIDGET_PREFERENCES } from "./preferences";
 import { createPreviewResetForecast } from "./resetForecastPreview";
@@ -46,6 +47,8 @@ const api = vi.hoisted(() => ({
   },
 }));
 const events = vi.hoisted(() => ({ listen: vi.fn() }));
+const notification = vi.hoisted(() => ({ isPermissionGranted: vi.fn(async () => true), requestPermission: vi.fn(async () => "granted") }));
+vi.mock("@tauri-apps/plugin-notification", () => notification);
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: api.invoke }));
 vi.mock("@tauri-apps/api/window", () => ({ currentMonitor: api.currentMonitor, getCurrentWindow: () => api.currentWindow }));
@@ -62,6 +65,20 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe("widget transitions", () => {
+  it("awaits the native notification submission and propagates failure", async () => {
+    api.invoke.mockRejectedValueOnce(new Error("OS submission failed"));
+    await expect(sendDesktopNotification("Reminder", "Action", false)).rejects.toThrow("OS submission failed");
+    expect(api.invoke).toHaveBeenCalledWith("plugin:notification|notify", { options: { title: "Reminder", body: "Action" } });
+  });
+  it("does not prompt from background checks or send synthetic fixture notifications", async () => {
+    notification.isPermissionGranted.mockResolvedValueOnce(false);
+    await expect(sendDesktopNotification("Reminder", "Action", false)).resolves.toBe(false);
+    expect(notification.requestPermission).not.toHaveBeenCalled();
+    expect(api.invoke).not.toHaveBeenCalled();
+    vi.stubEnv("VITE_WDIO", "1");
+    await expect(sendDesktopNotification("Fixture", "Synthetic")).resolves.toBe(false);
+    expect(api.invoke).not.toHaveBeenCalled();
+  });
   it.each([
     ["snapshots", () => fetchSnapshots()],
     ["progressive snapshots", () => fetchSnapshotsProgressively("production-browser", undefined, vi.fn())],

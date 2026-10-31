@@ -2,6 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import { normalizeWidgetPreferences } from "./preferences";
 
 describe("widget preference migration", () => {
+  it("enables expiry alerts for legacy data while preserving quiet hours and explicit opt-outs", () => {
+    expect(normalizeWidgetPreferences({})).toMatchObject({ notifyOnCreditExpiry: true, urgentExpiryDuringQuietHours: false });
+    expect(normalizeWidgetPreferences({ notifyOnCreditExpiry: false, urgentExpiryDuringQuietHours: true }))
+      .toMatchObject({ notifyOnCreditExpiry: false, urgentExpiryDuringQuietHours: true });
+  });
   it("preserves taskbar mode without allowing an unclickable flyout", () => {
     vi.stubGlobal("navigator", { platform: "Win32" });
     try {

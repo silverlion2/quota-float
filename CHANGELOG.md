@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Add escalating reset-card and credits-expiry reminders, a persistent action queue, short snoozes, compact attention markers and direct Codex usage navigation.
+- Catch low quota on startup and retry after quiet hours or notification failure; distinguish stale expiry and unknown grant balances from verified availability.
+- Add notification permission testing and optional final-hour expiry exceptions to app quiet hours, while retaining local-only read-only provider access.
+
 ## 0.3.32 - 2026-10-25
 
 - Track Codex extra usage credits independently from reset credits and plan quota. Show explicit expiry dates, partial or unavailable expiry information, and recent local balance changes across all expanded layouts.

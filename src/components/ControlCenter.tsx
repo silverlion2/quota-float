@@ -36,6 +36,10 @@ interface Props {
   autostartEnabled: boolean;
   onAutostart: (enabled: boolean) => void;
   operation?: ControlOperation | null;
+  initialTab?: Tab;
+  notificationTest?: string | null;
+  onTestNotification?: () => void;
+  actionGuidance?: string | null;
 }
 
 function toggleProvider(values: ProviderId[], provider: ProviderId): ProviderId[] {
@@ -54,9 +58,9 @@ function formatCheckedAt(value: string | number | undefined, language: Language,
   }).format(date);
 }
 
-export function ControlCenter({ preferences, runtimeState, snapshots, refreshAttempts = {}, refreshingProviders = [], diagnostics, language, onClose, onRefresh, onPreferences, onRuntimeState, onExport, onImport, onRestore, onCopyDiagnostics, autostartEnabled, onAutostart, operation = null }: Props) {
+export function ControlCenter({ preferences, runtimeState, snapshots, refreshAttempts = {}, refreshingProviders = [], diagnostics, language, onClose, onRefresh, onPreferences, onRuntimeState, onExport, onImport, onRestore, onCopyDiagnostics, autostartEnabled, onAutostart, operation = null, initialTab = "display", notificationTest = null, onTestNotification, actionGuidance = null }: Props) {
   const dialogRef = useModalDialog<HTMLElement>(onClose);
-  const [tab, setTab] = useState<Tab>("display");
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [layoutName, setLayoutName] = useState("");
   const zh = language !== "en";
   const labels = zh ? {
@@ -417,6 +421,7 @@ export function ControlCenter({ preferences, runtimeState, snapshots, refreshAtt
         </> : null}
 
           {tab === "health" ? <>
+            {actionGuidance ? <p className="control-hint" role="status">{actionGuidance}</p> : null}
           <div className="provider-health-summary" role="status">
             <Heartbeat weight="duotone" />
             <div>
@@ -462,9 +467,15 @@ export function ControlCenter({ preferences, runtimeState, snapshots, refreshAtt
             <label className="control-field control-field--wide"><span>{labels.threshold} · {preferences.alertThreshold}%</span><input type="range" min="1" max="50" value={preferences.alertThreshold} onChange={(event) => onPreferences({ ...preferences, alertThreshold: Number(event.target.value) })} /></label>
             <label className="control-check"><input type="checkbox" checked={preferences.notifyOnReset} onChange={(event) => onPreferences({ ...preferences, notifyOnReset: event.target.checked })} /><span>{labels.resetAlert}</span></label>
             <label className="control-check"><input type="checkbox" checked={preferences.notifyOnRecovery} onChange={(event) => onPreferences({ ...preferences, notifyOnRecovery: event.target.checked })} /><span>{labels.recoveryAlert}</span></label>
+            <label className="control-check"><input type="checkbox" checked={preferences.notifyOnCreditExpiry !== false} onChange={(event) => onPreferences({ ...preferences, notifyOnCreditExpiry: event.target.checked })} /><span>{zh ? "重置卡与 credits 到期提醒" : "Reset and credit expiry alerts"}</span></label>
+            <label className="control-check"><input type="checkbox" checked={preferences.urgentExpiryDuringQuietHours === true} onChange={(event) => onPreferences({ ...preferences, urgentExpiryDuringQuietHours: event.target.checked })} /><span>{zh ? "到期前最后 1 小时允许突破应用勿扰" : "Allow final-hour expiry alerts during app quiet hours"}</span></label>
             <label className="control-field"><span>{labels.quiet}</span><div className="hour-pair"><input type="number" min="0" max="23" value={preferences.quietHoursStart} onChange={(event) => onPreferences({ ...preferences, quietHoursStart: Number(event.target.value) })} /><b>→</b><input type="number" min="0" max="23" value={preferences.quietHoursEnd} onChange={(event) => onPreferences({ ...preferences, quietHoursEnd: Number(event.target.value) })} /></div></label>
             <label className="control-field"><span>{labels.cooldown}</span><select value={preferences.notificationCooldownMinutes} onChange={(event) => onPreferences({ ...preferences, notificationCooldownMinutes: Number(event.target.value) })}><option value="30">30 {labels.minutes}</option><option value="120">120 {labels.minutes}</option><option value="360">360 {labels.minutes}</option><option value="1440">24h</option></select></label>
           </div>
+          <p className="control-hint">{zh ? "重置卡与 credits 在到期前 7 天、24 小时、6 小时、1 小时、15 分钟逐级提醒；紧迫程度升级时不受上一阶段冷却限制。稍后提醒最多 15 分钟，且不会越过到期时间。" : "Expiry reminders escalate at 7 days, 24h, 6h, 1h and 15m. A new urgency stage bypasses the previous cooldown. Snoozes last up to 15m and end before expiry."}</p>
+          <p className="control-hint">{zh ? "应用运行时持续检查；关机或退出期间无法提醒，重新打开后检查仍有效的待办。系统勿扰可能隐藏横幅，暂停的平台不提醒。桌面提醒关闭时，应用内待办仍保留。" : "Checked while the app runs; reopening catches still-valid actions. No alerts while the app is closed. System Do Not Disturb may hide banners. Paused providers are excluded. In-app reminders remain when desktop alerts are off."}</p>
+          {onTestNotification ? <button type="button" onClick={onTestNotification}>{zh ? "发送测试提醒 / 检查权限" : "Send test alert / check permission"}</button> : null}
+          {notificationTest ? <p role="status">{notificationTest}</p> : null}
         </> : null}
 
           {tab === "activity" ? <>

@@ -13,7 +13,7 @@ const mockSnapshots: ProviderSnapshot[] = import.meta.env.DEV || import.meta.env
   shortWindow: null,
   weeklyWindow: { remainingPercent: 74, resetsAt: new Date(Date.now() + 3.2 * 86_400_000).toISOString(), windowSeconds: 604_800 },
   resetCredits: 1,
-  resetCreditExpiresAt: [new Date(Date.now() + 9 * 86_400_000).toISOString()],
+  resetCreditExpiresAt: [new Date(Date.now() + 45 * 60_000).toISOString()],
   balanceRemaining: 120.5,
   balanceUnit: "credits",
   balanceGrants: [],
@@ -402,13 +402,16 @@ export async function getAppDiagnostics(): Promise<AppDiagnostics> {
   return invoke<AppDiagnostics>("get_app_diagnostics");
 }
 
-export async function sendDesktopNotification(title: string, body: string): Promise<boolean> {
-  if (!isTauri()) return false;
-  const { isPermissionGranted, requestPermission, sendNotification } = await import("@tauri-apps/plugin-notification");
+export async function sendDesktopNotification(title: string, body: string, requestIfNeeded = true): Promise<boolean> {
+  if (!isTauri() || usesSyntheticData()) return false;
+  const { isPermissionGranted, requestPermission } = await import("@tauri-apps/plugin-notification");
   let allowed = await isPermissionGranted();
-  if (!allowed) allowed = (await requestPermission()) === "granted";
+  if (!allowed && requestIfNeeded) allowed = (await requestPermission()) === "granted";
   if (!allowed) return false;
-  sendNotification({ title, body });
+  // The plugin's JS sendNotification wrapper discards the native promise.
+  // Await the same allowlisted command so failed OS submissions remain retryable.
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("plugin:notification|notify", { options: { title, body } });
   return true;
 }
 

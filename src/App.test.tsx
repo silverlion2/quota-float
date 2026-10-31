@@ -87,6 +87,7 @@ vi.mock("./lib/bridge", () => {
     resizeWidgetToContent: vi.fn(async () => undefined),
     restoreLatestBackup: vi.fn(async () => null),
     sendDesktopNotification: vi.fn(async () => false),
+    usesSyntheticData: () => false,
     setAlwaysOnTop: vi.fn(async (alwaysOnTop: boolean) => ({ ...DEFAULT_WIDGET_PREFERENCES, alwaysOnTop })),
     setAutostartEnabled: vi.fn(async (enabled: boolean) => enabled),
     setWidgetExpanded: vi.fn((expanded: boolean) => expanded && testState.widgetExpandRequest ? testState.widgetExpandRequest.promise : Promise.resolve()),
