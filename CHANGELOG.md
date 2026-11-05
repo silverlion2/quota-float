@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.34 - 2026-11-05
 
 - Add once-per-cycle planning reminders before weekly/monthly resets, complete dated credits batches, and known-versus-unknown expiry amounts.
 - Upgrade the reminder center with urgency summaries, category filters, immediate resume and persistent local review independent of system notification delivery.
