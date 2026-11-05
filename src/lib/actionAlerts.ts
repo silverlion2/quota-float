@@ -3,12 +3,14 @@ import type { ProviderId, ProviderSnapshot, WidgetPreferences } from "../types";
 export interface ActionAlert {
   id: string;
   provider: ProviderId;
-  kind: "reset-expiry" | "credit-expiry" | "stale-expiry" | "low-quota" | "signed-out";
+  kind: "reset-expiry" | "credit-expiry" | "stale-expiry" | "low-quota" | "signed-out" | "quota-reset-unused";
   severity: "notice" | "warning" | "critical";
   title: string;
   detail: string;
   actionLabel: string;
-  action: "codex-usage" | "provider";
+  action: "codex-usage" | "provider" | "plan";
+  amountLabel?: string;
+  evidenceLabel?: string;
   deadline: string | null;
   repeatMinutes: number;
 }
@@ -59,35 +61,66 @@ export function buildActionAlerts(snapshots: readonly ProviderSnapshot[], prefer
       ? "进入用量设置，选择已有重置卡，核对适用额度与到期时间后确认；适用额度须低于 80%。CLI：/usage → Redeem reset。"
       : "Open usage settings, select an available reset, review the covered allowance and expiry, then confirm; a covered allowance must be below 80%. CLI: /usage → Redeem reset.";
     const expiry = (kind: "reset-expiry" | "credit-expiry", values: (string | null)[]) => {
-      const nearest = [...new Set(values.map(timestamp).filter((at) => Number.isFinite(at) && at > nowMs && at - nowMs <= 7 * 86400_000))].sort((a, b) => a - b)[0];
-      if (nearest === undefined) return;
-      const deadline = new Date(nearest).toISOString();
-      const stage = expiryStage(nearest - nowMs);
-      const reset = kind === "reset-expiry";
-      if (!fresh) {
-        alerts.push({ id: `action:${provider}:stale-expiry:${kind}:${deadline}:${stage.key}`, provider, kind: "stale-expiry", severity: stage.severity,
-          title: zh ? `${name} 到期信息待核对 · ${countdown(nearest - nowMs)}` : `${name} expiry needs checking · ${countdown(nearest - nowMs)}`,
-          detail: zh ? `记录的到期时间：${date(deadline)}。数据已过期，先刷新；剩余额度与到期信息待核对。` : `Recorded expiry: ${date(deadline)}. Data is stale; refresh first to verify the remaining allowance and expiry.`,
-          actionLabel: zh ? "立即刷新核对" : "Refresh and check now", action: "provider", deadline, repeatMinutes: stage.repeat });
-        return;
+      const deadlines = [...new Set(values.map(timestamp).filter((at) => Number.isFinite(at) && at > nowMs && at - nowMs <= 7 * 86400_000))].sort((a, b) => a - b);
+      for (const nearest of deadlines) {
+        const deadline = new Date(nearest).toISOString();
+        const stage = expiryStage(nearest - nowMs);
+        const reset = kind === "reset-expiry";
+        if (!fresh) {
+          alerts.push({ id: `action:${provider}:stale-expiry:${kind}:${deadline}:${stage.key}`, provider, kind: "stale-expiry", severity: stage.severity,
+            title: zh ? `${name} 到期信息待核对 · ${countdown(nearest - nowMs)}` : `${name} expiry needs checking · ${countdown(nearest - nowMs)}`,
+            detail: zh ? `记录的到期时间：${date(deadline)}。数据已过期，先刷新；剩余额度与到期信息待核对。` : `Recorded expiry: ${date(deadline)}. Data is stale; refresh first to verify the remaining allowance and expiry.`,
+            actionLabel: zh ? "立即刷新核对" : "Refresh and check now", action: "provider", deadline, repeatMinutes: stage.repeat });
+          continue;
+        }
+        const grants = (snapshot.balanceGrants ?? []).filter((grant) => timestamp(grant.expiresAt) === nearest);
+        const knownRemaining = grants.reduce((total, grant) => total + (positive(grant.remaining) ? grant.remaining : 0), 0);
+        const unknown = grants.some((grant) => grant.remaining === null);
+        const grantKnownPositive = reset || knownRemaining > 0;
+        const totalOverflow = !Number.isFinite(knownRemaining);
+        const amountLabel = reset ? undefined : totalOverflow
+          ? (zh ? "批次余额合计超出显示范围，请核对" : "Grant total exceeds display range; verify with provider")
+          : knownRemaining > 0
+          ? `${Number(knownRemaining.toFixed(4))} credits${unknown ? (zh ? " + 未知余额" : " + unknown balance") : ""}`
+          : (zh ? "该批次余额未知" : "Grant balance unknown");
+        const evidenceLabel = reset
+          ? (zh ? "到期日期由平台报告；无法据日期数推算每批卡数。" : "Provider-reported expiry; date count does not establish resets per batch.")
+          : totalOverflow ? (zh ? "已知正余额求和超出数值范围；请在平台核对，未知余额仍未计入。" : "Known positive balances exceed the numeric range; verify with the provider. Unknown balances remain excluded.")
+          : unknown ? (zh ? "含余额未知批次；总余额不代表该批次剩余额度。" : "Includes grants with unknown balances; total balance does not establish this batch's remainder.")
+            : (zh ? "仅汇总该到期时间的已知正余额。" : "Only known positive balances at this expiry are summed.");
+        alerts.push({ id: `action:${provider}:${kind}:${deadline}:${stage.key}`, provider, kind, severity: stage.severity,
+          amountLabel, evidenceLabel,
+          title: !grantKnownPositive ? (zh ? `${name} 批次到期需核对 · ${countdown(nearest - nowMs)}` : `${name} grant expiry needs checking · ${countdown(nearest - nowMs)}`)
+            : zh ? `${name} ${reset ? "重置卡" : "Credits 批次"}仅剩 ${countdown(nearest - nowMs)}` : `${name} ${reset ? "reset" : "credit grant"}: ${countdown(nearest - nowMs)} left`,
+          detail: reset
+            ? (zh ? `此批到期时间：${date(deadline)}。` : `Batch expiry: ${date(deadline)}. `) + (resetAction ? resetInstructions : (zh ? "进入客户端用量页核对并使用可用重置。" : "Open the client's usage page to review and use available resets."))
+            : !grantKnownPositive
+              ? (zh ? `记录的批次到期时间：${date(deadline)}。该批次余额未知，请到平台核对；总余额不代表该批次剩余额度。可进入客户端用量页查看。` : `Recorded grant expiry: ${date(deadline)}. This grant's balance is unknown; check the client's usage page. The total balance does not establish this grant's remaining funds.`)
+              : (zh ? `此到期时间的已知余额：${amountLabel}。有余额批次于 ${date(deadline)} 到期；请进入客户端用量页核对该批次并安排使用，不能据此认定全部余额到期。` : `Known balance at this expiry: ${amountLabel}. A balance grant expires ${date(deadline)}; review that grant in the client's usage page and plan usage. This does not mean the whole balance expires.`),
+          actionLabel: zh ? (provider === "codex" ? "打开用量设置" : "查看处理步骤") : (provider === "codex" ? "Open usage settings" : "View next steps"),
+          action: provider === "codex" ? "codex-usage" : "provider", deadline, repeatMinutes: stage.repeat });
       }
-      const grantKnownPositive = reset || (snapshot.balanceGrants ?? []).some((grant) => timestamp(grant.expiresAt) === nearest && positive(grant.remaining));
-      alerts.push({ id: `action:${provider}:${kind}:${deadline}:${stage.key}`, provider, kind, severity: stage.severity,
-        title: !grantKnownPositive ? (zh ? `${name} 批次到期需核对 · ${countdown(nearest - nowMs)}` : `${name} grant expiry needs checking · ${countdown(nearest - nowMs)}`)
-          : zh ? `${name} ${reset ? "重置卡" : "Credits 批次"}仅剩 ${countdown(nearest - nowMs)}` : `${name} ${reset ? "reset" : "credit grant"}: ${countdown(nearest - nowMs)} left`,
-        detail: reset
-          ? (zh ? `最近到期时间：${date(deadline)}。` : `Nearest expiry: ${date(deadline)}. `) + (resetAction ? resetInstructions : (zh ? "进入客户端用量页核对并使用可用重置。" : "Open the client's usage page to review and use available resets."))
-          : !grantKnownPositive
-            ? (zh ? `记录的批次到期时间：${date(deadline)}。该批次余额未知，请到平台核对；总余额不代表该批次剩余额度。可进入客户端用量页查看。` : `Recorded grant expiry: ${date(deadline)}. This grant's balance is unknown; check the client's usage page. The total balance does not establish this grant's remaining funds.`)
-            : (zh ? `有余额批次于 ${date(deadline)} 到期；请进入客户端用量页核对该批次并安排使用，不能据此认定全部余额到期。` : `A balance grant expires ${date(deadline)}; review that grant in the client's usage page and plan usage. This does not mean the whole balance expires.`),
-        actionLabel: zh ? (provider === "codex" ? "打开用量设置" : "查看处理步骤") : (provider === "codex" ? "Open usage settings" : "View next steps"),
-        action: provider === "codex" ? "codex-usage" : "provider", deadline, repeatMinutes: stage.repeat });
     };
     if (positive(snapshot.resetCredits)) expiry("reset-expiry", snapshot.resetCreditExpiresAt ?? []);
-    if (snapshot.balanceUnit === "credits" && positive(snapshot.balanceRemaining)) {
+    if (snapshot.balanceUnit === "credits") {
       expiry("credit-expiry", (snapshot.balanceGrants ?? []).filter((grant) => grant.remaining === null || positive(grant.remaining)).map((grant) => grant.expiresAt));
     }
     if (!fresh) continue;
+    for (const [period, window] of [["weekly", snapshot.weeklyWindow], ["monthly", snapshot.monthlyWindow]] as const) {
+      if (!window || !Number.isFinite(window.windowSeconds) || window.windowSeconds <= 86400
+        || !Number.isFinite(window.remainingPercent) || window.remainingPercent <= 50 || window.remainingPercent > 100) continue;
+      const resetAt = timestamp(window.resetsAt);
+      if (!Number.isFinite(resetAt) || resetAt <= nowMs || resetAt - nowMs > 24 * 60 * minute) continue;
+      const deadline = new Date(resetAt).toISOString();
+      const label = period === "weekly" ? (zh ? "周额度" : "weekly allowance") : (zh ? "月额度" : "monthly allowance");
+      const percent = Number(window.remainingPercent.toFixed(1));
+      alerts.push({ id: `action:${provider}:quota-reset-unused:${period}:${deadline}`, provider, kind: "quota-reset-unused", severity: "notice",
+        title: zh ? `${name} ${label}剩余 ${percent}% · ${countdown(resetAt - nowMs)}后重置` : `${name} ${label}: ${percent}% left · resets in ${countdown(resetAt - nowMs)}`,
+        detail: zh ? `平台报告的周期将于 ${date(deadline)} 重置，请结合平台结转规则安排已有任务，无需为消耗而制造任务。`
+          : `The provider reports a cycle reset at ${date(deadline)}. Plan existing work according to its rollover rules; do not create tasks just to consume quota.`,
+        amountLabel: `${percent}%`, evidenceLabel: zh ? "平台报告的周期与剩余额度；不代表余额必然清零。" : "Provider-reported cycle and remaining allowance; rollover behavior is not established.",
+        actionLabel: zh ? "查看额度与建议" : "Review quota and guidance", action: "plan", deadline, repeatMinutes: Infinity });
+    }
     const windows = [snapshot.shortWindow, snapshot.weeklyWindow, snapshot.monthlyWindow].filter((window) => {
       if (!window || !Number.isFinite(window.remainingPercent) || window.remainingPercent < 0 || window.remainingPercent > 100) return false;
       return window.resetsAt === null || (Number.isFinite(timestamp(window.resetsAt)) && timestamp(window.resetsAt) > nowMs);
@@ -108,7 +141,7 @@ export function buildActionAlerts(snapshots: readonly ProviderSnapshot[], prefer
     }
   }
   const rank = { critical: 0, warning: 1, notice: 2 };
-  const kindRank = { "reset-expiry": 0, "credit-expiry": 1, "stale-expiry": 2, "low-quota": 3, "signed-out": 4 };
+  const kindRank = { "reset-expiry": 0, "credit-expiry": 1, "stale-expiry": 2, "low-quota": 3, "signed-out": 4, "quota-reset-unused": 5 };
   return [...new Map(alerts.map((alert) => [alert.id, alert])).values()].sort((a, b) => rank[a.severity] - rank[b.severity]
     || (timestamp(a.deadline) || Infinity) - (timestamp(b.deadline) || Infinity) || kindRank[a.kind] - kindRank[b.kind] || a.id.localeCompare(b.id));
 }
@@ -120,5 +153,11 @@ export function actionAlertSnoozed(alert: ActionAlert, snoozes: Record<string, s
 export function actionAlertDue(alert: ActionAlert, lastNotifications: Record<string, string>, now: Date): boolean {
   const last = timestamp(lastNotifications[alert.id]);
   const elapsed = now.getTime() - last;
+  if (alert.repeatMinutes === Infinity && Number.isFinite(last)) return false;
   return Number.isFinite(now.getTime()) && (!Number.isFinite(last) || elapsed < 0 || elapsed >= alert.repeatMinutes * minute);
+}
+
+/** Stable batch identity across expiry escalation and stale/fresh transitions. */
+export function actionAlertIdentity(alert: ActionAlert): string {
+  return alert.id.replace(":stale-expiry:", ":").replace(/:(?:7d|24h|6h|1h|15m)$/, "");
 }

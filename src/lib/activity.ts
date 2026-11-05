@@ -1,4 +1,5 @@
 import { knownPlanChanged, observedQuotaDelta } from "./quotaContinuity";
+import { normalizeActionAlertHistory } from "./actionAlertLifecycle";
 import { creditSamplesEqual, normalizeCreditSample, snapshotCredits } from "./credits";
 import { MAX_DAILY_OBSERVED_PERCENT } from "../types";
 import type { ActivityEvent, DailyPaceBaseline, DailyUsageSummary, Language, ProviderId, ProviderSnapshot, QuotaHistoryPoint, ResetForecast, RuntimeState } from "../types";
@@ -20,6 +21,7 @@ export const EMPTY_RUNTIME_STATE: RuntimeState = {
   savedLayouts: [],
   lastNotifications: {},
   alertSnoozes: {},
+  actionAlertHistory: [],
   dailyPaceBaselines: {},
 };
 
@@ -328,6 +330,7 @@ export function normalizeRuntimeState(value: unknown): RuntimeState {
     events: Array.isArray(candidate.events) ? candidate.events.map(activityEvent).filter((item): item is ActivityEvent => item !== null).slice(0, 200) : [],
     savedLayouts: Array.isArray(candidate.savedLayouts) ? candidate.savedLayouts.map(savedLayout).filter((item): item is RuntimeState["savedLayouts"][number] => item !== null).slice(0, 12) : [],
     lastNotifications,
+    actionAlertHistory: normalizeActionAlertHistory(candidate.actionAlertHistory),
     alertSnoozes: Object.fromEntries(Object.entries(record(candidate.alertSnoozes) ?? {})
       .filter(([key, value]) => key.startsWith("action:") && key.length <= 160 && validDate(value))
       .slice(-256)) as Record<string, string>,
@@ -464,6 +467,7 @@ export function runtimeStatesEqual(left: RuntimeState, right: RuntimeState): boo
     && sameArrayEntries(left.savedLayouts, right.savedLayouts)
     && sameRecordEntries(left.lastNotifications, right.lastNotifications)
     && sameRecordEntries(left.alertSnoozes ?? {}, right.alertSnoozes ?? {})
+    && sameArrayEntries(left.actionAlertHistory ?? [], right.actionAlertHistory ?? [])
     && sameRecordEntries(left.dailyPaceBaselines, right.dailyPaceBaselines);
 }
 

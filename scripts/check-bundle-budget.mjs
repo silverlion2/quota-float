@@ -6,9 +6,9 @@ const root = path.resolve("dist");
 const limits = {
   entryJavaScript: 430 * 1024,
   totalJavaScript: 620 * 1024,
-  // Dependency-free action queue, escalation and delivery policy; see ACTION-ALERTS-2026-10-31.md.
-  totalJavaScriptGzip: 190 * 1024,
-  totalCss: 154 * 1024,
+  // Dependency-free reminder review and batch delivery; see REMINDER-CENTER-2026-11-06.md.
+  totalJavaScriptGzip: 193 * 1024,
+  totalCss: 157 * 1024,
 };
 
 async function filesIn(directory) {

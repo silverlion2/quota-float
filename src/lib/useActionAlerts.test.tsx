@@ -113,4 +113,67 @@ describe("live reminder checking", () => {
     expect(app.result.current.alerts).toEqual([]);
     expect(app.runtime.current.events.some((event) => event.title.includes("redeemed"))).toBe(false);
   });
+  it("submits simultaneous imminent resources in one batch before either expires", async () => {
+    const codex = { ...snapshot, resetCreditExpiresAt: [at(0.25)] };
+    const trae: ProviderSnapshot = { ...snapshot, provider: "trae", displayName: "TRAE", resetCredits: 0,
+      balanceUnit: "credits", balanceRemaining: 20, balanceGrants: [{ remaining: 20, expiresAt: at(0.25) }] };
+    const app = setup(prefs, [codex, trae]);
+    await act(async () => {});
+    expect(sendDesktopNotification).toHaveBeenCalledOnce();
+    expect(vi.mocked(sendDesktopNotification).mock.calls[0][0]).toContain("2");
+    expect(vi.mocked(sendDesktopNotification).mock.calls[0][1]).toContain("TRAE");
+    expect(Object.keys(app.runtime.current.lastNotifications)).toHaveLength(2);
+    await act(async () => { vi.advanceTimersByTime(15_000); });
+    expect(app.runtime.current.actionAlertHistory?.every(item => item.status === "deadline-passed")).toBe(true);
+  });
+  it("delivers a new candidate after an in-flight submission without delaying it for the polling interval", async () => {
+    let release!: (value: boolean) => void;
+    vi.mocked(sendDesktopNotification).mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    const app = setup();
+    await act(async () => {});
+    const second = { ...snapshot, provider: "claude" as const, displayName: "Claude", resetCreditExpiresAt: [at(0.25)] };
+    app.rerender({ snapshots: [snapshot, second], preferences: prefs });
+    await act(async () => { release(true); });
+    expect(sendDesktopNotification).toHaveBeenCalledTimes(2);
+    expect(Object.keys(app.runtime.current.lastNotifications)).toHaveLength(2);
+  });
+  it("does not record a failed batch as submitted and still records local observations", async () => {
+    vi.mocked(sendDesktopNotification).mockResolvedValue(false);
+    const app = setup(prefs, [snapshot, { ...snapshot, provider: "claude", displayName: "Claude" }]);
+    await act(async () => {});
+    expect(app.runtime.current.lastNotifications).toEqual({});
+    expect(app.runtime.current.actionAlertHistory).toHaveLength(2);
+    expect(app.result.current.deliveryIssue).toBe(true);
+  });
+  it("keeps history when desktop alerts are off and closes only on a newer successful read", async () => {
+    const off = { ...prefs, notificationsEnabled: false };
+    const app = setup(off);
+    await act(async () => {});
+    expect(app.runtime.current.actionAlertHistory).toHaveLength(1);
+    vi.setSystemTime(new Date(at(1)));
+    app.rerender({ snapshots: [{ ...snapshot, resetCredits: 0, updatedAt: at(1) }], preferences: off });
+    expect(app.runtime.current.actionAlertHistory?.[0].status).toBe("no-longer-observed");
+    expect(sendDesktopNotification).not.toHaveBeenCalled();
+  });
+  it("resumes an explicitly snoozed action immediately", async () => {
+    const app = setup();
+    await act(async () => {});
+    act(() => app.result.current.snooze(app.result.current.alerts[0]));
+    expect(sendDesktopNotification).toHaveBeenCalledOnce();
+    await act(async () => app.result.current.resume(app.result.current.alerts[0]));
+    expect(sendDesktopNotification).toHaveBeenCalledTimes(2);
+  });
+  it("makes the unused cycle reminder independently configurable and sends it only once", async () => {
+    const cycle: ProviderSnapshot = { ...snapshot, resetCredits: 0, weeklyWindow: { remainingPercent: 70, windowSeconds: 604800, resetsAt: at(300) } };
+    const off = { ...prefs, notifyOnUnusedQuota: false };
+    const app = setup(off, [cycle]);
+    await act(async () => {});
+    expect(app.result.current.alerts[0].kind).toBe("quota-reset-unused");
+    expect(sendDesktopNotification).not.toHaveBeenCalled();
+    app.rerender({ snapshots: [cycle], preferences: { ...off, notifyOnUnusedQuota: true } });
+    await act(async () => {});
+    expect(sendDesktopNotification).toHaveBeenCalledOnce();
+    await act(async () => { vi.advanceTimersByTime(60_000); });
+    expect(sendDesktopNotification).toHaveBeenCalledOnce();
+  });
 });

@@ -142,6 +142,7 @@ export interface WidgetPreferences {
   notifyOnReset: boolean;
   notifyOnRecovery: boolean;
   notifyOnCreditExpiry?: boolean;
+  notifyOnUnusedQuota?: boolean;
   urgentExpiryDuringQuietHours?: boolean;
   quietHoursStart: number;
   quietHoursEnd: number;
@@ -285,6 +286,7 @@ export interface RuntimeState {
   lastNotifications: Record<string, string>;
   /** Stage-specific deferrals; an urgency escalation becomes actionable again. */
   alertSnoozes?: Record<string, string>;
+  actionAlertHistory?: import("./lib/actionAlertLifecycle").ActionAlertRecord[];
   dailyPaceBaselines: Record<string, DailyPaceBaseline>;
 }
 

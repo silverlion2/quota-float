@@ -152,6 +152,7 @@ fn validate_runtime_state(value: &Value) -> Result<(), String> {
         ("dailyUsage", MAX_RUNTIME_DAILY_USAGE_ITEMS),
         ("events", MAX_RUNTIME_EVENT_ITEMS),
         ("savedLayouts", MAX_RUNTIME_LAYOUT_ITEMS),
+        ("actionAlertHistory", 128),
     ] {
         if let Some(section) = state.get(field) {
             let Some(items) = section.as_array() else {
@@ -519,6 +520,12 @@ mod tests {
 
     #[test]
     fn runtime_state_validation_is_bounded_and_legacy_compatible() {
+        assert!(validate_runtime_state(&serde_json::json!({ "actionAlertHistory": [] })).is_ok());
+        assert!(validate_runtime_state(&serde_json::json!({ "actionAlertHistory": {} })).is_err());
+        assert!(validate_runtime_state(
+            &serde_json::json!({ "actionAlertHistory": vec![Value::Null; 129] })
+        )
+        .is_err());
         assert!(validate_runtime_state(&serde_json::json!({
             "history": [],
             "unknownLegacyField": true

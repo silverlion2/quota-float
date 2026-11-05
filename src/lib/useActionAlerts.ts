@@ -4,10 +4,12 @@ import { actionAlertDue, actionAlertSnoozed, buildActionAlerts, type ActionAlert
 import { isQuietHour } from "./activity";
 import { sendDesktopNotification, usesSyntheticData } from "./bridge";
 import { deliverNotificationOnce } from "./notificationDelivery";
+import { reconcileActionAlertHistory } from "./actionAlertLifecycle";
 
 export function canDeliverActionAlert(alert: ActionAlert, preferences: WidgetPreferences, state: RuntimeState, now: Date): boolean {
   const expiry = alert.kind === "reset-expiry" || alert.kind === "credit-expiry" || alert.kind === "stale-expiry";
   if (!preferences.notificationsEnabled || (expiry && preferences.notifyOnCreditExpiry === false)) return false;
+  if (alert.kind === "quota-reset-unused" && preferences.notifyOnUnusedQuota === false) return false;
   if (isQuietHour(now.getHours(), preferences.quietHoursStart, preferences.quietHoursEnd)
     && !(expiry && alert.severity === "critical" && preferences.urgentExpiryDuringQuietHours)) return false;
   if (actionAlertSnoozed(alert, state.alertSnoozes, now)) return false;
@@ -37,7 +39,15 @@ export function useActionAlerts(
   const current = useRef({ snapshots, preferences });
   current.current = { snapshots, preferences };
   const attempts = useRef(new Map<string, number>());
+  const delivering = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const alerts = useMemo(() => buildActionAlerts(snapshots, preferences, now), [snapshots, preferences, now]);
+  useEffect(() => {
+    const previous = runtime.current.actionAlertHistory ?? [];
+    const history = reconcileActionAlertHistory(previous, alerts, snapshots, preferences.pausedProviders, now);
+    if (JSON.stringify(previous) !== JSON.stringify(history)) commit({ ...runtime.current, actionAlertHistory: history });
+  }, [alerts, snapshots, preferences.pausedProviders, now, runtime, commit]);
   useEffect(() => {
     const tick = () => setNow(new Date());
     const wall = Date.now();
@@ -55,40 +65,55 @@ export function useActionAlerts(
     return () => { window.clearTimeout(timer); window.removeEventListener("focus", tick); document.removeEventListener("visibilitychange", tick); };
   }, [alerts, runtime]);
   useEffect(() => {
-    if (usesSyntheticData()) return;
+    if (usesSyntheticData() || delivering.current) return;
     const checkedAt = new Date();
-    const alert = alerts.find((item) => {
+    const due = alerts.filter((item) => {
       const lastAttempt = attempts.current.get(item.id);
       return canDeliverActionAlert(item, preferences, runtime.current, checkedAt)
         && (lastAttempt === undefined || checkedAt.getTime() < lastAttempt || checkedAt.getTime() - lastAttempt >= 60_000);
     });
-    if (!alert) return;
-    attempts.current.set(alert.id, checkedAt.getTime());
-    if (attempts.current.size > 256) attempts.current.delete(attempts.current.keys().next().value!);
+    if (!due.length) return;
+    for (const alert of due) attempts.current.set(alert.id, checkedAt.getTime());
+    while (attempts.current.size > 256) attempts.current.delete(attempts.current.keys().next().value!);
     let cancelled = false;
-    void deliverNotificationOnce(alert.id,
-      () => !canDeliverActionAlert(alert, current.current.preferences, runtime.current, new Date()),
+    let submitted: ActionAlert[] = [];
+    delivering.current = true;
+    void deliverNotificationOnce("action:delivery-batch",
+      () => !due.some(alert => canDeliverActionAlert(alert, current.current.preferences, runtime.current, new Date())),
       () => {
-        attempts.current.delete(alert.id);
+        for (const alert of submitted) attempts.current.delete(alert.id);
         const deliveredAt = new Date().toISOString();
         const state = runtime.current;
         // Keep legacy cooldowns, bound only this feature's delivery receipts.
         const legacy = Object.entries(state.lastNotifications).filter(([key]) => !key.startsWith("action:"));
-        const receipts = Object.entries(state.lastNotifications).filter(([key]) => key.startsWith("action:") && key !== alert.id).slice(-255);
-        const id = `${alert.id}:sent`;
+        const sentIds = new Set(submitted.map(alert => alert.id));
+        const receipts = Object.entries(state.lastNotifications).filter(([key]) => key.startsWith("action:") && !sentIds.has(key));
+        const nextReceipts = [...receipts, ...submitted.map(alert => [alert.id, deliveredAt])].slice(-256);
+        const events = submitted.map(alert => ({ id: `${alert.id}:sent`, provider: alert.provider, kind: "warning" as const,
+          occurredAt: deliveredAt, title: alert.title, detail: alert.detail }));
+        const eventIds = new Set(events.map(event => event.id));
         commit({ ...state,
-          lastNotifications: { ...Object.fromEntries([...legacy, ...receipts]), [alert.id]: deliveredAt },
-          events: [{ id, provider: alert.provider, kind: "warning" as const, occurredAt: deliveredAt, title: alert.title, detail: alert.detail },
-            ...state.events.filter((item) => item.id !== id)].slice(0, 200),
+          lastNotifications: Object.fromEntries([...legacy, ...nextReceipts]),
+          events: [...events, ...state.events.filter(item => !eventIds.has(item.id))].slice(0, 200),
         });
         if (!cancelled) setDeliveryIssue(false);
       },
       async () => {
-        const live = buildActionAlerts(current.current.snapshots, current.current.preferences, new Date()).find((item) => item.id === alert.id);
-        if (!live) return false;
-        const sent = await sendDesktopNotification(live.title, `${live.detail} ${current.current.preferences.language === "en" ? "Open Quota Float for actions." : "打开 Quota Float 查看待办并操作。"}`, false).catch(() => false);
+        const at = new Date();
+        const candidates = new Set(due.map(item => item.id));
+        submitted = buildActionAlerts(current.current.snapshots, current.current.preferences, at)
+          .filter(item => candidates.has(item.id) && canDeliverActionAlert(item, current.current.preferences, runtime.current, at));
+        if (!submitted.length) return false;
+        const en = current.current.preferences.language === "en";
+        const title = submitted.length === 1 ? submitted[0].title : (en ? `${submitted.length} reminders · ${submitted[0].title}` : `${submitted.length} 项待办 · ${submitted[0].title}`);
+        const detail = submitted.length === 1 ? submitted[0].detail : submitted.slice(0, 3).map(item => item.title).join("\n")
+          + (submitted.length > 3 ? (en ? `\n+${submitted.length - 3} more in the queue.` : `\n另有 ${submitted.length - 3} 项，展开查看全部。`) : "");
+        const sent = await sendDesktopNotification(title, `${detail} ${en ? "Open Quota Float for actions." : "打开 Quota Float 查看待办并操作。"}`, false).catch(() => false);
         if (!sent && !cancelled) setDeliveryIssue(true);
         return sent;
+      }).finally(() => {
+        delivering.current = false;
+        if (mounted.current) setNow(new Date());
       });
     return () => { cancelled = true; };
   }, [alerts, preferences, runtime, commit]);
@@ -96,5 +121,15 @@ export function useActionAlerts(
     commit(snoozeActionAlert(runtime.current, alert, new Date()));
     setNow(new Date());
   }, [commit, runtime]);
-  return { alerts, now, snooze, deliveryIssue: deliveryIssue && preferences.notificationsEnabled && alerts.length > 0 };
+  const resume = useCallback((alert: ActionAlert) => {
+    // An explicit resume acts like a completed snooze, without changing other alert receipts.
+    const at = new Date();
+    const state = runtime.current;
+    const receipts = { ...state.lastNotifications };
+    delete receipts[alert.id];
+    attempts.current.delete(alert.id);
+    commit({ ...state, lastNotifications: receipts, alertSnoozes: { ...state.alertSnoozes, [alert.id]: at.toISOString() } });
+    setNow(at);
+  }, [commit, runtime]);
+  return { alerts, now, snooze, resume, deliveryIssue: deliveryIssue && preferences.notificationsEnabled && alerts.length > 0 };
 }

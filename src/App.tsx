@@ -1130,9 +1130,17 @@ export default function App() {
       actionAlerts={<>
         <ActionAlerts alerts={actionReminders.alerts} language={language} now={actionReminders.now}
           snoozes={runtimeState.alertSnoozes} onSnooze={actionReminders.snooze} onRefresh={() => void refresh(true)}
+          history={runtimeState.actionAlertHistory} onResume={actionReminders.resume}
           onAction={(alert) => {
             if (alert.kind === "stale-expiry") {
               void refresh(true);
+            } else if (alert.action === "plan") {
+              const index = orderedSnapshots.findIndex((item) => item.provider === alert.provider);
+              if (index >= 0) setActiveIndex(index);
+              if (preferences.pinnedProvider) savePreferences({ ...preferences, pinnedProvider: alert.provider });
+              setActionGuidance(`${alert.title} — ${alert.detail}`);
+              setControlInitialTab("health");
+              openModal("control");
             } else if (alert.action === "codex-usage") {
               void openExternalUrl("https://chatgpt.com/settings/usage").catch(() => setOperationError(language === "en" ? "Could not open Usage settings. Open Codex Settings → Usage & billing, or CLI /usage." : "无法打开用量设置。请在 Codex 打开 Settings → Usage & billing，或输入 CLI /usage。"));
             } else {

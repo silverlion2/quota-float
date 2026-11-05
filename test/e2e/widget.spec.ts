@@ -395,8 +395,9 @@ describe("Quota Float desktop widget", () => {
     await browser.$(".action-alerts").waitForDisplayed();
     const reminders = await browser.$(".action-alerts").getText();
     expect(reminders).toContain("reset");
-    expect(reminders).toContain("80%");
     expect(reminders).toContain("Open usage settings");
+    await browser.tauri.execute(() => document.querySelector<HTMLDetailsElement>(".action-alerts__evidence")!.open = true);
+    expect(await browser.$(".action-alerts").getText()).toContain("80%");
     await browser.tauri.execute(() => {
       document.querySelector<HTMLButtonElement>(".action-alerts__heading button")!.click();
     });
@@ -416,9 +417,15 @@ describe("Quota Float desktop widget", () => {
     });
     await browser.$(".action-alerts__paused").waitForDisplayed();
     await browser.waitUntil(async () => browser.tauri.execute(async (tauri) => {
-      const runtime = await tauri.core.invoke("get_runtime_state") as { alertSnoozes?: Record<string, string> };
-      return Object.keys(runtime.alertSnoozes ?? {}).some((key) => key.startsWith("action:codex:reset-expiry:"));
+      const runtime = await tauri.core.invoke("get_runtime_state") as { alertSnoozes?: Record<string, string>; actionAlertHistory?: { provider: string; status: string }[] };
+      return Object.keys(runtime.alertSnoozes ?? {}).some((key) => key.startsWith("action:codex:reset-expiry:"))
+        && runtime.actionAlertHistory?.some(item => item.provider === "codex" && item.status === "active");
     }), { timeout: 3000, timeoutMsg: "Reminder snooze was not persisted" });
+    await browser.tauri.execute(() => document.querySelectorAll<HTMLButtonElement>(".action-alerts__filters button")[3].click());
+    expect(await browser.$$(".action-alerts__queue article")).toHaveLength(1);
+    await browser.tauri.execute(() => document.querySelector<HTMLButtonElement>(".is-snoozed .action-alerts__actions button:nth-child(2)")!.click());
+    await browser.waitUntil(async () => (await browser.$$(".action-alerts__paused")).length === 0, { timeout: 3000 });
+    await browser.tauri.execute(() => document.querySelectorAll<HTMLButtonElement>(".action-alerts__filters button")[0].click());
     await browser.tauri.execute(() => document.querySelector<HTMLButtonElement>(".action-alerts__heading button")!.click());
   });
 

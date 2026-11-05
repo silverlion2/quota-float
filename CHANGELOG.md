@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Add once-per-cycle planning reminders before weekly/monthly resets, complete dated credits batches, and known-versus-unknown expiry amounts.
+- Upgrade the reminder center with urgency summaries, category filters, immediate resume and persistent local review independent of system notification delivery.
+- Batch simultaneous due alerts and recheck candidates after in-flight submissions so near-deadline resources are not skipped.
+
 ## 0.3.33 - 2026-10-31
 
 - Add escalating reset-card and credits-expiry reminders, a persistent action queue, short snoozes, compact attention markers and direct Codex usage navigation.
