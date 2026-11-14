@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Upgrade the Tauri updater and native SQLite/TLS/QUIC dependencies to remove known RustSec vulnerabilities; require Rust dependency auditing before release preparation.
+
 - Add provider-health filters, single-provider checks, targeted recovery, monitoring resume and next-check timing with readable recovery guidance.
 - Preserve disappearing providers' last-known-good data across frontend and native caches without changing its age; keep signed-out and first-failure states accurate.
 - Bound each provider's complete refresh to 20 seconds and use independent recovery backoff for network providers while retaining conservative local-process polling.

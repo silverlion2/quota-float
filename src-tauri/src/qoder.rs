@@ -174,6 +174,48 @@ mod windows {
     #[cfg(test)]
     mod tests {
         use super::*;
+        use std::fs;
+
+        #[test]
+        fn upgraded_sqlite_keeps_provider_cache_read_only() {
+            let unique = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let root = std::env::temp_dir().join(format!(
+                "quota-float-readonly-{}-{unique}",
+                std::process::id()
+            ));
+            let directory = root.join("User").join("globalStorage");
+            fs::create_dir_all(&directory).unwrap();
+            let database = directory.join("state.vscdb");
+            {
+                let fixture = Connection::open(&database).unwrap();
+                fixture
+                    .execute_batch(
+                        "CREATE TABLE fixture(value INTEGER); INSERT INTO fixture VALUES(42);",
+                    )
+                    .unwrap();
+            }
+            let original = fs::read(&database).unwrap();
+            {
+                let connection = open_account_cache(&root).unwrap();
+                assert_eq!(
+                    connection
+                        .query_row("SELECT value FROM fixture", [], |row| row.get::<_, i64>(0))
+                        .unwrap(),
+                    42
+                );
+                assert!(connection
+                    .execute("UPDATE fixture SET value = 0", [])
+                    .is_err());
+            }
+            assert_eq!(fs::read(&database).unwrap(), original);
+            fs::remove_file(database).unwrap();
+            fs::remove_dir(directory).unwrap();
+            fs::remove_dir(root.join("User")).unwrap();
+            fs::remove_dir(root).unwrap();
+        }
 
         #[test]
         fn sqlite_secret_read_rejects_oversized_values_before_decryption() {

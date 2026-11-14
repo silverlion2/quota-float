@@ -115,14 +115,7 @@ export function ControlCenter({ preferences, runtimeState, snapshots, refreshAtt
       signed_out: "需要登录",
       paused: "已暂停",
     } satisfies Record<SnapshotStatus | "paused", string>,
-    defaults: {
-      ok: "最近一次额度刷新已完成。",
-      stale: "正在显示最近一次有效数据。",
-      loading: "正在等待平台响应。",
-      unavailable: "未检测到平台，或平台暂时不可用。",
-      signed_out: "请在对应应用或 CLI 中重新登录。",
-      paused: "不会在后台唤醒此平台；已有数据保持只读显示。",
-    } satisfies Record<SnapshotStatus | "paused", string>,
+    updated: "最近一次额度刷新已完成。",
   } : {
     tab: "Health",
     title: "Provider health",
@@ -144,14 +137,7 @@ export function ControlCenter({ preferences, runtimeState, snapshots, refreshAtt
       signed_out: "Sign-in required",
       paused: "Paused",
     } satisfies Record<SnapshotStatus | "paused", string>,
-    defaults: {
-      ok: "Latest quota refresh completed.",
-      stale: "Showing the last known good data.",
-      loading: "Waiting for the provider response.",
-      unavailable: "Provider is not detected or temporarily unavailable.",
-      signed_out: "Sign in again through the provider app or CLI.",
-      paused: "This provider will not be awakened in the background; existing data remains read-only.",
-    } satisfies Record<SnapshotStatus | "paused", string>,
+    updated: "Latest quota refresh completed.",
   };
   const appearanceLabels = zh ? {
     appearance: "全局外观",
@@ -474,7 +460,8 @@ export function ControlCenter({ preferences, runtimeState, snapshots, refreshAtt
                   <i aria-hidden="true" />
                   <div className="provider-health-copy">
                     <header><strong>{provider.label}</strong><span>{healthLabels.statuses[status]}</span></header>
-                    <p>{status === "loading" || status === "paused" ? healthLabels.defaults[status] : snapshot?.message || healthLabels.defaults[status]}</p>
+                    {status !== "loading" && status !== "paused" && snapshot?.message ? <p>{snapshot.message}</p>
+                      : status === "ok" ? <p>{healthLabels.updated}</p> : null}
                     {recovery ? <p className="provider-health-guidance">{recovery}</p> : null}
                     <footer>
                       <span>{provider.sourceLabel[language]}</span>

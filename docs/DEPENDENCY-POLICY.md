@@ -13,15 +13,23 @@ References: [Vite config loading](https://vite.dev/config/), [Vite 7 Node requir
 
 ## Reviewed major-version candidates
 
-The lockfile currently resolves Vite 7.3.6, Vitest 3.2.7, TypeScript 5.9.3, jsdom 26.1.0, and Tauri JavaScript 2.11.x. Keep these compatible majors until the following migration work is scheduled and verified as one focused change:
+The lockfile currently resolves Vite 7.3.7, Vitest 4.1.12, TypeScript 5.9.3, jsdom 26.1.0, and Tauri JavaScript 2.12.x. Keep these compatible majors until the following migration work is scheduled and verified as one focused change:
 
 | Package | Decision | Revisit when |
 | --- | --- | --- |
 | Vite 8 | Defer. Vite 8 replaces the Rollup/esbuild pipeline with Rolldown/Oxc, so it is a migration rather than a routine bump. | Rolldown plugin compatibility and production bundle output are validated together. |
-| Vitest 4/5 | Defer. New majors include runner, mock, coverage, and default-behavior changes. | The full component suite is audited against the official migration guide. |
+| Vitest 5 | Defer; retain the existing 4.x line. New majors include runner, mock, coverage, and default-behavior changes. | The full component suite is audited against the official migration guide. |
 | TypeScript 6 | Defer. TypeScript 6 is a transition release with intentional breaking/deprecation cleanup. | The application and WDIO specs compile cleanly in a dedicated migration. |
 | jsdom 30 | Defer. Its Node constraint excludes the canonical Node 24.14.0 (`^24.15.0` is required), and the major contains DOM/CSS behavior changes. | The canonical Node version moves to a supported patch and UI tests are reviewed for behavior changes. |
-| Tauri 2.11 | Retain. The JavaScript lockfile and Rust ecosystem are already on the current stable Tauri 2.11 line. | A stable Tauri release provides a specific security, platform, or correctness benefit and native smoke tests pass. |
+| Tauri 2.12 | Adopted for the updater security fix in November 2026. JS API/CLI 2.12.4 and Rust 2.12.5 are verified together with updater 2.14.1. | Continue checking native window, update and package behavior with each minor upgrade. |
+
+## November 2026 security refresh
+
+The previous lockfile produced 20 vulnerability records against the advisory database checked on November 15. The updater depended on zip 4.6.1, including [RUSTSEC-2026-0369](https://rustsec.org/advisories/RUSTSEC-2026-0369). Updater 2.14.1 requires Tauri 2.12 and zip 9; this is the reason for the coordinated native/JS update rather than an unrelated framework migration.
+
+The refreshed lockfile includes zip 9.5.1, rusqlite 0.42.0 / libsqlite3-sys 0.40.0, rustls 0.23.46, rustls-webpki 0.103.17, webpki roots 1.0.12, quinn-proto 0.11.19 and quinn-udp 0.5.16. Provider SQLite connections retain their explicit read-only flags. Credential handling, updater public key and account endpoints are unchanged. The Release verification job now runs the same pinned cargo-audit as Security before a release ref or draft can be created.
+
+Audit success means zero reported vulnerabilities, not zero advisory warnings. Upstream maintenance/unsoundness warnings are recorded in the release receipt with their platform/dependency context; none are suppressed by an ignore list.
 
 References: [Vite 8 announcement](https://vite.dev/blog/announcing-vite8), [Vitest migration guide](https://vitest.dev/guide/migration/), [TypeScript 5.9](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-9.html), [TypeScript 6.0](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-6-0.html), [jsdom releases](https://github.com/jsdom/jsdom/releases), and [Tauri releases](https://tauri.app/release/).
 

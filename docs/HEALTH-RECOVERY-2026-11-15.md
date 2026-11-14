@@ -12,6 +12,8 @@ This update makes provider recovery actionable in the control center and keeps f
 
 ## Native and data boundaries
 
+- Coordinated Tauri API/CLI/runtime and updater upgrades remove the old vulnerable ZIP dependency. SQLite, TLS, certificate roots and QUIC dependencies are refreshed against RustSec. The release workflow audits the native lockfile before creating a release. See [dependency policy](DEPENDENCY-POLICY.md) for versions and retained upstream warnings.
+
 - Each provider has a 20-second total collection budget including same-cycle retries, in addition to its existing per-attempt timeout. Other providers publish their results independently.
 - If a previously detected source disappears, valid old data remains visibly stale in both the main window and native cache. Zero balances count as valid data. Neither quota timestamps nor native cache age are advanced by a failed check.
 - An explicit signed-out response clears retained quota. A transport failure cannot turn an existing signed-out state into a stale-success display. A first failure without quota is unavailable, not stale.
