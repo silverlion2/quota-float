@@ -64,7 +64,7 @@ function renderControlCenter(
   state = runtimeState,
   operation: ControlOperation | null = null,
   platform = "windows",
-  health: { snapshots?: ProviderSnapshot[]; attempts?: ProviderAttemptTimes; pending?: ProviderSnapshot["provider"][] } = {},
+  health: { snapshots?: ProviderSnapshot[]; attempts?: ProviderAttemptTimes; pending?: ProviderSnapshot["provider"][]; onRefreshProviders?: (providers: ProviderSnapshot["provider"][]) => void } = {},
 ) {
   render(
     <ControlCenter
@@ -73,6 +73,7 @@ function renderControlCenter(
       snapshots={health.snapshots ?? snapshots}
       refreshAttempts={health.attempts}
       refreshingProviders={health.pending}
+      onRefreshProviders={health.onRefreshProviders}
       diagnostics={{ ...diagnostics, platform }}
       language={preferences.language}
       onClose={vi.fn()}
@@ -92,6 +93,33 @@ function renderControlCenter(
 }
 
 describe("ControlCenter provider health", () => {
+  it("filters attention, retries only affected active providers, and resumes a paused source", () => {
+    const onRefreshProviders = vi.fn();
+    const onPreferences = vi.fn();
+    renderControlCenter(vi.fn(), onPreferences, { ...DEFAULT_WIDGET_PREFERENCES, language: "en", pausedProviders: ["qoder"] }, vi.fn(), runtimeState, null, "windows", { onRefreshProviders });
+    fireEvent.click(screen.getByRole("button", { name: "Health" }));
+    fireEvent.click(screen.getByRole("button", { name: "Check CODEX" }));
+    expect(onRefreshProviders).toHaveBeenLastCalledWith(["codex"]);
+    fireEvent.click(screen.getByRole("button", { name: /Needs attention/ }));
+    expect(screen.queryByRole("button", { name: "Check CODEX" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Retry affected" }));
+    expect(onRefreshProviders).toHaveBeenLastCalledWith(["claude", "trae", "workbuddy", "volcengine", "antigravity"]);
+    fireEvent.click(screen.getByRole("button", { name: /Paused 1/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Resume QODER" }));
+    expect(onPreferences).toHaveBeenCalledWith(expect.objectContaining({ pausedProviders: [] }));
+    expect(screen.queryByRole("button", { name: "Check VOLCENGINE" })).not.toBeInTheDocument();
+  });
+
+  it("counts each source once and keeps in-flight checks out of healthy and attention totals", () => {
+    renderControlCenter(vi.fn(), vi.fn(), { ...DEFAULT_WIDGET_PREFERENCES, language: "en" }, vi.fn(), runtimeState, null, "windows", {
+      snapshots: [snapshots[0], snapshots[0]], pending: ["codex"], onRefreshProviders: vi.fn(),
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Health" }));
+    expect(screen.getByText("0/7 providers passed their last check")).toBeInTheDocument();
+    expect(screen.getByText(/Checking 1 providers/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Check CODEX" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Retry affected" })).toBeDisabled();
+  });
   it("keeps a failed check time separate from retained quota data and avoids a first-failure success time", () => {
     const attemptedAt = Date.parse("2026-07-26T02:00:00Z");
     renderControlCenter(vi.fn(), vi.fn(), { ...DEFAULT_WIDGET_PREFERENCES, language: "en" }, vi.fn(), runtimeState, null, "windows", {
@@ -289,7 +317,7 @@ describe("ControlCenter provider health", () => {
     renderControlCenter(vi.fn(), vi.fn(), { ...DEFAULT_WIDGET_PREFERENCES, language: "en", pausedProviders: ["volcengine"] });
     fireEvent.click(screen.getByRole("button", { name: "Health" }));
     expect(screen.getByText("1/6 providers passed their last check")).toBeInTheDocument();
-    expect(screen.getByText("Paused")).toBeInTheDocument();
+    expect(within(screen.getByText("VOLCENGINE").closest("article")!).getByText("Paused")).toBeInTheDocument();
   });
 
   it("shows magnetic edge previews for Bar and applies an edge choice", () => {

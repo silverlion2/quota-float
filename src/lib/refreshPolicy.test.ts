@@ -10,6 +10,7 @@ import {
   providerRefreshInterval,
   providersDueForRefresh,
   providersToRetryOnReconnect,
+  settleProviderFailures,
 } from "./refreshPolicy";
 
 function snapshot(provider: ProviderSnapshot["provider"], status: ProviderSnapshot["status"] = "ok"): ProviderSnapshot {
@@ -27,6 +28,25 @@ function snapshot(provider: ProviderSnapshot["provider"], status: ProviderSnapsh
 }
 
 describe("provider refresh policy", () => {
+  it("backs off transient failures independently and clears the streak after recovery", () => {
+    const stale = snapshot("codex", "stale");
+    expect([1, 2, 3, 4, 5, 6, 20].map((count) => providerRefreshInterval(stale, "balanced", count)))
+      .toEqual([1, 2, 4, 8, 16, 30, 30].map((minutes) => minutes * 60_000));
+    expect(providerRefreshInterval(stale, "focus", 6)).toBe(60 * 60_000);
+    expect(providerRefreshInterval(snapshot("claude", "signed_out"), "balanced", 5)).toBe(BALANCED_ATTENTION_REFRESH_MS);
+    expect(providerRefreshInterval(undefined, "balanced", 5)).toBe(BALANCED_ATTENTION_REFRESH_MS);
+    expect(providerRefreshInterval(snapshot("antigravity", "unavailable"), "balanced", 1)).toBe(BALANCED_ATTENTION_REFRESH_MS);
+    expect(settleProviderFailures({ codex: 4, claude: 2 }, [snapshot("codex")], ["codex"]))
+      .toEqual({ codex: 0, claude: 2 });
+    expect(settleProviderFailures({ codex: 6 }, [stale], ["codex"])).toEqual({ codex: 6 });
+  });
+
+  it("uses the same retry deadline in due selection and the next timer", () => {
+    const values = [snapshot("codex", "stale"), snapshot("claude")];
+    const attempts = { codex: 1000, claude: 1000 };
+    expect(nextProviderRefreshDelay(values, ["codex", "claude"], attempts, "balanced", 60_000, { codex: 1 })).toBe(1000);
+    expect(providersDueForRefresh(values, ["codex", "claude"], attempts, "balanced", 61_000, { codex: 1 })).toEqual(["codex"]);
+  });
   it("keeps due selection and scheduling consistent after a backward clock correction", () => {
     const now = 10_000_000;
     const attempts = { codex: now + 3_600_000, claude: now - 10_000 };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProviderSnapshot } from "../types";
-import { finalizeSnapshotProgress, mergeSnapshotProgress, mergeSnapshots } from "./snapshots";
+import { failSnapshotRefresh, finalizeSnapshotProgress, mergeSnapshotProgress, mergeSnapshots } from "./snapshots";
 
 const success: ProviderSnapshot = {
   provider: "codex",
@@ -45,11 +45,28 @@ describe("snapshot failure handling", () => {
     expect(mergeSnapshots([{ ...success, status: "stale" }], [{ ...success, weeklyWindow: { ...success.weeklyWindow!, remainingPercent: 88 } }])[0].weeklyWindow?.remainingPercent).toBe(88);
   });
 
-  it("preserves providers outside a targeted refresh and removes a refreshed provider that is no longer detected", () => {
+  it("preserves unrelated providers and retains a disappearing source as stale without changing data time", () => {
     const qoder = { ...success, provider: "qoder" as const, displayName: "QODER" };
     expect(mergeSnapshots([success, qoder], [{ ...success, weeklyWindow: { ...success.weeklyWindow!, remainingPercent: 88 } }], ["codex"]))
       .toEqual([qoder, expect.objectContaining({ provider: "codex", weeklyWindow: expect.objectContaining({ remainingPercent: 88 }) })]);
-    expect(mergeSnapshots([success, qoder], [], ["qoder"])).toEqual([success]);
+    expect(mergeSnapshots([success, qoder], [], ["qoder"])).toEqual([success, expect.objectContaining({ ...qoder, status: "stale", message: expect.any(String) })]);
+    expect(mergeSnapshots([success], [], ["qoder"])).toEqual([success]);
+  });
+
+  it("keeps sign-in evidence and valid zero balances through transport failures", () => {
+    const signedOut = { ...success, provider: "claude" as const, status: "signed_out" as const, weeklyWindow: null, resetCredits: null };
+    const balanceOnly = { ...success, weeklyWindow: null, resetCredits: null, balanceRemaining: 0 };
+    const result = failSnapshotRefresh([balanceOnly, signedOut], ["codex", "claude", "qoder"]);
+    expect(result[0]).toMatchObject({ status: "stale", balanceRemaining: 0, updatedAt: success.updatedAt });
+    expect(result[1]).toEqual(signedOut);
+    expect(result[2]).toMatchObject({ provider: "qoder", status: "unavailable", weeklyWindow: null });
+    expect(failSnapshotRefresh([result[2]], ["qoder"])[0].status).toBe("unavailable");
+  });
+
+  it("rejects cross-provider progress without consuming that provider's result slot", () => {
+    const state = { requestId: "r1", receivedProviders: new Set<ProviderSnapshot["provider"]>(), finalized: false };
+    expect(mergeSnapshotProgress(state, "r1", [], { requestId: "r1", requestedProviderIds: ["claude"], providerId: "claude", snapshots: [success] })).toBeNull();
+    expect(state.receivedProviders.size).toBe(0);
   });
 
   it("shows a fast provider before the remaining request completes without changing the baseline", () => {

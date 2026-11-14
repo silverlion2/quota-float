@@ -1,9 +1,9 @@
 import { ArrowClockwise, ArrowCounterClockwise, Bell, CheckCircle, ClockCounterClockwise, DownloadSimple, Eye, EyeSlash, GearSix, Heartbeat, Layout, Monitor, Moon, Plus, Sun, Trash, UploadSimple, X } from "@phosphor-icons/react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useModalDialog } from "../lib/modalDialog";
 import { DEFAULT_PROVIDER_ORDER, PROVIDER_CATALOG } from "../lib/providers";
 import { providerRecoveryAction } from "../lib/providerRecovery";
-import type { ProviderAttemptTimes } from "../lib/refreshPolicy";
+import { nextProviderRefreshDelay, type ProviderAttemptTimes, type ProviderFailureCounts } from "../lib/refreshPolicy";
 import type { AppDiagnostics, Language, ProviderId, ProviderSnapshot, RuntimeState, SavedLayout, SnapshotStatus, WidgetPreferences } from "../types";
 import { ProviderMark } from "./ProviderMark";
 import { CodexExtensionsPanel } from "./CodexExtensionsPanel";
@@ -23,6 +23,9 @@ interface Props {
   snapshots: ProviderSnapshot[];
   refreshAttempts?: ProviderAttemptTimes;
   refreshingProviders?: readonly ProviderId[];
+  refreshInFlight?: boolean;
+  refreshFailures?: ProviderFailureCounts;
+  onRefreshProviders?: (providers: ProviderId[]) => void;
   diagnostics: AppDiagnostics | null;
   language: Language;
   onClose: () => void;
@@ -58,11 +61,20 @@ function formatCheckedAt(value: string | number | undefined, language: Language,
   }).format(date);
 }
 
-export function ControlCenter({ preferences, runtimeState, snapshots, refreshAttempts = {}, refreshingProviders = [], diagnostics, language, onClose, onRefresh, onPreferences, onRuntimeState, onExport, onImport, onRestore, onCopyDiagnostics, autostartEnabled, onAutostart, operation = null, initialTab = "display", notificationTest = null, onTestNotification, actionGuidance = null }: Props) {
+export function ControlCenter({ preferences, runtimeState, snapshots, refreshAttempts = {}, refreshingProviders = [], refreshInFlight = false, refreshFailures = {}, onRefreshProviders, diagnostics, language, onClose, onRefresh, onPreferences, onRuntimeState, onExport, onImport, onRestore, onCopyDiagnostics, autostartEnabled, onAutostart, operation = null, initialTab = "display", notificationTest = null, onTestNotification, actionGuidance = null }: Props) {
   const dialogRef = useModalDialog<HTMLElement>(onClose);
   const [tab, setTab] = useState<Tab>(initialTab);
   const [layoutName, setLayoutName] = useState("");
+  const [healthFilter, setHealthFilter] = useState<"all" | "attention" | "paused">("all");
+  const [healthNow, setHealthNow] = useState(Date.now);
+  useEffect(() => {
+    if (tab !== "health") return;
+    setHealthNow(Date.now());
+    const timer = window.setInterval(() => setHealthNow(Date.now()), 15_000);
+    return () => window.clearInterval(timer);
+  }, [tab]);
   const zh = language !== "en";
+  const refreshBusy = refreshInFlight || refreshingProviders.length > 0;
   const labels = zh ? {
     title: "控制中心", subtitle: "布局、平台、提醒、历史与恢复", display: "显示", providerTab: "平台", alerts: "提醒", activity: "历史", system: "系统",
     layout: "信息密度", compact: "紧凑", standard: "标准", detailed: "详细", accent: "强调色", rotate: "轮换间隔",
@@ -261,8 +273,14 @@ export function ControlCenter({ preferences, runtimeState, snapshots, refreshAtt
   const historyCounts = useMemo(() => new Map(PROVIDER_CATALOG.map((provider) => [provider.id, runtimeState.history.filter((point) => point.provider === provider.id).length])), [runtimeState.history]);
   const snapshotsByProvider = useMemo(() => new Map(snapshots.map((snapshot) => [snapshot.provider, snapshot])), [snapshots]);
   const monitoredProviderCount = Math.max(1, PROVIDER_CATALOG.length - preferences.pausedProviders.length);
-  const healthyProviderCount = useMemo(() => snapshots.filter((snapshot) => snapshot.status === "ok" && !preferences.pausedProviders.includes(snapshot.provider)).length, [preferences.pausedProviders, snapshots]);
-  const attentionProviderCount = Math.max(0, monitoredProviderCount - healthyProviderCount);
+  const healthyProviderCount = PROVIDER_CATALOG.filter(({ id }) => snapshotsByProvider.get(id)?.status === "ok"
+    && !preferences.pausedProviders.includes(id) && !refreshingProviders.includes(id)).length;
+  const checkingProviderCount = refreshingProviders.filter((id) => !preferences.pausedProviders.includes(id)).length;
+  const attentionProviders = PROVIDER_CATALOG.filter(({ id }) => !preferences.pausedProviders.includes(id)
+    && !refreshingProviders.includes(id) && snapshotsByProvider.get(id)?.status !== "ok");
+  const attentionProviderCount = attentionProviders.length;
+  const visibleHealthProviders = PROVIDER_CATALOG.filter(({ id }) => healthFilter === "all"
+    || (healthFilter === "paused" ? preferences.pausedProviders.includes(id) : attentionProviders.some((provider) => provider.id === id)));
   const memoryRange = runtimeState.usageMemory.firstCapturedAt && runtimeState.usageMemory.lastCapturedAt
     ? `${formatCheckedAt(runtimeState.usageMemory.firstCapturedAt, language, labels.memoryEmpty)} — ${formatCheckedAt(runtimeState.usageMemory.lastCapturedAt, language, labels.memoryEmpty)}`
     : labels.memoryEmpty;
@@ -426,13 +444,23 @@ export function ControlCenter({ preferences, runtimeState, snapshots, refreshAtt
             <Heartbeat weight="duotone" />
             <div>
               <strong>{healthyProviderCount}/{monitoredProviderCount} {healthLabels.summary}</strong>
-              <p>{attentionProviderCount === 0 ? healthLabels.allHealthy : `${attentionProviderCount} ${healthLabels.attention}`}</p>
+              <p>{checkingProviderCount > 0 ? (zh ? `正在检查 ${checkingProviderCount} 个平台，已完成的结果会先显示。` : `Checking ${checkingProviderCount} providers; completed results appear immediately.`)
+                : attentionProviderCount === 0 ? healthLabels.allHealthy : `${attentionProviderCount} ${healthLabels.attention}`}</p>
             </div>
-            <button type="button" onClick={onRefresh} disabled={refreshingProviders.length > 0}><ArrowClockwise />{refreshingProviders.length > 0 ? healthLabels.checking : healthLabels.refresh}</button>
+            <button type="button" onClick={onRefresh} disabled={refreshBusy}><ArrowClockwise />{refreshBusy ? healthLabels.checking : healthLabels.refresh}</button>
+          </div>
+          <div className="health-toolbar">
+            <div className="health-filters" role="group" aria-label={zh ? "筛选平台状态" : "Filter provider health"}>
+              {([['all', zh ? '全部' : 'All', PROVIDER_CATALOG.length], ['attention', zh ? '需要处理' : 'Needs attention', attentionProviderCount], ['paused', zh ? '已暂停' : 'Paused', preferences.pausedProviders.length]] as const).map(([filter, label, count]) =>
+                <button key={filter} type="button" aria-pressed={healthFilter === filter} onClick={() => setHealthFilter(filter)}>{label} <span>{count}</span></button>)}
+            </div>
+            {onRefreshProviders ? <button type="button" disabled={refreshBusy || attentionProviderCount === 0}
+              onClick={() => onRefreshProviders(attentionProviders.map(({ id }) => id))}>{zh ? "重试异常平台" : "Retry affected"}</button> : null}
           </div>
           <div className="control-section-title"><span>{healthLabels.title}</span></div>
           <div className="provider-health-list">
-            {PROVIDER_CATALOG.map((provider) => {
+            {visibleHealthProviders.length === 0 ? <p className="control-hint" role="status">{zh ? "此分类暂无平台。" : "No providers in this view."}</p> : null}
+            {visibleHealthProviders.map((provider) => {
               const snapshot = snapshotsByProvider.get(provider.id);
               const paused = preferences.pausedProviders.includes(provider.id);
               const checking = refreshingProviders.includes(provider.id);
@@ -447,13 +475,26 @@ export function ControlCenter({ preferences, runtimeState, snapshots, refreshAtt
                   <div className="provider-health-copy">
                     <header><strong>{provider.label}</strong><span>{healthLabels.statuses[status]}</span></header>
                     <p>{status === "loading" || status === "paused" ? healthLabels.defaults[status] : snapshot?.message || healthLabels.defaults[status]}</p>
-                    {recovery ? <p>{recovery}</p> : null}
+                    {recovery ? <p className="provider-health-guidance">{recovery}</p> : null}
                     <footer>
                       <span>{provider.sourceLabel[language]}</span>
                       <span>{healthLabels.checked}: {formatCheckedAt(refreshAttempts[provider.id], language, healthLabels.neverChecked)}</span>
                       <span>{healthLabels.dataUpdated}: {formatCheckedAt(hasQuotaData ? snapshot.updatedAt : undefined, language, healthLabels.noData)}</span>
                       <span>{historyCounts.get(provider.id) ?? 0} {healthLabels.samples}</span>
                     </footer>
+                    <div className="health-provider-actions">
+                      <span>{paused ? (zh ? "后台检查已暂停" : "Background checks paused") : checking ? healthLabels.checking
+                        : (() => {
+                          const delay = nextProviderRefreshDelay(snapshots, [provider.id], refreshAttempts, preferences.resourceMode, healthNow, refreshFailures);
+                          return delay === 0 ? (zh ? "即将自动检查" : "Automatic check due")
+                            : zh ? `约 ${Math.ceil(delay / 60_000)} 分钟后自动检查` : `Next check in ~${Math.ceil(delay / 60_000)} min`;
+                        })()}</span>
+                      {paused ? <button type="button" aria-label={zh ? `恢复 ${provider.label} 监控` : `Resume ${provider.label}`}
+                        onClick={() => onPreferences({ ...preferences, pausedProviders: preferences.pausedProviders.filter((id) => id !== provider.id) })}>{zh ? "恢复监控" : "Resume"}</button>
+                        : onRefreshProviders ? <button type="button" disabled={refreshBusy}
+                          aria-label={zh ? `检查 ${provider.label}` : `Check ${provider.label}`}
+                          onClick={() => onRefreshProviders([provider.id])}>{zh ? "立即检查" : "Check now"}</button> : null}
+                    </div>
                   </div>
                 </article>
               );

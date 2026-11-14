@@ -14,6 +14,7 @@ const MAX_PLAN_CHARS: usize = 96;
 const MAX_UNIT_CHARS: usize = 32;
 const MAX_MESSAGE_CHARS: usize = 240;
 const MAX_RESET_EXPIRATIONS: usize = 32;
+const PROVIDER_CYCLE_BUDGET: Duration = Duration::from_secs(20);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ProviderKind {
@@ -295,18 +296,36 @@ async fn fetch_provider_with_retries(
     client: &Client,
     provider: ProviderDescriptor,
 ) -> Vec<ProviderSnapshot> {
-    let mut values = provider.fetch(client).await;
-    if !provider.supports_same_cycle_retry() {
-        return values;
-    }
-    for delay in [400_u64, 1_200_u64] {
-        if !batch_is_retryable(&values) {
-            break;
+    within_provider_budget(provider, PROVIDER_CYCLE_BUDGET, async {
+        let mut values = provider.fetch(client).await;
+        if !provider.supports_same_cycle_retry() {
+            return values;
         }
-        tokio::time::sleep(Duration::from_millis(delay)).await;
-        values = provider.fetch(client).await;
-    }
-    values
+        for delay in [400_u64, 1_200_u64] {
+            if !batch_is_retryable(&values) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(delay)).await;
+            values = provider.fetch(client).await;
+        }
+        values
+    })
+    .await
+}
+
+async fn within_provider_budget(
+    provider: ProviderDescriptor,
+    budget: Duration,
+    operation: impl Future<Output = Vec<ProviderSnapshot>>,
+) -> Vec<ProviderSnapshot> {
+    tokio::time::timeout(budget, operation)
+        .await
+        .unwrap_or_else(|_| {
+            vec![provider.failure(
+                "unavailable",
+                "Provider refresh exceeded its total time budget. It will retry automatically.",
+            )]
+        })
 }
 
 async fn collect_provider_futures<F>(
@@ -388,6 +407,23 @@ pub fn normalized_provider_ids(provider_ids: Option<&[String]>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn total_budget_bounds_retries_and_preserves_completed_results() {
+        let provider = PROVIDERS[0];
+        let timed_out =
+            within_provider_budget(provider, Duration::from_millis(5), std::future::pending())
+                .await;
+        assert_eq!(timed_out.len(), 1);
+        assert_eq!(timed_out[0].provider, "codex");
+        assert_eq!(timed_out[0].status, "unavailable");
+        assert!(timed_out[0].weekly_window.is_none());
+        let ready = within_provider_budget(provider, Duration::from_secs(1), async {
+            vec![provider.conform(successful_snapshot())]
+        })
+        .await;
+        assert_eq!(ready[0].status, "ok");
+    }
 
     fn snapshot(provider: &str, status: &str) -> ProviderSnapshot {
         ProviderSnapshot::provider_failure(provider, provider, status, "fixture")

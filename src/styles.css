@@ -133,6 +133,16 @@ to{transform:rotate(360deg);}}
 .provider-health-copy p{margin:2px 0 4px;overflow:hidden;line-height:1.35;text-overflow:ellipsis;white-space:nowrap;}
 .provider-health-copy footer{justify-content:flex-start;align-items:baseline;flex-wrap:wrap;gap:4px 10px;}
 .provider-health-copy footer span{max-width:100%;}
+.provider-health-copy .provider-health-guidance{white-space:normal;overflow:visible;line-height:1.5;margin:5px 0 8px;}
+.health-toolbar,.health-filters,.health-provider-actions{display:flex;align-items:center;flex-wrap:wrap;gap:6px;}
+.health-toolbar{justify-content:space-between;margin:10px 0 4px;}
+.health-toolbar button,.health-provider-actions button{font:inherit;font-size:11px;padding:5px 8px;border-radius:7px;border:1px solid var(--ui-border);color:var(--ui-text);background:var(--ui-surface-strong);cursor:pointer;}
+.health-toolbar button:hover,.health-provider-actions button:hover{background:var(--ui-surface-hover);}
+.health-toolbar button:disabled,.health-provider-actions button:disabled{opacity:.5;cursor:default;}
+.health-filters button[aria-pressed=true]{border-color:var(--ui-accent,#438dd5);box-shadow:inset 0 0 0 1px var(--ui-accent,#438dd5);}
+.health-filters span{margin-left:4px;font-variant-numeric:tabular-nums;color:var(--ui-muted);}
+.health-provider-actions{justify-content:space-between;margin-top:8px;padding-top:7px;border-top:1px solid var(--ui-border);}
+.health-provider-actions > span{font-size:10px;color:var(--ui-muted);}
 .layout-save{display:grid;grid-template-columns:minmax(0, 1fr) auto;}
 .layout-save button, .backup-actions button, .diagnostic-summary button{display:inline-flex;align-items:center;justify-content:center;gap:4px;border:1px solid rgba(35,73,119,.13);border-radius:7px;cursor:pointer;font-weight:600;}
 .layout-save svg, .backup-actions svg{width:10px;height:10px;}
@@ -637,9 +647,8 @@ to{transform:translate3d(5%, 4%, 0) scale(1.16) rotate(2deg);}}
 .provider-health-list,
 .activity-list{gap:6px;}
 .provider-health-item{gap:9px;}
-.provider-health-copy header strong,
+.provider-health-copy header strong,.provider-health-copy p{font-size:11px;}
 .activity-item strong,.provider-health-copy header span,
-.provider-health-copy p,
 .activity-item p,
 .activity-item time,.provider-health-copy footer{font-size:10px;}
 .layout-save{gap:7px;}

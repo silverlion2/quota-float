@@ -103,10 +103,11 @@ vi.mock("./lib/bridge", () => {
 });
 
 vi.mock("./components/ControlCenter", () => ({
-  ControlCenter: ({ onClose, onExport, operation, refreshAttempts, refreshingProviders }: { onClose: () => void; onExport: () => void; operation?: { pending: boolean; message: string } | null; refreshAttempts?: object; refreshingProviders?: string[] }) => (
+  ControlCenter: ({ onClose, onExport, operation, refreshAttempts, refreshingProviders, onRefreshProviders }: { onClose: () => void; onExport: () => void; operation?: { pending: boolean; message: string } | null; refreshAttempts?: object; refreshingProviders?: string[]; onRefreshProviders?: (providers: ProviderSnapshot["provider"][]) => void }) => (
     <section role="dialog" aria-label="Control center">
       <button type="button" onClick={onClose}>Close control</button>
       <button type="button" onClick={onExport} disabled={operation?.pending}>Export system</button>
+      <button type="button" onClick={() => onRefreshProviders?.(["codex"])}>Check only Codex</button>
       {operation ? <output>{operation.message}</output> : null}
       <output aria-label="Refresh attempts">{JSON.stringify(refreshAttempts)}</output>
       <output aria-label="Checking providers">{refreshingProviders?.join(",")}</output>
@@ -170,6 +171,31 @@ async function renderExpandedApp() {
 }
 
 describe("App modal and preference lifecycle", () => {
+  it("routes a health action to the selected provider without polling healthy peers", async () => {
+    await renderExpandedApp();
+    await waitFor(() => expect(fetchSnapshotsProgressively).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Control center" }));
+    await screen.findByRole("button", { name: "Check only Codex" });
+    await waitFor(() => expect(screen.getByLabelText("Checking providers")).toBeEmptyDOMElement());
+    fireEvent.click(screen.getByRole("button", { name: "Check only Codex" }));
+    await waitFor(() => expect(fetchSnapshotsProgressively).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(fetchSnapshotsProgressively).mock.calls[1][1]).toEqual(["codex"]);
+  });
+  it("queues a full manual refresh behind an in-flight targeted health check", async () => {
+    await renderExpandedApp();
+    fireEvent.click(screen.getByRole("button", { name: "Control center" }));
+    await screen.findByRole("button", { name: "Check only Codex" });
+    await waitFor(() => expect(screen.getByLabelText("Checking providers")).toBeEmptyDOMElement());
+    const targeted = deferred<ProviderSnapshot[]>();
+    vi.mocked(fetchSnapshotsProgressively).mockImplementationOnce(() => targeted.promise);
+    fireEvent.click(screen.getByRole("button", { name: "Check only Codex" }));
+    await waitFor(() => expect(fetchSnapshotsProgressively).toHaveBeenCalledTimes(2));
+    fireEvent.click(screen.getByRole("button", { name: "Refresh quota" }));
+    expect(fetchSnapshotsProgressively).toHaveBeenCalledTimes(2);
+    await act(async () => { targeted.resolve([]); await targeted.promise; });
+    await waitFor(() => expect(fetchSnapshotsProgressively).toHaveBeenCalledTimes(3));
+    expect(vi.mocked(fetchSnapshotsProgressively).mock.calls[2][1]).toEqual(["codex", "claude", "qoder", "trae", "workbuddy", "volcengine", "antigravity"]);
+  });
   it("caps native cards even with all expandable details closed", async () => {
     vi.stubGlobal("__TAURI_INTERNALS__", {});
     vi.mocked(getWidgetContentHeightLimit).mockResolvedValue(600);

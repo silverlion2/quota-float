@@ -83,7 +83,7 @@ Updater artifacts are signed with the project's Tauri update key. Windows Authen
 - A content-sized magnetic Bar: one provider uses a `224×38` top strip or `64×156` side rail; additional providers grow it one slot at a time. Bottleneck starts at `196×38` / `64×100`. Native windows include an additional 4px transparent inset on each side, preserve edge placement, and expand inward.
 - Rotating recovery points before updates plus one-file export/import for settings, layouts, and history.
 - Redacted diagnostic reports that exclude tokens, account IDs, local auth paths, and raw provider responses.
-- A Provider Health Center showing each local source, freshness, recovery state, and bounded history count.
+- A Provider Health Center with status filters, per-provider checks, targeted recovery, monitoring resume, next-check timing, and readable recovery guidance. Network failures use bounded adaptive retries; disappearing sources retain explicitly stale data in both main and detached windows.
 - Automatic updates with Stable/Beta discovery and a convenient restart flow.
 
 ## Screenshots

@@ -101,6 +101,35 @@ describe("Quota Float desktop widget", () => {
     await browser.$(".reset-outlook summary").click();
   });
 
+  it("filters provider health and checks a single provider in the native window", async () => {
+    await openControlCenter();
+    await browser.tauri.execute(() => {
+      Array.from(document.querySelectorAll<HTMLButtonElement>(".control-tabs button"))
+        .find((button) => button.textContent?.trim() === "Health")?.click();
+    });
+    await browser.$('.health-filters[role="group"]').waitForDisplayed();
+    await browser.$('button[aria-label="Check CODEX"]').click();
+    await browser.waitUntil(async () => (await browser.$('button[aria-label="Check CODEX"]')).isEnabled());
+    const health = await browser.tauri.execute(() => {
+      const panel = document.querySelector<HTMLElement>(".provider-health-list")!;
+      const guide = panel.querySelector<HTMLElement>(".provider-health-guidance");
+      return { overflow: panel.scrollWidth - panel.clientWidth,
+        cards: panel.querySelectorAll("article").length,
+        wrapsGuidance: !guide || getComputedStyle(guide).whiteSpace === "normal" };
+    });
+    expect(health.overflow).toBeLessThanOrEqual(1);
+    expect(health.cards).toBe(7);
+    expect(health.wrapsGuidance).toBe(true);
+    await browser.saveScreenshot("output/handoff/provider-health-2026-11-15.png");
+    await browser.tauri.execute(() => {
+      Array.from(document.querySelectorAll<HTMLButtonElement>(".health-filters button"))
+        .find((button) => button.textContent?.startsWith("Paused"))?.click();
+    });
+    await browser.waitUntil(async () => browser.tauri.execute(() =>
+      document.querySelector(".provider-health-list")?.textContent?.includes("No providers in this view.") === true,
+    ));
+  });
+
   it("shows the extension inventory and curated companions in the native control center", async () => {
     const inventory = await browser.tauri.execute(async (tauri) => tauri.core.invoke("fetch_codex_extensions")) as { status: string; entries: { name: string }[] };
     expect(inventory.status).toBe("ok");

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Add provider-health filters, single-provider checks, targeted recovery, monitoring resume and next-check timing with readable recovery guidance.
+- Preserve disappearing providers' last-known-good data across frontend and native caches without changing its age; keep signed-out and first-failure states accurate.
+- Bound each provider's complete refresh to 20 seconds and use independent recovery backoff for network providers while retaining conservative local-process polling.
+- Queue full manual refreshes behind targeted checks and reject mismatched progressive results. Add frontend, Rust and native-window regression coverage.
+
 ## 0.3.34 - 2026-11-05
 
 - Add once-per-cycle planning reminders before weekly/monthly resets, complete dated credits batches, and known-versus-unknown expiry amounts.

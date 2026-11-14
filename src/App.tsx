@@ -15,7 +15,7 @@ import { nextProviderIndex, normalizeProviderOrder } from "./lib/providers";
 import { detectRecentCodexReset, isRecentCodexReset } from "./lib/resetDetection";
 import type { RecentCodexReset } from "./lib/resetDetection";
 import { trackedQuotaWindows } from "./lib/quotaPace";
-import { finalizeSnapshotProgress, mergeSnapshotProgress, mergeSnapshots, type ProgressiveSnapshotState } from "./lib/snapshots";
+import { failSnapshotRefresh, finalizeSnapshotProgress, mergeSnapshotProgress, mergeSnapshots, type ProgressiveSnapshotState } from "./lib/snapshots";
 import { canSendNotification, EMPTY_RUNTIME_STATE, isQuietHour, normalizeRuntimeState, normalizeRuntimeStateWithDiagnostics, recordSnapshotActivity, runtimeStatesEqual } from "./lib/activity";
 import { DEFAULT_WIDGET_PREFERENCES, normalizeWidgetPreferences } from "./lib/preferences";
 import { formatBackupRestoreNotice } from "./lib/importDiagnostics";
@@ -25,7 +25,7 @@ import { loadStartupState } from "./lib/startup";
 import { runSingleFlight, type SingleFlightState } from "./lib/singleFlight";
 import { requestLatest, type LatestRequestState } from "./lib/latestRequest";
 import { settleResetForecast, type ResetForecastLoadStatus } from "./lib/resetForecast";
-import { monitoredProviderIds, nextProviderRefreshDelay, providersDueForRefresh, providersToRetryOnReconnect, type ProviderAttemptTimes } from "./lib/refreshPolicy";
+import { monitoredProviderIds, nextProviderRefreshDelay, providersDueForRefresh, providersToRetryOnReconnect, settleProviderFailures, type ProviderAttemptTimes, type ProviderFailureCounts } from "./lib/refreshPolicy";
 import { knownPlanChanged, priorKnownPlan } from "./lib/quotaContinuity";
 import { buildDiagnosticReport } from "./lib/diagnosticReport";
 import type { AppDiagnostics, CockpitRegion, ProviderId, ProviderSnapshot, ResetForecast, RuntimeState, VolcengineDiagnostics, WidgetPreferences } from "./types";
@@ -70,7 +70,8 @@ export default function App() {
   const [systemDark, setSystemDark] = useState(systemPrefersDark);
   const snapshotsRef = useRef<ProviderSnapshot[]>([]);
   const providerAttempts = useRef<ProviderAttemptTimes>({});
-  const [providerChecks, setProviderChecks] = useState<{ attempts: ProviderAttemptTimes; pending: ProviderId[] }>({ attempts: {}, pending: [] });
+  const providerFailures = useRef<ProviderFailureCounts>({});
+  const [providerChecks, setProviderChecks] = useState<{ attempts: ProviderAttemptTimes; pending: ProviderId[]; busy: boolean }>({ attempts: {}, pending: [], busy: false });
   const reconnectPending = useRef(false);
   const resetForecastRef = useRef<ResetForecast | null>(null);
   const resetForecastRequest = useRef<LatestRequestState>({ sequence: 0 });
@@ -267,12 +268,12 @@ export default function App() {
     requestLatest(resetForecastRequest.current, fetchCodexResetForecast, commitForecast, () => commitForecast(null));
   }, []);
 
-  const refresh = useCallback((force = false, urgent = force) => runSingleFlight(refreshFlight.current, async () => {
+  const refresh = useCallback((force = false, urgent = force, selected?: readonly ProviderId[]) => runSingleFlight(refreshFlight.current, async () => {
     const preferenceSnapshot = preferencesRef.current;
     const monitored = monitoredProviderIds(preferenceSnapshot.pausedProviders);
-    const providerIds = force
+    const providerIds = selected ? monitored.filter((provider) => selected.includes(provider)) : force
       ? monitored
-      : providersDueForRefresh(snapshotsRef.current, monitored, providerAttempts.current, preferenceSnapshot.resourceMode);
+      : providersDueForRefresh(snapshotsRef.current, monitored, providerAttempts.current, preferenceSnapshot.resourceMode, Date.now(), providerFailures.current);
     if (providerIds.length === 0) return;
     const snapshotsBeforeRefresh = snapshotsRef.current;
     const requestId = createSnapshotRefreshRequestId();
@@ -280,7 +281,7 @@ export default function App() {
     activeSnapshotRequest.current = requestId;
     const attemptedAt = Date.now();
     for (const provider of providerIds) providerAttempts.current[provider] = attemptedAt;
-    setProviderChecks({ attempts: { ...providerAttempts.current }, pending: providerIds });
+    setProviderChecks({ attempts: { ...providerAttempts.current }, pending: providerIds, busy: true });
     if (providerIds.includes("codex")) {
       refreshResetForecast();
     }
@@ -351,23 +352,20 @@ export default function App() {
       {
         const current = snapshotsRef.current;
         const missingProviders = providerIds.filter((provider) => !progressState.receivedProviders.has(provider));
-        const represented = new Set(current.map((item) => item.provider));
-        const next = current.map((item) => missingProviders.includes(item.provider)
-          ? { ...item, status: "stale" as const, message: "Refresh failed. Please try again later." }
-          : item);
-        for (const provider of missingProviders) {
-          if (!represented.has(provider)) next.push({ provider, displayName: provider.toUpperCase(), plan: null, shortWindow: null, weeklyWindow: null, resetCredits: null, resetCreditExpiresAt: [], updatedAt: new Date().toISOString(), status: "unavailable" as const, message: "Quota is temporarily unavailable. It will retry automatically." });
-        }
+        const next = failSnapshotRefresh(current, missingProviders);
         snapshotsRef.current = next;
         setSnapshots(next);
       }
     } finally {
       if (activeSnapshotRequest.current === requestId) {
+        providerFailures.current = settleProviderFailures(providerFailures.current, snapshotsRef.current, providerIds);
         activeSnapshotRequest.current = null;
-        setProviderChecks((current) => ({ ...current, pending: [] }));
+        setProviderChecks((current) => ({ ...current, pending: [], busy: false }));
       }
     }
-  }, urgent), [commitRuntimeState, refreshResetForecast]);
+  // A full manual refresh is stronger than a targeted check and must be queued
+  // behind it, rather than being swallowed by single-flight coalescing.
+  }, urgent && !selected), [commitRuntimeState, refreshResetForecast]);
 
   const loadVolcengineDiagnostics = useCallback(async () => {
     const sequence = ++diagnosticsSequence.current;
@@ -460,10 +458,11 @@ export default function App() {
   const monitoredProviders = useMemo(() => monitoredProviderIds(preferences.pausedProviders), [preferences.pausedProviders]);
 
   useEffect(() => {
-    const delay = nextProviderRefreshDelay(snapshots, monitoredProviders, providerAttempts.current, preferences.resourceMode);
+    if (providerChecks.busy) return;
+    const delay = nextProviderRefreshDelay(snapshots, monitoredProviders, providerAttempts.current, preferences.resourceMode, Date.now(), providerFailures.current);
     const id = window.setTimeout(() => void refresh(), Math.max(1_000, delay));
     return () => window.clearTimeout(id);
-  }, [monitoredProviders, preferences.resourceMode, refresh, snapshots]);
+  }, [monitoredProviders, preferences.resourceMode, refresh, snapshots, providerChecks]);
 
   useEffect(() => {
     const refreshWhenActive = () => { if (document.visibilityState === "visible") void refresh(); };
@@ -565,6 +564,12 @@ export default function App() {
   const savePreferences = useCallback((next: WidgetPreferences) => {
     const sequence = ++preferenceSaveSequence.current;
     const normalized = normalizeWidgetPreferences(next);
+    for (const provider of preferencesRef.current.pausedProviders) {
+      if (!normalized.pausedProviders.includes(provider)) {
+        delete providerAttempts.current[provider];
+        delete providerFailures.current[provider];
+      }
+    }
     preferencesRef.current = normalized;
     setPreferences(normalized);
     setOperationError(null);
@@ -1229,6 +1234,9 @@ export default function App() {
             snapshots={snapshots}
             refreshAttempts={providerChecks.attempts}
             refreshingProviders={providerChecks.pending}
+            refreshInFlight={providerChecks.busy}
+            refreshFailures={providerFailures.current}
+            onRefreshProviders={(providers) => void refresh(true, true, providers)}
             diagnostics={appDiagnostics}
             language={language}
             onClose={() => closeModal("control")}

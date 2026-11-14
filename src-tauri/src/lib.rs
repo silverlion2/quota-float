@@ -496,19 +496,29 @@ fn merge_snapshot_cache(
             .filter(|snapshot| snapshot.provider == *provider)
             .cloned()
             .collect::<Vec<_>>();
-        let transient_failure = next.len() == 1
-            && matches!(next[0].status.as_str(), "loading" | "stale" | "unavailable");
+        let transient_failure = next.is_empty()
+            || (next.len() == 1
+                && matches!(next[0].status.as_str(), "loading" | "stale" | "unavailable"));
         let previous = cache
             .values
             .iter()
             .filter(|entry| {
                 entry.snapshot.provider == *provider
+                    && matches!(entry.snapshot.status.as_str(), "ok" | "stale")
                     && snapshot_has_last_known_good(&entry.snapshot)
             })
             .cloned()
             .collect::<Vec<_>>();
         if transient_failure && !previous.is_empty() {
-            let failure_message = next[0].message.clone();
+            let failure_message = next
+                .first()
+                .and_then(|value| value.message.clone())
+                .or_else(|| {
+                    Some(
+                        "Provider did not return quota data. Check the local app and try again."
+                            .into(),
+                    )
+                });
             merged.extend(previous.into_iter().map(|mut entry| {
                 entry.snapshot.status = "stale".into();
                 entry.snapshot.message = failure_message.clone();
@@ -1922,6 +1932,55 @@ mod snapshot_cache_tests {
         assert!(!valid_snapshot_request_id("contains token"));
         assert!(!valid_snapshot_request_id("../refresh"));
         assert!(!valid_snapshot_request_id(&"x".repeat(65)));
+    }
+
+    #[test]
+    fn disappearing_source_keeps_old_data_and_explicit_sign_out_clears_it() {
+        let old_time = Instant::now() - Duration::from_secs(120);
+        let mut cache = SnapshotCache {
+            values: vec![CachedProviderSnapshot {
+                cached_at: old_time,
+                snapshot: successful_snapshot("claude", 0.0),
+            }],
+            last_full_refresh: None,
+        };
+        merge_snapshot_cache(
+            &mut cache,
+            vec![],
+            &["claude".into()],
+            Instant::now(),
+            false,
+        );
+        assert_eq!(cache.values.len(), 1);
+        assert_eq!(cache.values[0].snapshot.status, "stale");
+        assert_eq!(cache.values[0].cached_at, old_time);
+        assert_eq!(cache.values[0].snapshot.updated_at, "2026-09-07T00:00:00Z");
+        assert_eq!(
+            cache.values[0]
+                .snapshot
+                .weekly_window
+                .as_ref()
+                .unwrap()
+                .remaining_percent,
+            0.0
+        );
+        merge_snapshot_cache(
+            &mut cache,
+            vec![ProviderSnapshot::provider_failure(
+                "claude",
+                "CLAUDE",
+                "signed_out",
+                "Sign in again.",
+            )],
+            &["claude".into()],
+            Instant::now(),
+            false,
+        );
+        assert_eq!(cache.values[0].snapshot.status, "signed_out");
+        assert!(cache.values[0].snapshot.weekly_window.is_none());
+        let mut empty = SnapshotCache::default();
+        merge_snapshot_cache(&mut empty, vec![], &["qoder".into()], Instant::now(), false);
+        assert!(empty.values.is_empty());
     }
 
     #[test]
