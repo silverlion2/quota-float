@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.35 - 2026-11-14
 
 - Upgrade the Tauri updater and native SQLite/TLS/QUIC dependencies to remove known RustSec vulnerabilities; require Rust dependency auditing before release preparation.
 
