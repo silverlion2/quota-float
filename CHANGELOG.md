@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.37 - 2026-11-16
 
 - Integrate AIHOT public quota-reset reports and free-credit source links in the control center, with on-demand native reads, bounded caching, provider filtering and distinct public and personal quota states.
 
