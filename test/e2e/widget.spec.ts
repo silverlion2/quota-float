@@ -82,6 +82,9 @@ describe("Quota Float desktop widget", () => {
     expect(panel.cards).toBe(4);
     expect(panel.overflow).toBeLessThanOrEqual(1);
     await browser.saveScreenshot("output/handoff/aihot-public-reports.png");
+    await browser.$('.aihot-event').scrollIntoView();
+    await expect(browser.$('.aihot-event')).toBeDisplayed();
+    await browser.saveScreenshot("output/handoff/aihot-public-events.png");
   });
 
   it("loads inside Tauri with the test bridge available", async () => {
