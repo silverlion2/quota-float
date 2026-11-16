@@ -601,6 +601,51 @@ describe("Quota Float desktop widget", () => {
     }
   });
 
+  it("keeps complete balance numbers inside both narrow edge bars", async () => {
+    const original = await browser.tauri.execute(async (tauri) => tauri.core.invoke("get_preferences"));
+    const reload = async (preferences: unknown, compact: boolean) => {
+      await browser.tauri.execute(async (tauri, next) => {
+        await tauri.core.invoke("set_preferences", { preferences: next });
+        (window as unknown as Record<string, unknown>).__e2eReloadPending = true;
+        setTimeout(() => window.location.reload(), 50);
+      }, preferences);
+      await browser.waitUntil(async () => browser.tauri.execute((_, collapsed) =>
+        !(window as unknown as Record<string, unknown>).__e2eReloadPending
+          && Boolean(document.querySelector(collapsed ? ".quota-bar" : ".quota-card")), compact,
+      ));
+    };
+    try {
+      for (const edge of ["left", "right"]) {
+        await reload({ ...(original as Record<string, unknown>), compactLayout: "bar", barEdge: edge,
+          language: "zh-CN", pinnedProvider: "qoder", stayExpanded: false,
+          hiddenProviders: ["codex", "claude", "trae", "workbuddy", "volcengine", "antigravity"] }, true);
+        await browser.waitUntil(async () => browser.tauri.execute(() => Math.abs(innerWidth - 72) <= 1),
+          { timeoutMsg: "The native edge bar did not reach its 72px viewport" });
+        const bounds = await browser.tauri.execute(() => {
+          const value = document.querySelector<HTMLElement>(".bar-metric b")!;
+          const metric = value.parentElement!;
+          const unit = metric.querySelector("small")!;
+          const rect = value.getBoundingClientRect();
+          const available = metric.getBoundingClientRect();
+          return { text: value.textContent, overflow: Math.max(available.left - rect.left, rect.right - available.right),
+            textOverflow: value.scrollWidth - value.clientWidth,
+            unitOverlap: rect.bottom - unit.getBoundingClientRect().top,
+            fontSize: parseFloat(getComputedStyle(value).fontSize),
+            widgetOverflow: document.querySelector<HTMLElement>(".quota-bar")!.scrollWidth - 64 };
+        });
+        expect(bounds.text).toBe("9999.9");
+        expect(bounds.overflow).toBeLessThanOrEqual(1);
+        expect(bounds.textOverflow).toBeLessThanOrEqual(1);
+        expect(bounds.unitOverlap).toBeLessThanOrEqual(0);
+        expect(bounds.fontSize).toBeGreaterThanOrEqual(14);
+        expect(bounds.widgetOverflow).toBeLessThanOrEqual(1);
+        await browser.saveScreenshot(`output/handoff/compact-numbers-${edge}.png`);
+      }
+    } finally {
+      await reload(original, false);
+    }
+  });
+
   it("shrinks single-provider layouts and restores full dialog width in the native viewport", async () => {
     const original = await browser.tauri.execute(async (tauri) => tauri.core.invoke("get_preferences"));
     const reloadPreferences = async (preferences: unknown) => {

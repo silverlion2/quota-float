@@ -1239,6 +1239,7 @@ export const QuotaBar = memo(function QuotaBar({
     ? null
     : new Intl.NumberFormat(activeLanguage === "en" ? "en-US" : "zh-CN", { notation: "compact", maximumFractionDigits: 1 }).format(balance);
   const value = remaining !== null ? `${remaining}%` : unlimited ? "∞" : compactBalance ?? "—";
+  // --glyphs counts non-ASCII locale units twice so the fixed-width edge bar fits the full number.
   const suffix = remaining !== null
     ? (activeLanguage === "en" ? "left" : "剩余")
     : snapshot.balanceUnit === "credits"
@@ -1280,7 +1281,7 @@ export const QuotaBar = memo(function QuotaBar({
       title={attentionLabel ? `${activeLanguage === "en" ? "Pending action across providers" : "全部平台待办提醒"}: ${attentionLabel}` : undefined}
       aria-description={attentionLabel ? `${activeLanguage === "en" ? "Pending action across providers" : "全部平台待办提醒"}: ${attentionLabel}` : undefined}
       data-provider-count={dimensions.count}
-      style={{ "--accent-color": accentColor, "--bar-progress": `${progress}%`, "--compact-width": `${dimensions.width}px`, "--compact-height": `${dimensions.height}px`, "--compact-count": dimensions.count } as CSSProperties}
+      style={{ "--accent-color": accentColor, "--bar-progress": `${progress}%`, "--compact-width": `${dimensions.width}px`, "--compact-height": `${dimensions.height}px`, "--compact-count": dimensions.count, "--glyphs": value.replace(/[^ -~]/g, "xx").length } as CSSProperties}
       onMouseOver={(event) => {
         const target = event.target instanceof Element ? event.target : null;
         if (target?.closest(".provider-logo-slider")) {

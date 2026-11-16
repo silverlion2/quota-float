@@ -1593,7 +1593,7 @@ to{opacity:1;transform:none;}}
 .bar-reset svg{width:9px;height:9px;flex:0 0 auto;}
 .quota-bar:not(.quota-bar--top) .bar-details{width:56px;grid-template-rows:48px 17px 16px 12px;gap:1px;justify-items:center;}
 .quota-bar:not(.quota-bar--top) .bar-metric{gap:1px;}
-.quota-bar:not(.quota-bar--top) .bar-metric b{font-size:22px;line-height:1.15;}
+.quota-bar:not(.quota-bar--top) .bar-metric b{max-width:100%;font-size:min(22px, calc(88px / var(--glyphs, 4)));line-height:1.15;white-space:nowrap;}
 .quota-bar:not(.quota-bar--top) .bar-metric small{font-size:7px;}
 .quota-bar.quota-card--theme-light .bar-status--ok{color:#26745a;}
 .quota-bar .bar-status--attention{color:#d99739;}

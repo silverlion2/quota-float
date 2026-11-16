@@ -27,7 +27,8 @@ const mockSnapshots: ProviderSnapshot[] = import.meta.env.DEV || import.meta.env
   shortWindow: null,
   weeklyWindow: null,
   resetCredits: null,
-  balanceRemaining: 1280,
+  // Exercises a long unabridged Chinese compact balance in native UI tests.
+  balanceRemaining: 9999.9,
   balanceUnit: "credits",
   updatedAt: new Date().toISOString(),
   status: "ok",

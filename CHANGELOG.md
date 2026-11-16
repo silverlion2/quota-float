@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Fit long numeric balances inside narrow left/right edge bars without clipping or overlapping the unit; retain the full value and readable percentage size.
+
 ## 0.3.35 - 2026-11-14
 
 - Upgrade the Tauri updater and native SQLite/TLS/QUIC dependencies to remove known RustSec vulnerabilities; require Rust dependency auditing before release preparation.
