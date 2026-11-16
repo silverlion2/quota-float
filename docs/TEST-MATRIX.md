@@ -2,6 +2,8 @@
 
 ## 自动化与代码级验证
 
+2026-11-16 AIHOT 专项：按需读取、原生访问边界、缓存/退避、未知范围、确认与推断状态区分、失败保留、固定来源链接及真实 WebView 合成数据布局。见 [集成边界与性能预算](AIHOT-INTEGRATION-2026-11-16.md)。
+
 2026-11-15 平台恢复专项：按平台/全量刷新顺序、暂停恢复、健康状态去重、单平台空响应与 IPC 失败、零余额、登录失效、渐进重试和整轮超时。原生 E2E 新增健康页筛选、定向检查、说明换行及横向溢出。边界见 [健康与恢复](HEALTH-RECOVERY-2026-11-15.md)，实际发布门禁以本版发布记录为准。
 
 2026-11-06 提醒中心专项：多批次与金额证据、周期安排边界、15 秒内同时到期的批量投递、异步提交期间新提醒、独立开关、暂缓恢复、通知关闭时本地记录及旧状态迁移。见 [提醒中心](REMINDER-CENTER-2026-11-06.md)。
@@ -72,7 +74,7 @@ v0.3.15 完成 318 项前端、102 项 Windows Rust 和 10 项 Windows 原生测
 | 用量导出 | CSV、JSON、SVG、价格目录 | 项目匿名化、会话键与正文排除；价格版本可追溯；原生写入限制格式和大小 | TypeScript 导出测试、Rust 命令审查 |
 | 隐私 | 浏览器与诊断 | 浏览器只用合成数据；诊断不含 token、账号、auth 路径或原始响应 | 桥接测试、静态审查 |
 | 原生 E2E | 编译桌面进程、Tauri bridge、暂停恢复持久化、分离窗口、控制中心、更新弹窗 | 合成数据真实 WebView 启动；原生命令可调用；窗口可创建、渲染和关闭 | [2026-09-08 Windows 原生实测：5 项通过](NATIVE-E2E-2026-09-08.md) |
-| 性能预算 | 入口与懒加载 chunk | 入口 JS ≤ 430 KiB、总 JS ≤ 600 KiB、gzip JS ≤ 182 KiB、CSS ≤ 150 KiB | `npm run build` + `npm run check:bundle`、CI gate |
+| 性能预算 | 入口与懒加载 chunk | 入口 JS ≤ 430 KiB、总 JS ≤ 628 KiB、gzip JS ≤ 195 KiB、CSS ≤ 158 KiB | `npm run build` + `npm run check:bundle`、CI gate |
 | 供应链 | npm/Rust advisories | 高风险 npm advisory 为零；RustSec vulnerability 为零 | `npm audit --audit-level=high`、`cargo audit`、Dependabot/security workflow |
 
 交付时执行 `docs/DESKTOP-DEVELOPMENT-SOP.md` 的完整 fast handoff gate；本轮实际测试数量和命令结果记录在任务交付说明中，避免文档数字随测试增删而失真。

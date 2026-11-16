@@ -1,3 +1,4 @@
+mod aihot;
 mod antigravity;
 mod claude;
 mod codex;
@@ -944,6 +945,15 @@ async fn refresh_snapshots(
         return Err("invalid snapshot refresh request".to_string());
     }
     Ok(fetch_snapshots_uncached(&state, &app, &request_id, provider_ids.as_deref()).await)
+}
+
+#[tauri::command]
+async fn get_aihot_resets(
+    window: tauri::WebviewWindow,
+    state: State<'_, aihot::AiHotState>,
+) -> Result<aihot::AiHotReport, String> {
+    ensure_main_window(&window)?;
+    aihot::fetch(&state).await
 }
 
 #[tauri::command]
@@ -3515,6 +3525,7 @@ pub fn run() {
         .plugin(tauri_plugin_wdio::init())
         .plugin(tauri_plugin_wdio_webdriver::init());
     let app = builder
+        .manage(aihot::AiHotState::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
@@ -3593,6 +3604,7 @@ pub fn run() {
             get_cached_snapshots,
             refresh_snapshots,
             get_codex_reset_forecast,
+            get_aihot_resets,
             get_codex_token_usage,
             get_codex_profile_stats,
             codex_extensions::fetch_codex_extensions,

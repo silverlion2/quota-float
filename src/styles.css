@@ -908,6 +908,9 @@ button.usage-stat-card:hover{border-color:color-mix(in srgb, var(--accent-color,
 .codex-extensions{min-width:0;display:grid;gap:6px;}
 .extensions-note{margin:0;color:var(--ui-muted);}
 .extensions-note:empty{display:none;}
+.aihot-panel .provider-health-copy{overflow-wrap:anywhere;}
+.aihot-panel .provider-health-copy header{flex-wrap:wrap;}
+.aihot-event{border-top:1px solid var(--ui-border);padding-top:4px;margin-top:6px;}
 .extensions-search input{width:100%;min-width:0;box-sizing:border-box;padding:6px 8px;border:1px solid var(--ui-border);border-radius:7px;background:var(--ui-surface);color:var(--ui-text);font:inherit;}
 .codex-extensions .extensions-description{white-space:normal;line-height:1.5;}
 .codex-extensions .control-section-title button{overflow-wrap:anywhere;text-align:left;}

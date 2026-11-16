@@ -7,8 +7,9 @@ import { nextProviderRefreshDelay, type ProviderAttemptTimes, type ProviderFailu
 import type { AppDiagnostics, Language, ProviderId, ProviderSnapshot, RuntimeState, SavedLayout, SnapshotStatus, WidgetPreferences } from "../types";
 import { ProviderMark } from "./ProviderMark";
 import { CodexExtensionsPanel } from "./CodexExtensionsPanel";
+import { AiHotPanel } from "./AiHotPanel";
 
-type Tab = "display" | "providers" | "health" | "alerts" | "activity" | "system" | "extensions";
+type Tab = "display" | "providers" | "health" | "alerts" | "activity" | "system" | "extensions" | "aihot";
 export type ControlOperationKind = "export" | "import" | "restore" | "diagnostics" | "autostart";
 export interface ControlOperation {
   kind: ControlOperationKind;
@@ -291,7 +292,7 @@ export function ControlCenter({ preferences, runtimeState, snapshots, refreshAtt
         <button type="button" onClick={onClose} aria-label={zh ? "关闭" : "Close"} title={zh ? "关闭" : "Close"} data-dialog-initial-focus><X /></button>
       </header>
       <nav className="control-tabs" aria-label={labels.title}>
-        {([['display', Layout, labels.display], ['providers', Eye, labels.providerTab], ['health', Heartbeat, healthLabels.tab], ['alerts', Bell, labels.alerts], ['activity', ClockCounterClockwise, labels.activity], ['system', GearSix, labels.system], ['extensions', Plus, zh ? '扩展' : 'Extensions']] as const).map(([id, Icon, label]) => (
+        {([['display', Layout, labels.display], ['providers', Eye, labels.providerTab], ['health', Heartbeat, healthLabels.tab], ['alerts', Bell, labels.alerts], ['activity', ClockCounterClockwise, labels.activity], ['system', GearSix, labels.system], ['extensions', Plus, zh ? '扩展' : 'Extensions'], ['aihot', ArrowClockwise, 'AIHOT']] as const).map(([id, Icon, label]) => (
           <button key={id} type="button" className={tab === id ? "is-active" : ""} aria-current={tab === id ? "page" : undefined} onClick={() => setTab(id)}><Icon /><span>{label}</span></button>
         ))}
       </nav>
@@ -299,6 +300,7 @@ export function ControlCenter({ preferences, runtimeState, snapshots, refreshAtt
       <div className="control-body">
         <div className="control-view" key={tab}>
           {tab === "extensions" ? <CodexExtensionsPanel language={language} /> : null}
+          {tab === "aihot" ? <AiHotPanel language={language} /> : null}
           {tab === "display" ? <>
           <div className="control-grid">
             <label className="control-field"><span>{labels.layout}</span><select value={preferences.layoutMode} onChange={(event) => onPreferences({ ...preferences, layoutMode: event.target.value as WidgetPreferences['layoutMode'] })}><option value="compact">{labels.compact}</option><option value="standard">{labels.standard}</option><option value="detailed">{labels.detailed}</option></select></label>

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Integrate AIHOT public quota-reset reports and free-credit source links in the control center, with on-demand native reads, bounded caching, provider filtering and distinct public and personal quota states.
+
 ## 0.3.36 - 2026-11-16
 
 - Fit long numeric balances inside narrow left/right edge bars without clipping or overlapping the unit; retain the full value and readable percentage size.

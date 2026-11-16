@@ -65,6 +65,25 @@ describe("Quota Float desktop widget", () => {
     });
   });
 
+  it("shows AIHOT public reports on demand without confusing them with personal balances", async () => {
+    await openControlCenter();
+    await browser.$('.control-tabs button*=AIHOT').click();
+    await browser.$('.aihot-panel').waitForDisplayed();
+    await expect(browser.$('.aihot-panel')).toHaveText(expect.stringContaining("Load public reports to begin"));
+    await browser.$('.aihot-panel button*=Load public reports').click();
+    await browser.waitUntil(async () => (await browser.$('.aihot-panel').getText()).includes("Example reset announcement"));
+    const panel = await browser.tauri.execute(() => {
+      const root = document.querySelector<HTMLElement>('.aihot-panel')!;
+      return { text: root.textContent, overflow: root.scrollWidth - root.clientWidth, cards: root.querySelectorAll('.provider-health-item').length };
+    });
+    expect(panel.text).toContain("Announced");
+    expect(panel.text).toContain("your personal balance");
+    expect(panel.text).toContain("Older data");
+    expect(panel.cards).toBe(4);
+    expect(panel.overflow).toBeLessThanOrEqual(1);
+    await browser.saveScreenshot("output/handoff/aihot-public-reports.png");
+  });
+
   it("loads inside Tauri with the test bridge available", async () => {
     const identity = await browser.tauri.execute(() => ({
       title: document.title,

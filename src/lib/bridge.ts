@@ -2,6 +2,7 @@ import type { AppDiagnostics, BarPlacement, CockpitRegion, CodexProfileStats, Co
 import { EMPTY_RUNTIME_STATE, normalizeRuntimeState } from "./activity";
 import { DEFAULT_WIDGET_PREFERENCES } from "./preferences";
 import type { CodexExtensionsReport } from "./codexExtensions";
+import type { AiHotReport } from "./aihot";
 import { createPreviewResetForecast } from "./resetForecastPreview";
 
 const defaultPreferences = DEFAULT_WIDGET_PREFERENCES;
@@ -271,6 +272,22 @@ export async function fetchCodexExtensions(): Promise<CodexExtensionsReport> {
   requireNativeDataAccess();
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<CodexExtensionsReport>("fetch_codex_extensions");
+}
+
+export async function fetchAiHotResets(): Promise<AiHotReport> {
+  if ((import.meta.env.DEV || import.meta.env.VITE_WDIO === "1") && usesSyntheticData()) return {
+    checkedAt: new Date().toISOString(),
+    sources: [{ provider: "codex", status: "healthy", updatedAt: new Date().toISOString(),
+      sourceUrl: "https://aihot.news/codex-reset", error: null,
+      events: [{ id: "preview-reset", title: "Example reset announcement", updatedAt: new Date().toISOString(), status: "announced", scope: "Eligible accounts only",
+        reportedAt: null, url: "https://aihot.news/codex-reset" }] },
+    { provider: "claude", status: "healthy", updatedAt: new Date().toISOString(), sourceUrl: "https://aihot.news/claude-reset", events: [], error: null },
+    { provider: "antigravity", status: "stale", updatedAt: new Date(Date.now() - 86400000).toISOString(), sourceUrl: "https://aihot.news/antigravity-reset", events: [], error: "unavailable" },
+    { provider: "grok-bot", status: "unavailable", updatedAt: null, sourceUrl: "https://aihot.news/grok-bot-reset", events: [], error: "unavailable" }],
+  };
+  requireNativeDataAccess();
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<AiHotReport>("get_aihot_resets");
 }
 
 export type UsageExportFormat = "csv" | "json" | "svg" | "md";

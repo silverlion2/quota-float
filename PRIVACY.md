@@ -61,6 +61,8 @@ Qoder and Antigravity collection are local-only. Volcengine network requests are
 
 No telemetry, analytics, crash reporting, or third-party tracking is included.
 
+The optional AIHOT panel reads public reset reports only when you request them, from `https://aihot.news/api/v1/{provider}-resets/recent` for Codex, Claude, Antigravity and Grok Bot. No provider credentials, account data, quota values or analytics identifiers accompany those requests. Bounded reports are cached in memory; requests respect a minimum ten-minute interval and server backoff. Public reports never change personal quota values or reset times. Free-credit offers and source details open in the system browser only when clicked, where the destination website's privacy policy applies.
+
 Token cost estimates use a versioned offline price catalog with a visible source date. Monthly budget forecasts and alerts are calculated locally. Quota Float does not call a billing API or send local Token counts anywhere. Opening the pricing-source link is an explicit user action.
 
 ## Logging

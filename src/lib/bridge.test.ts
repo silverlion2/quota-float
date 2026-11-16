@@ -9,6 +9,7 @@ import {
   fetchSnapshotsProgressively,
   fetchCodexTokenUsage,
   fetchCodexExtensions,
+  fetchAiHotResets,
   getVolcengineDiagnostics,
   getWidgetContentHeightLimit,
   listenDesktopEvents,
@@ -87,6 +88,7 @@ describe("widget transitions", () => {
     ["token usage", () => fetchCodexTokenUsage()],
     ["account Profile", () => fetchCodexProfileStats()],
     ["extensions", () => fetchCodexExtensions()],
+    ["AIHOT public reports", () => fetchAiHotResets()],
     ["Volcengine diagnostics", () => getVolcengineDiagnostics()],
     ["Volcengine reconnect", () => reconnectVolcengine()],
   ] as const)("rejects production browser %s access instead of showing synthetic success", async (_name, read) => {
@@ -113,6 +115,8 @@ describe("widget transitions", () => {
     expect(usesSyntheticData()).toBe(false);
     await fetchCodexResetForecast();
     expect(api.invoke).toHaveBeenCalledWith("get_codex_reset_forecast");
+    await fetchAiHotResets();
+    expect(api.invoke).toHaveBeenCalledWith("get_aihot_resets");
   });
 
   it("keeps native E2E provider reads on isolated synthetic data", async () => {
@@ -124,6 +128,7 @@ describe("widget transitions", () => {
     const profile = await fetchCodexProfileStats();
     const usage = await fetchCodexTokenUsage(true, true);
     const extensions = await fetchCodexExtensions();
+    const aihot = await fetchAiHotResets();
     const diagnostics = await getVolcengineDiagnostics();
     const reconnected = await reconnectVolcengine();
 
@@ -134,6 +139,8 @@ describe("widget transitions", () => {
     expect(profile).toMatchObject({ lifetimeTokens: 42_000_000_000, peakDailyTokens: 1_200_000_000 });
     expect(usage.buckets.length).toBeGreaterThan(0);
     expect(extensions).toMatchObject({ status: "ok", entries: [{ name: "example-docs" }, { name: "example-browser" }, { name: "example-review" }, { name: "example-design@local" }] });
+    expect(aihot.sources).toHaveLength(4);
+    expect(aihot.sources[0].events[0]).toMatchObject({ status: "announced", reportedAt: null });
     expect(diagnostics).toMatchObject({ authenticated: true, profileName: "coding-plan_personal" });
     expect(reconnected).toEqual(diagnostics);
     expect(api.invoke).not.toHaveBeenCalled();
