@@ -67,10 +67,10 @@ describe("Quota Float desktop widget", () => {
 
   it("shows AIHOT public reports on demand without confusing them with personal balances", async () => {
     await openControlCenter();
-    await browser.$('.control-tabs button*=AIHOT').click();
+    await browser.$('.control-tabs').$('button=AIHOT').click();
     await browser.$('.aihot-panel').waitForDisplayed();
     await expect(browser.$('.aihot-panel')).toHaveText(expect.stringContaining("Load public reports to begin"));
-    await browser.$('.aihot-panel button*=Load public reports').click();
+    await browser.$('.aihot-panel').$('button*=Load public reports').click();
     await browser.waitUntil(async () => (await browser.$('.aihot-panel').getText()).includes("Example reset announcement"));
     const panel = await browser.tauri.execute(() => {
       const root = document.querySelector<HTMLElement>('.aihot-panel')!;
