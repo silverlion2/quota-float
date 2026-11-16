@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.36 - 2026-11-16
 
 - Fit long numeric balances inside narrow left/right edge bars without clipping or overlapping the unit; retain the full value and readable percentage size.
 
