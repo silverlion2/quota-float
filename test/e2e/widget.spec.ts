@@ -82,8 +82,18 @@ describe("Quota Float desktop widget", () => {
     expect(panel.cards).toBe(4);
     expect(panel.overflow).toBeLessThanOrEqual(1);
     await browser.saveScreenshot("output/handoff/aihot-public-reports.png");
-    await browser.$('.aihot-event').scrollIntoView();
-    await expect(browser.$('.aihot-event')).toBeDisplayed();
+    const eventBounds = await browser.tauri.execute(async () => {
+      const event = document.querySelector<HTMLElement>('.aihot-event')!;
+      const body = document.querySelector<HTMLElement>('.control-body')!;
+      event.scrollIntoView({ block: 'center', behavior: 'instant' });
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      const box = event.getBoundingClientRect();
+      const viewport = body.getBoundingClientRect();
+      return { top: box.top - viewport.top, bottom: viewport.bottom - box.bottom, scroll: body.scrollTop };
+    });
+    expect(eventBounds.top).toBeGreaterThanOrEqual(0);
+    expect(eventBounds.bottom).toBeGreaterThanOrEqual(0);
+    expect(eventBounds.scroll).toBeGreaterThan(0);
     await browser.saveScreenshot("output/handoff/aihot-public-events.png");
   });
 
