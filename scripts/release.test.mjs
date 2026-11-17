@@ -90,7 +90,7 @@ describe("release automation", () => {
     expect(workflow).toContain('args: "--bundles nsis --config src-tauri/tauri.release.conf.json"');
     expect(workflow).toContain("runs-on: windows-latest");
     expect(workflow).toContain('args: "--target universal-apple-darwin --bundles app,dmg --config src-tauri/tauri.release.conf.json"');
-    expect(workflow).toContain("runs-on: macos-15-intel");
+    expect(workflow).toMatch(/runs-on: macos-15\s*\n/);
     expect(workflow).toContain("bash scripts/verify-macos-universal.sh");
     expect(workflow).toMatch(/prerelease:.*contains\(needs\.verify\.outputs\.tag, '-'/);
     expect(workflow).toContain("verify-windows-upgrade.ps1");

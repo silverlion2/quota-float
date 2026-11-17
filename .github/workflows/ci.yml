@@ -64,7 +64,7 @@ jobs:
             build-command: >-
               npm run tauri -- build --config src-tauri/tauri.ci.conf.json
             artifact-path: src-tauri/target/release/bundle/**
-          - os: macos-15-intel
+          - os: macos-15
             artifact-name: quota-float-macos-universal-unsigned
             build-command: >-
               npm run tauri -- build --target universal-apple-darwin --config src-tauri/tauri.ci.conf.json

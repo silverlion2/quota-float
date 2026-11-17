@@ -94,6 +94,8 @@ npm run release -- patch
 - Windows 桌面测试和 Tauri build。
 - macOS 桌面测试和 Tauri Universal build。
 
+macOS CI/release 使用 GitHub 标准 Apple Silicon `macos-15` 构建机。2026-11-17 的 v0.3.38 发布在 Intel 池连续两次无法分配机器，因此保留该草稿与标签，通过下一补丁版本切换构建池。所有测试、Universal 构建和双架构验证仍必须通过；不能用构建池切换绕过失败的代码检查。
+
 macOS CI/release 会显式安装：
 
 - `aarch64-apple-darwin`

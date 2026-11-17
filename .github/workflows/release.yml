@@ -341,7 +341,7 @@ jobs:
     needs: [verify, create-release-ref, create-draft]
     permissions:
       contents: write
-    runs-on: macos-15-intel
+    runs-on: macos-15
     outputs:
       release_id: ${{ needs.create-draft.outputs.release_id }}
     steps:

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Ship the AIHOT platform-linked reports, unread badges, reminder integration and in-app free-credit catalogue from the unpublished v0.3.38 draft.
+- Move macOS CI and release builds to the standard Apple Silicon runner after repeated Intel runner allocation failures, retaining all native tests and Universal x86_64/arm64 artifact gates.
+
 ## 0.3.38 - 2026-11-17
 
 - Link AIHOT public reports to enabled platforms, compact unread badges and the reminder center, with persisted read state and opt-in, confirmation-only desktop notices.
