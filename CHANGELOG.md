@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.38 - 2026-11-17
 
 - Link AIHOT public reports to enabled platforms, compact unread badges and the reminder center, with persisted read state and opt-in, confirmation-only desktop notices.
 - Display the documented AIHOT free-credit catalogue inside the app, including conditions, source verification and explicit deadlines; validate claim navigation through native cached offer IDs.
