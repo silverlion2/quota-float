@@ -36,8 +36,10 @@ describe("Quota Float desktop widget", () => {
         ...preferences, stayExpanded: true, pinnedProvider: "codex", resourceMode: "focus",
         expandedLayout: "dashboard", compactLayout: "float", language: "en",
         pausedProviders: [], hiddenProviders: [], automaticUpdates: false,
-        aihotEnabled: false, aihotNotificationsEnabled: false, aihotReadKeys: [],
+        aihotEnabled: false, aihotNotificationsEnabled: false,
       } });
+      const runtime = await tauri.core.invoke("get_runtime_state") as Record<string, unknown>;
+      await tauri.core.invoke("set_runtime_state", { runtimeState: { ...runtime, aihotReadKeys: [] } });
       (window as unknown as Record<string, unknown>).__e2eReloadPending = true;
       setTimeout(() => window.location.reload(), 50);
     });
@@ -66,7 +68,8 @@ describe("Quota Float desktop widget", () => {
     });
   });
 
-  it("links AIHOT public reports and credit conditions without changing personal balances", async () => {
+  it("links AIHOT public reports and credit conditions without changing personal balances", async function () {
+    this.timeout(90_000);
     await openControlCenter();
     await browser.$('.control-tabs').$('button=AIHOT').click();
     await browser.$('.aihot-panel').waitForDisplayed();
@@ -74,7 +77,12 @@ describe("Quota Float desktop widget", () => {
     await browser.$('.aihot-panel').$('button*=Load public reports').click();
     await browser.waitUntil(async () => (await browser.$('.aihot-panel').getText()).includes("Example reset announcement"));
     await expect(browser.$('.aihot-panel select')).toHaveValue("enabled");
-    await browser.$('.aihot-panel select').selectByAttribute('value', 'all');
+    await browser.tauri.execute(() => {
+      const filter = document.querySelector<HTMLSelectElement>('.aihot-panel select')!;
+      filter.value = 'all';
+      filter.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await browser.waitUntil(async () => browser.tauri.execute(() => document.querySelectorAll('.aihot-panel .provider-health-item').length === 4), { timeoutMsg: 'All public providers did not render after selecting All' });
     const panel = await browser.tauri.execute(() => {
       const root = document.querySelector<HTMLElement>('.aihot-panel')!;
       return { text: root.textContent, overflow: root.scrollWidth - root.clientWidth, cards: root.querySelectorAll('.provider-health-item').length };
@@ -115,6 +123,18 @@ describe("Quota Float desktop widget", () => {
     expect(creditBounds.overflow).toBeLessThanOrEqual(1);
     expect(creditBounds.text).toContain("100 example credits");
     await browser.saveScreenshot("output/handoff/aihot-credit-catalogue.png");
+    const creditActions = await browser.tauri.execute(async () => {
+      const actions = document.querySelector<HTMLElement>('.aihot-credit-actions')!;
+      actions.scrollIntoView({ block: 'center', behavior: 'instant' });
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      const rect = actions.getBoundingClientRect();
+      const viewport = document.querySelector('.control-body')!.getBoundingClientRect();
+      return { top: rect.top - viewport.top, bottom: viewport.bottom - rect.bottom, overflow: actions.scrollWidth - actions.clientWidth };
+    });
+    expect(creditActions.top).toBeGreaterThanOrEqual(0);
+    expect(creditActions.bottom).toBeGreaterThanOrEqual(0);
+    expect(creditActions.overflow).toBeLessThanOrEqual(1);
+    await browser.saveScreenshot("output/handoff/aihot-credit-source-actions.png");
 
     await browser.tauri.execute(() => document.querySelector('.aihot-preferences')?.scrollIntoView({ block: 'center' }));
     await browser.$('.aihot-preferences summary').click();
@@ -126,30 +146,34 @@ describe("Quota Float desktop widget", () => {
     }));
     await browser.tauri.execute(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
     await browser.waitUntil(async () => (await browser.$('.aihot-summary').getText()).includes('1 unread'));
-    await browser.tauri.execute(async (tauri) => {
-      const p = await tauri.core.invoke('get_preferences') as Record<string, unknown>;
-      await tauri.core.invoke('set_preferences', { preferences: { ...p, compactLayout: 'bar', barEdge: 'right', stayExpanded: false } });
-      setTimeout(() => window.location.reload(), 50);
-    });
-    await browser.$('.quota-bar .compact-aihot-badge').waitForDisplayed({ timeout: 15_000 });
-    const badgeBounds = await browser.tauri.execute(() => {
-      const badge = document.querySelector('.quota-bar .compact-aihot-badge')!.getBoundingClientRect();
-      const bar = document.querySelector('.quota-bar')!.getBoundingClientRect();
-      const value = document.querySelector('.bar-metric b')!.getBoundingClientRect();
-      const freshness = document.querySelector('.bar-freshness')!.getBoundingClientRect();
-      return { overlapsFreshness: badge.left < freshness.right && badge.right > freshness.left && badge.top < freshness.bottom && badge.bottom > freshness.top, inside: badge.left >= bar.left && badge.right <= bar.right && badge.top >= bar.top && badge.bottom <= bar.bottom,
-        overlapsValue: badge.left < value.right && badge.right > value.left && badge.top < value.bottom && badge.bottom > value.top };
-    });
-    expect(badgeBounds.inside).toBe(true);
-    expect(badgeBounds.overlapsValue).toBe(false);
-    expect(badgeBounds.overlapsFreshness).toBe(false);
-    await browser.saveScreenshot('output/handoff/aihot-compact-unread.png');
+    for (const edge of ['top', 'left', 'right'] as const) {
+      await browser.tauri.execute(async (tauri, selectedEdge) => {
+        const p = await tauri.core.invoke('get_preferences') as Record<string, unknown>;
+        await tauri.core.invoke('set_preferences', { preferences: { ...p, compactLayout: 'bar', barEdge: selectedEdge, stayExpanded: false } });
+        setTimeout(() => window.location.reload(), 50);
+      }, edge);
+      await browser.$(`.quota-bar--${edge} .compact-aihot-badge`).waitForDisplayed({ timeout: 15_000 });
+      const badgeBounds = await browser.tauri.execute(() => {
+        const badge = document.querySelector('.quota-bar .compact-aihot-badge')!.getBoundingClientRect();
+        const bar = document.querySelector('.quota-bar')!.getBoundingClientRect();
+        const value = document.querySelector('.bar-metric b')!.getBoundingClientRect();
+        const freshness = document.querySelector('.bar-freshness')!.getBoundingClientRect();
+        return { overlapsFreshness: freshness.width > 0 && freshness.height > 0 && badge.left < freshness.right && badge.right > freshness.left && badge.top < freshness.bottom && badge.bottom > freshness.top,
+          inside: badge.left >= bar.left && badge.right <= bar.right && badge.top >= bar.top && badge.bottom <= bar.bottom,
+          overlapsValue: badge.left < value.right && badge.right > value.left && badge.top < value.bottom && badge.bottom > value.top };
+      });
+      console.log('AIHOT compact badge geometry', { edge, ...badgeBounds });
+      expect(badgeBounds.inside).toBe(true);
+      expect(badgeBounds.overlapsValue).toBe(false);
+      expect(badgeBounds.overlapsFreshness).toBe(false);
+      await browser.saveScreenshot(`output/handoff/aihot-compact-unread-${edge}.png`);
+    }
     await browser.$('.quota-bar .compact-aihot-badge').click();
     await browser.$('.aihot-panel').waitForDisplayed();
     await browser.tauri.execute(() => document.querySelector('.aihot-filter-row')?.scrollIntoView({ block: 'center' }));
     await browser.$('.aihot-filter-row').$('button=Mark reports read').click();
     await browser.waitUntil(async () => browser.tauri.execute(async (tauri) => {
-      const p = await tauri.core.invoke('get_preferences') as Record<string, unknown>;
+      const p = await tauri.core.invoke('get_runtime_state') as Record<string, unknown>;
       return Array.isArray(p.aihotReadKeys) && p.aihotReadKeys.length === 1;
     }));
     await browser.tauri.execute(async (tauri) => {
@@ -555,11 +579,11 @@ describe("Quota Float desktop widget", () => {
       return Object.keys(runtime.alertSnoozes ?? {}).some((key) => key.startsWith("action:codex:reset-expiry:"))
         && runtime.actionAlertHistory?.some(item => item.provider === "codex" && item.status === "active");
     }), { timeout: 3000, timeoutMsg: "Reminder snooze was not persisted" });
-    await browser.tauri.execute(() => document.querySelectorAll<HTMLButtonElement>(".action-alerts__filters button")[3].click());
+    await browser.$(".action-alerts__filters").$("button=Later").click();
     expect(await browser.$$(".action-alerts__queue article")).toHaveLength(1);
     await browser.tauri.execute(() => document.querySelector<HTMLButtonElement>(".is-snoozed .action-alerts__actions button:nth-child(2)")!.click());
     await browser.waitUntil(async () => (await browser.$$(".action-alerts__paused")).length === 0, { timeout: 3000 });
-    await browser.tauri.execute(() => document.querySelectorAll<HTMLButtonElement>(".action-alerts__filters button")[0].click());
+    await browser.$(".action-alerts__filters").$("button=All").click();
     await browser.tauri.execute(() => document.querySelector<HTMLButtonElement>(".action-alerts__heading button")!.click());
   });
 

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { canDeliverActionAlert, snoozeActionAlert, useActionAlerts } from "./useActionAlerts";
+import { canDeliverActionAlert, recordActionAlertDeliveries, snoozeActionAlert, useActionAlerts } from "./useActionAlerts";
 import { buildActionAlerts } from "./actionAlerts";
 import { buildAiHotActionAlerts, buildAiHotSignals } from "./aihotIntegration";
 import type { AiHotReport } from "./aihot";
@@ -28,6 +28,27 @@ describe("public AIHOT reminder delivery", () => {
   const publicPrefs = { ...prefs, aihotEnabled: true, aihotNotificationsEnabled: true };
   const alertsAt = (date: Date) => buildAiHotActionAlerts(buildAiHotSignals(publicReport, { enabled: true, enabledProviders: ["codex"] }, date), "en");
   const publicAlert = alertsAt(now)[0];
+
+  it("keeps public receipts when a personal batch fills its independent budget", () => {
+    const previous = { legacy: at(-10), [publicAlert.id]: at(-10), ...Object.fromEntries(Array.from({ length: 256 }, (_, index) => [`action:personal-${index}`, at(-10)])) };
+    const personalBatch = Array.from({ length: 300 }, (_, index) => ({ ...alert, id: `action:new-personal-${index}` }));
+    const receipts = recordActionAlertDeliveries(previous, personalBatch, at(0));
+    expect(receipts[publicAlert.id]).toBe(at(-10));
+    expect(receipts.legacy).toBe(at(-10));
+    expect(Object.keys(receipts).filter(key => key.startsWith("action:") && !key.startsWith("action:aihot:"))).toHaveLength(256);
+    expect(canDeliverActionAlert(publicAlert, publicPrefs, { ...state(), lastNotifications: receipts }, now)).toBe(false);
+  });
+
+  it("bounds public receipts independently and preserves personal and legacy cooldowns", () => {
+    const previous = { legacy: at(-10), [alert.id]: at(-10) };
+    const publicBatch = Array.from({ length: 300 }, (_, index) => ({ ...publicAlert, id: `action:aihot:codex:synthetic-${index}:confirmed` }));
+    const receipts = recordActionAlertDeliveries(previous, publicBatch, at(0));
+    expect(Object.keys(receipts).filter(key => key.startsWith("action:aihot:"))).toHaveLength(256);
+    expect(receipts[alert.id]).toBe(at(-10));
+    expect(receipts.legacy).toBe(at(-10));
+    expect(receipts[publicBatch.at(-1)!.id]).toBe(at(0));
+    expect(normalizeRuntimeState({ ...state(), lastNotifications: receipts }).lastNotifications).toEqual(receipts);
+  });
 
   it("requires separate opt-ins, confirmed status, unread/fresh state and enabled provider", () => {
     expect(canDeliverActionAlert(publicAlert, publicPrefs, state(), now)).toBe(true);

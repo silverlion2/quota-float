@@ -6,6 +6,8 @@ import { DEFAULT_PROVIDER_ORDER } from "./providers";
 export const AIHOT_SOURCE_MAX_AGE_MS = 6 * 60 * 60_000;
 export const AIHOT_EVENT_MAX_AGE_MS = 7 * 86400_000;
 export const AIHOT_READ_KEY_LIMIT = 256;
+// Bound badges/reminders below persisted read capacity; the source panel still displays the full report.
+export const AIHOT_SIGNAL_LIMIT = 128;
 const skew = 60_000;
 
 export interface AiHotSignalOptions {
@@ -92,7 +94,8 @@ export function buildAiHotSignals(report: AiHotReport | null | undefined, option
   // A duplicated pending record must not compete with the same event's confirmation.
   const confirmed = new Set([...signals.values()].filter(signal => signal.status === "confirmed").map(signal => `${signal.provider}:${signal.eventId}`));
   return [...signals.values()].filter(signal => signal.status === "confirmed" || !confirmed.has(`${signal.provider}:${signal.eventId}`))
-    .sort((a, b) => timestamp(b.event.updatedAt) - timestamp(a.event.updatedAt) || a.key.localeCompare(b.key));
+    .sort((a, b) => timestamp(b.event.updatedAt) - timestamp(a.event.updatedAt) || a.key.localeCompare(b.key))
+    .slice(0, AIHOT_SIGNAL_LIMIT);
 }
 
 export function markAiHotSignalsRead(existing: readonly string[], signals: readonly AiHotSignal[]): string[] {

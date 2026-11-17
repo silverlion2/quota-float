@@ -8,6 +8,17 @@ import { reconcileActionAlertHistory } from "./actionAlertLifecycle";
 
 const noPublicAlerts = (_now: Date): ActionAlert[] => [];
 
+/** Independent receipt budgets prevent busy personal reminders from making public news due again. */
+export function recordActionAlertDeliveries(previous: Record<string, string>, submitted: readonly ActionAlert[], at: string): Record<string, string> {
+  const sentIds = new Set(submitted.map(alert => alert.id));
+  const retained = Object.entries(previous).filter(([key]) => !sentIds.has(key));
+  const legacy = retained.filter(([key]) => !key.startsWith("action:"));
+  const next = [...retained, ...submitted.map(alert => [alert.id, at] as [string, string])];
+  const publicReceipts = next.filter(([key]) => key.startsWith("action:aihot:")).slice(-256);
+  const personalReceipts = next.filter(([key]) => key.startsWith("action:") && !key.startsWith("action:aihot:")).slice(-256);
+  return Object.fromEntries([...legacy, ...personalReceipts, ...publicReceipts]);
+}
+
 export function canDeliverActionAlert(alert: ActionAlert, preferences: WidgetPreferences, state: RuntimeState, now: Date): boolean {
   const expiry = alert.kind === "reset-expiry" || alert.kind === "credit-expiry" || alert.kind === "stale-expiry";
   if (!preferences.notificationsEnabled || (expiry && preferences.notifyOnCreditExpiry === false)) return false;
@@ -92,16 +103,11 @@ export function useActionAlerts(
         for (const alert of submitted) attempts.current.delete(alert.id);
         const deliveredAt = new Date().toISOString();
         const state = runtime.current;
-        // Keep legacy cooldowns, bound only this feature's delivery receipts.
-        const legacy = Object.entries(state.lastNotifications).filter(([key]) => !key.startsWith("action:"));
-        const sentIds = new Set(submitted.map(alert => alert.id));
-        const receipts = Object.entries(state.lastNotifications).filter(([key]) => key.startsWith("action:") && !sentIds.has(key));
-        const nextReceipts = [...receipts, ...submitted.map(alert => [alert.id, deliveredAt])].slice(-256);
         const events = submitted.map(alert => ({ id: `${alert.id}:sent`, provider: alert.provider, kind: "warning" as const,
           occurredAt: deliveredAt, title: alert.title, detail: alert.detail }));
         const eventIds = new Set(events.map(event => event.id));
         commit({ ...state,
-          lastNotifications: Object.fromEntries([...legacy, ...nextReceipts]),
+          lastNotifications: recordActionAlertDeliveries(state.lastNotifications, submitted, deliveredAt),
           events: [...events, ...state.events.filter(item => !eventIds.has(item.id))].slice(0, 200),
         });
         if (!cancelled) setDeliveryIssue(false);

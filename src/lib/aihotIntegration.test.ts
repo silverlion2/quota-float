@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aiHotEventKey, aiHotLocalProvider, buildAiHotActionAlerts, buildAiHotSignals, enabledAiHotProviders, markAiHotSignalsRead, matchesAiHotCreditProvider } from "./aihotIntegration";
+import { AIHOT_SIGNAL_LIMIT, aiHotEventKey, aiHotLocalProvider, buildAiHotActionAlerts, buildAiHotSignals, enabledAiHotProviders, markAiHotSignalsRead, matchesAiHotCreditProvider } from "./aihotIntegration";
 import type { AiHotEvent, AiHotReport, AiHotSource } from "./aihot";
 
 const now = new Date("2026-11-17T12:00:00Z");
@@ -58,6 +58,20 @@ describe("public AIHOT relevance and freshness", () => {
 });
 
 describe("stable public event read semantics", () => {
+  it("bounds actionable signals before read filtering so marking 300 source events read cannot cycle older alerts", () => {
+    const largeReport: AiHotReport = { checkedAt: at(0), sources: options.enabledProviders.map(provider => ({ ...source, provider,
+      events: Array.from({ length: 100 }, (_, index) => ({ ...event, id: `synthetic-${provider}-${index}`, updatedAt: at(-index / 100) })) })) };
+    const signals = buildAiHotSignals(largeReport, options, now);
+    expect(signals).toHaveLength(AIHOT_SIGNAL_LIMIT);
+    expect(largeReport.sources.flatMap(item => item.events)).toHaveLength(300);
+    const readEventKeys = markAiHotSignalsRead([], signals);
+    const repeated = buildAiHotSignals(largeReport, { ...options, readEventKeys }, now);
+    expect(repeated.map(signal => signal.key)).toEqual(signals.map(signal => signal.key));
+    expect(repeated.filter(signal => signal.unread)).toEqual([]);
+    expect(buildAiHotActionAlerts(repeated, "en")).toEqual([]);
+    const reversed = { ...largeReport, sources: [...largeReport.sources].reverse().map(item => ({ ...item, events: [...item.events].reverse() })) };
+    expect(buildAiHotSignals(reversed, { ...options, readEventKeys }, now).map(signal => signal.key)).toEqual(signals.map(signal => signal.key));
+  });
   it("does not create new unread events for repeated polls, edits or pending progress", () => {
     const first = buildAiHotSignals(report(), options, now);
     const readEventKeys = markAiHotSignalsRead([], first);

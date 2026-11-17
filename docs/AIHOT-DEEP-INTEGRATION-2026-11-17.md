@@ -9,6 +9,7 @@ The expanded quota view now contains a visible AIHOT entry. Control center -> AI
 - Public reports have their own category and evidence text. They never modify account balances, personal reset dates, quota history or forecast probabilities. Unknown eligibility remains unknown.
 - Only source-confirmed reports can produce desktop notifications. Integration, the AIHOT notification switch and the global notification switch must all be enabled; quiet hours, hidden/paused providers, read state, freshness and delivery receipts are rechecked before submission. Pending announcements remain in-app only.
 - A stable event identity suppresses repeated notifications on refresh or text edits. A transition to confirmed is a new public phase. Marking reports read is persisted locally and removes their reminder/badge. Failed or expired sources stop generating signals; previously fetched messages remain visibly stale in the source panel.
+- Badges/reminders track the latest 128 eligible deduplicated signals before unread filtering, so marking them read cannot expose another older batch. The source panel still displays all fetched reports. Read keys retain 256 entries; public and personal delivery receipts have separate 256-entry limits so personal activity cannot rearm a delivered public report.
 - Source freshness is six hours; event/confirmation relevance is at most seven days. These are public-information validity limits, not personal quota deadlines. A source editing an old confirmation does not make it new again.
 
 ## In-app free-credit catalogue
