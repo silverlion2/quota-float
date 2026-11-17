@@ -1,5 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { AiHotSummary } from "./components/AiHotSummary";
+import { useAiHot } from "./lib/useAiHot";
+import { buildAiHotActionAlerts, buildAiHotSignals, markAiHotSignalsRead } from "./lib/aihotIntegration";
 import { ActionAlerts } from "./components/ActionAlerts";
 import { useActionAlerts } from "./lib/useActionAlerts";
 import { actionAlertSnoozed } from "./lib/actionAlerts";
@@ -64,7 +67,8 @@ export default function App() {
   const [appDiagnostics, setAppDiagnostics] = useState<AppDiagnostics | null>(null);
   const [autostartEnabled, setAutostartState] = useState(false);
   const [controlOperation, setControlOperation] = useState<ControlOperation | null>(null);
-  const [controlInitialTab, setControlInitialTab] = useState<"display" | "health" | "alerts">("display");
+  const [controlInitialTab, setControlInitialTab] = useState<"display" | "health" | "alerts" | "aihot">("display");
+  const [startupReady, setStartupReady] = useState(false);
   const [notificationTest, setNotificationTest] = useState<string | null>(null);
   const [actionGuidance, setActionGuidance] = useState<string | null>(null);
   const [systemDark, setSystemDark] = useState(systemPrefersDark);
@@ -185,7 +189,13 @@ export default function App() {
     void updateRuntimeState(next).catch(() => setOperationError("Activity history could not be saved."));
   }, []);
 
-  const actionReminders = useActionAlerts(snapshots, preferences, runtimeStateRef, commitRuntimeState);
+  const aihot = useAiHot(preferences, runtimeState.aihotReadKeys ?? EMPTY_RUNTIME_STATE.aihotReadKeys!, startupReady);
+  const getPublicAlerts = useCallback((at: Date) => buildAiHotActionAlerts(aihot.getSignals(at).filter(signal => signal.unread), language), [aihot.getSignals, language]);
+  const actionReminders = useActionAlerts(snapshots, preferences, runtimeStateRef, commitRuntimeState, getPublicAlerts);
+  const unreadAiHot = aihot.signals.filter(signal => signal.unread);
+  const openAiHot = () => { setActionGuidance(null); setControlInitialTab("aihot"); openModal("control"); };
+  const markAiHotRead = () => commitRuntimeState({ ...runtimeStateRef.current,
+    aihotReadKeys: markAiHotSignalsRead(runtimeStateRef.current.aihotReadKeys ?? [], buildAiHotSignals(aihot.report, { enabled: true, enabledProviders: aihot.enabledProviders }, new Date())) });
 
   const startUpdateDownload = useCallback(async (info: AppUpdateInfo, reveal = false) => {
     const sequence = ++updateSequence.current;
@@ -436,6 +446,7 @@ export default function App() {
         runtimeStateRef.current = startup.runtimeState;
         setRuntimeState(startup.runtimeState);
       }
+      setStartupReady(true);
       if (startup.diagnostics) setAppDiagnostics(startup.diagnostics);
       if (startup.autostartEnabled !== null) setAutostartState(startup.autostartEnabled);
       if (startup.failures.length > 0) setOperationError(`Some startup checks failed: ${startup.failures.join(", ")}. Available saved state was preserved.`);
@@ -1089,6 +1100,8 @@ export default function App() {
     };
     return preferences.compactLayout === "bar" ? (
       <QuotaBar
+        aihotCount={unreadAiHot.length}
+        onAiHotOpen={() => { handleHover(true); openAiHot(); }}
         attentionLabel={attentionLabel}
         snapshot={current}
         snapshots={orderedSnapshots}
@@ -1103,6 +1116,8 @@ export default function App() {
       />
     ) : preferences.compactLayout === "bottleneck" ? (
       <QuotaBottleneckBar
+        aihotCount={unreadAiHot.length}
+        onAiHotOpen={() => { handleHover(true); openAiHot(); }}
         attentionLabel={attentionLabel}
         snapshot={current}
         snapshots={orderedSnapshots}
@@ -1117,6 +1132,8 @@ export default function App() {
       />
     ) : (
       <QuotaOrb
+        aihotCount={unreadAiHot.length}
+        onAiHotOpen={() => { handleHover(true); openAiHot(); }}
         attentionLabel={attentionLabel}
         snapshot={current}
         language={language}
@@ -1133,11 +1150,15 @@ export default function App() {
   return (
     <QuotaCard
       actionAlerts={<>
+        <AiHotSummary enabled={preferences.aihotEnabled === true} signals={aihot.signals} report={aihot.report} credits={aihot.credits}
+          provider={current.provider} loading={aihot.loading} language={language} onOpen={openAiHot} />
         <ActionAlerts alerts={actionReminders.alerts} language={language} now={actionReminders.now}
-          snoozes={runtimeState.alertSnoozes} onSnooze={actionReminders.snooze} onRefresh={() => void refresh(true)}
+          snoozes={runtimeState.alertSnoozes} onSnooze={actionReminders.snooze} onRefresh={() => { void refresh(true); if (preferences.aihotEnabled) void aihot.refresh(); }}
           history={runtimeState.actionAlertHistory} onResume={actionReminders.resume}
           onAction={(alert) => {
-            if (alert.kind === "stale-expiry") {
+            if (alert.action === "aihot") {
+              openAiHot();
+            } else if (alert.kind === "stale-expiry") {
               void refresh(true);
             } else if (alert.action === "plan") {
               const index = orderedSnapshots.findIndex((item) => item.provider === alert.provider);
@@ -1218,6 +1239,11 @@ export default function App() {
         <ErrorBoundary language={language} resetKey={controlOpen}>
           <Suspense fallback={<div className="loading-card" role="status" aria-label={language === "en" ? "Loading control center" : "正在加载控制中心"}><span /><span /><span /></div>}>
             <ControlCenter
+            aihot={{ report: aihot.report, credits: aihot.credits, loading: aihot.loading, failed: aihot.failed,
+              onRefresh: () => { void aihot.refresh(); }, enabledProviders: aihot.enabledProviders,
+              integrationEnabled: preferences.aihotEnabled === true, onIntegrationEnabled: enabled => savePreferences({ ...preferences, aihotEnabled: enabled }),
+              notificationsEnabled: preferences.aihotNotificationsEnabled === true, onNotificationsEnabled: enabled => savePreferences({ ...preferences, aihotNotificationsEnabled: enabled }),
+              onMarkRead: markAiHotRead }}
             initialTab={controlInitialTab}
             actionGuidance={actionGuidance}
             notificationTest={notificationTest}

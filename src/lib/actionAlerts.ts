@@ -3,12 +3,16 @@ import type { ProviderId, ProviderSnapshot, WidgetPreferences } from "../types";
 export interface ActionAlert {
   id: string;
   provider: ProviderId;
-  kind: "reset-expiry" | "credit-expiry" | "stale-expiry" | "low-quota" | "signed-out" | "quota-reset-unused";
+  kind: "reset-expiry" | "credit-expiry" | "stale-expiry" | "low-quota" | "signed-out" | "quota-reset-unused" | "public-reset";
   severity: "notice" | "warning" | "critical";
   title: string;
   detail: string;
   actionLabel: string;
-  action: "codex-usage" | "provider" | "plan";
+  action: "codex-usage" | "provider" | "plan" | "aihot";
+  publicStatus?: "pending" | "confirmed";
+  publicReadKey?: string;
+  observedAt?: string;
+  validUntil?: string;
   amountLabel?: string;
   evidenceLabel?: string;
   deadline: string | null;
@@ -141,7 +145,7 @@ export function buildActionAlerts(snapshots: readonly ProviderSnapshot[], prefer
     }
   }
   const rank = { critical: 0, warning: 1, notice: 2 };
-  const kindRank = { "reset-expiry": 0, "credit-expiry": 1, "stale-expiry": 2, "low-quota": 3, "signed-out": 4, "quota-reset-unused": 5 };
+  const kindRank = { "reset-expiry": 0, "credit-expiry": 1, "stale-expiry": 2, "low-quota": 3, "signed-out": 4, "quota-reset-unused": 5, "public-reset": 6 };
   return [...new Map(alerts.map((alert) => [alert.id, alert])).values()].sort((a, b) => rank[a.severity] - rank[b.severity]
     || (timestamp(a.deadline) || Infinity) - (timestamp(b.deadline) || Infinity) || kindRank[a.kind] - kindRank[b.kind] || a.id.localeCompare(b.id));
 }

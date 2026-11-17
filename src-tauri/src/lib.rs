@@ -1,4 +1,5 @@
 mod aihot;
+mod aihot_credits;
 mod antigravity;
 mod claude;
 mod codex;
@@ -35,6 +36,7 @@ use tauri::{
 };
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_window_state::Builder as WindowStateBuilder;
 
 const COLLAPSED_LOGICAL_WIDTH: f64 = 92.0;
@@ -954,6 +956,29 @@ async fn get_aihot_resets(
 ) -> Result<aihot::AiHotReport, String> {
     ensure_main_window(&window)?;
     aihot::fetch(&state).await
+}
+
+#[tauri::command]
+async fn get_aihot_credits(
+    window: tauri::WebviewWindow,
+    state: State<'_, aihot_credits::CreditsState>,
+) -> Result<aihot_credits::CreditsReport, String> {
+    ensure_main_window(&window)?;
+    aihot_credits::fetch(&state).await
+}
+
+#[tauri::command]
+async fn open_aihot_offer(
+    window: tauri::WebviewWindow,
+    app: AppHandle,
+    state: State<'_, aihot_credits::CreditsState>,
+    offer_id: String,
+) -> Result<(), String> {
+    ensure_main_window(&window)?;
+    let url = aihot_credits::offer_target(&state, &offer_id).await?;
+    app.opener()
+        .open_url(url, None::<String>)
+        .map_err(|_| "The offer website could not be opened.".to_owned())
 }
 
 #[tauri::command]
@@ -3526,6 +3551,7 @@ pub fn run() {
         .plugin(tauri_plugin_wdio_webdriver::init());
     let app = builder
         .manage(aihot::AiHotState::default())
+        .manage(aihot_credits::CreditsState::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
@@ -3605,6 +3631,8 @@ pub fn run() {
             refresh_snapshots,
             get_codex_reset_forecast,
             get_aihot_resets,
+            get_aihot_credits,
+            open_aihot_offer,
             get_codex_token_usage,
             get_codex_profile_stats,
             codex_extensions::fetch_codex_extensions,

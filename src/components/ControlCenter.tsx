@@ -1,5 +1,5 @@
 import { ArrowClockwise, ArrowCounterClockwise, Bell, CheckCircle, ClockCounterClockwise, DownloadSimple, Eye, EyeSlash, GearSix, Heartbeat, Layout, Monitor, Moon, Plus, Sun, Trash, UploadSimple, X } from "@phosphor-icons/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ComponentProps } from "react";
 import { useModalDialog } from "../lib/modalDialog";
 import { DEFAULT_PROVIDER_ORDER, PROVIDER_CATALOG } from "../lib/providers";
 import { providerRecoveryAction } from "../lib/providerRecovery";
@@ -19,6 +19,7 @@ export interface ControlOperation {
 }
 
 interface Props {
+  aihot?: Omit<ComponentProps<typeof AiHotPanel>, "language">;
   preferences: WidgetPreferences;
   runtimeState: RuntimeState;
   snapshots: ProviderSnapshot[];
@@ -62,7 +63,7 @@ function formatCheckedAt(value: string | number | undefined, language: Language,
   }).format(date);
 }
 
-export function ControlCenter({ preferences, runtimeState, snapshots, refreshAttempts = {}, refreshingProviders = [], refreshInFlight = false, refreshFailures = {}, onRefreshProviders, diagnostics, language, onClose, onRefresh, onPreferences, onRuntimeState, onExport, onImport, onRestore, onCopyDiagnostics, autostartEnabled, onAutostart, operation = null, initialTab = "display", notificationTest = null, onTestNotification, actionGuidance = null }: Props) {
+export function ControlCenter({ aihot, preferences, runtimeState, snapshots, refreshAttempts = {}, refreshingProviders = [], refreshInFlight = false, refreshFailures = {}, onRefreshProviders, diagnostics, language, onClose, onRefresh, onPreferences, onRuntimeState, onExport, onImport, onRestore, onCopyDiagnostics, autostartEnabled, onAutostart, operation = null, initialTab = "display", notificationTest = null, onTestNotification, actionGuidance = null }: Props) {
   const dialogRef = useModalDialog<HTMLElement>(onClose);
   const [tab, setTab] = useState<Tab>(initialTab);
   const [layoutName, setLayoutName] = useState("");
@@ -300,7 +301,7 @@ export function ControlCenter({ preferences, runtimeState, snapshots, refreshAtt
       <div className="control-body">
         <div className="control-view" key={tab}>
           {tab === "extensions" ? <CodexExtensionsPanel language={language} /> : null}
-          {tab === "aihot" ? <AiHotPanel language={language} /> : null}
+          {tab === "aihot" ? <AiHotPanel language={language} {...(aihot ?? { report: null, credits: null, loading: false, failed: false, onRefresh: () => undefined, enabledProviders: [], integrationEnabled: false, onIntegrationEnabled: () => undefined, notificationsEnabled: false, onNotificationsEnabled: () => undefined, onMarkRead: () => undefined })} /> : null}
           {tab === "display" ? <>
           <div className="control-grid">
             <label className="control-field"><span>{labels.layout}</span><select value={preferences.layoutMode} onChange={(event) => onPreferences({ ...preferences, layoutMode: event.target.value as WidgetPreferences['layoutMode'] })}><option value="compact">{labels.compact}</option><option value="standard">{labels.standard}</option><option value="detailed">{labels.detailed}</option></select></label>

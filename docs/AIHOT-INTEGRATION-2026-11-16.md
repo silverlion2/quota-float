@@ -1,5 +1,7 @@
 # AIHOT public quota tools
 
+Historical v0.3.37 scope. For the subsequent linked platform/widget/reminder flow and in-app credit catalogue, see [November 17 integration](AIHOT-DEEP-INTEGRATION-2026-11-17.md).
+
 Control center -> AIHOT adds public reset reports for Codex, Claude, Antigravity and Grok Bot, plus an explicit link to AIHOT's free-credit offers. Users load reports on demand and can filter providers. No AIHOT request occurs merely by opening the application or panel.
 
 This integrates the hosted quota tools selected by the user, without importing the unrelated AIHOT news server, database or branding. The open-source news repository excludes the hosted reset monitor. There is no documented stable free-credit catalogue API in the reviewed OpenAPI contract, so offers and claims open on the source website instead of being scraped or represented as personal balances.

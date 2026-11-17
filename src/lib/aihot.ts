@@ -30,3 +30,29 @@ export const AIHOT_PROVIDERS: Record<AiHotProvider, string> = {
 };
 
 export const AIHOT_CREDITS_URL = "https://aihot.news/free-tokens";
+
+export interface AiHotCreditOffer {
+  id: string;
+  provider: string;
+  title: string;
+  category: "daily" | "weekly" | "monthly" | "other";
+  amount: string;
+  instructions: string;
+  models: string;
+  requirements: string;
+  validity: string | null;
+  deadlineAt: string | null;
+  verifiedAt: string | null;
+  verification: string;
+  claimUrl: string | null;
+  sourceUrl: string;
+}
+
+export interface AiHotCreditsReport {
+  status: "healthy" | "stale" | "unavailable";
+  checkedAt: string | null;
+  updatedAt: string | null;
+  sourceUrl: string;
+  offers: AiHotCreditOffer[];
+  error: string | null;
+}

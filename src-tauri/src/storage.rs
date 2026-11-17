@@ -153,6 +153,7 @@ fn validate_runtime_state(value: &Value) -> Result<(), String> {
         ("events", MAX_RUNTIME_EVENT_ITEMS),
         ("savedLayouts", MAX_RUNTIME_LAYOUT_ITEMS),
         ("actionAlertHistory", 128),
+        ("aihotReadKeys", 256),
     ] {
         if let Some(section) = state.get(field) {
             let Some(items) = section.as_array() else {
@@ -162,6 +163,17 @@ fn validate_runtime_state(value: &Value) -> Result<(), String> {
                 return Err(format!(
                     "runtime state {field} section exceeds its safety limit"
                 ));
+            }
+            if field == "aihotReadKeys"
+                && items.iter().any(|item| {
+                    !item.as_str().is_some_and(|key| {
+                        key.starts_with("aihot:")
+                            && key.len() <= 150
+                            && !key.chars().any(char::is_control)
+                    })
+                })
+            {
+                return Err("runtime state aihotReadKeys contains an invalid key".to_owned());
             }
         }
     }
@@ -370,6 +382,31 @@ pub fn read_focus_panel_history(path: &Path, provider: &str, range_days: u32) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn aihot_read_keys_are_optional_bounded_and_validated() {
+        assert!(validate_runtime_state(&serde_json::json!({})).is_ok());
+        assert!(validate_runtime_state(
+            &serde_json::json!({"aihotReadKeys": ["aihot:codex:synthetic"]})
+        )
+        .is_ok());
+        for invalid in [
+            serde_json::json!({}),
+            serde_json::json!([null]),
+            serde_json::json!(["other:key"]),
+            serde_json::json!(["aihot:\nkey"]),
+            serde_json::json!([format!("aihot:{}", "x".repeat(150))]),
+            serde_json::json!(vec!["aihot:key"; 257]),
+        ] {
+            assert!(
+                validate_runtime_state(&serde_json::json!({"aihotReadKeys": invalid})).is_err()
+            );
+        }
+        assert!(validate_runtime_state(
+            &serde_json::json!({"aihotReadKeys": vec!["aihot:key"; 256]})
+        )
+        .is_ok());
+    }
 
     fn temporary_root(label: &str) -> PathBuf {
         let nonce = std::time::SystemTime::now()

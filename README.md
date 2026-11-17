@@ -61,7 +61,7 @@ Updater artifacts are signed with the project's Tauri update key. Windows Authen
 
 ## Features
 
-- **AIHOT public quota tools:** Control center -> AIHOT loads public reset reports for Codex, Claude, Antigravity and Grok Bot on demand, with source verification times, eligibility and confirmation states. Free-credit offers open on AIHOT. Public reports remain separate from personal balances; no account data is sent. See [integration details](docs/AIHOT-INTEGRATION-2026-11-16.md).
+- **AIHOT linked updates and credits:** The expanded widget links to AIHOT. Opt in to map fresh public reset reports to enabled platforms, compact unread badges and the reminder center; source-confirmed desktop notices have a separate switch and obey quiet hours. Free-credit offers now render inside the app with conditions, source times and explicit claim links. Public reports never modify personal balances. See [integration details](docs/AIHOT-DEEP-INTEGRATION-2026-11-17.md).
 
 - **Windows taskbar mode:** choose Taskbar in the control center to show the active provider's remaining quota in the native notification area. Click for details, then collapse back to the taskbar. If Windows hides the icon, drag it out of the overflow area. Existing Float/Ring/Bar/Bottleneck modes remain available. See the [implementation and validation notes](docs/TASKBAR-2026-09-22.md).
 

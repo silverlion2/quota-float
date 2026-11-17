@@ -36,6 +36,7 @@ describe("Quota Float desktop widget", () => {
         ...preferences, stayExpanded: true, pinnedProvider: "codex", resourceMode: "focus",
         expandedLayout: "dashboard", compactLayout: "float", language: "en",
         pausedProviders: [], hiddenProviders: [], automaticUpdates: false,
+        aihotEnabled: false, aihotNotificationsEnabled: false, aihotReadKeys: [],
       } });
       (window as unknown as Record<string, unknown>).__e2eReloadPending = true;
       setTimeout(() => window.location.reload(), 50);
@@ -65,13 +66,15 @@ describe("Quota Float desktop widget", () => {
     });
   });
 
-  it("shows AIHOT public reports on demand without confusing them with personal balances", async () => {
+  it("links AIHOT public reports and credit conditions without changing personal balances", async () => {
     await openControlCenter();
     await browser.$('.control-tabs').$('button=AIHOT').click();
     await browser.$('.aihot-panel').waitForDisplayed();
     await expect(browser.$('.aihot-panel')).toHaveText(expect.stringContaining("Load public reports to begin"));
     await browser.$('.aihot-panel').$('button*=Load public reports').click();
     await browser.waitUntil(async () => (await browser.$('.aihot-panel').getText()).includes("Example reset announcement"));
+    await expect(browser.$('.aihot-panel select')).toHaveValue("enabled");
+    await browser.$('.aihot-panel select').selectByAttribute('value', 'all');
     const panel = await browser.tauri.execute(() => {
       const root = document.querySelector<HTMLElement>('.aihot-panel')!;
       return { text: root.textContent, overflow: root.scrollWidth - root.clientWidth, cards: root.querySelectorAll('.provider-health-item').length };
@@ -95,6 +98,76 @@ describe("Quota Float desktop widget", () => {
     expect(eventBounds.bottom).toBeGreaterThanOrEqual(0);
     expect(eventBounds.scroll).toBeGreaterThan(0);
     await browser.saveScreenshot("output/handoff/aihot-public-events.png");
+
+    await browser.tauri.execute(() => document.querySelector('.aihot-tabs')?.scrollIntoView({ block: 'center' }));
+    await browser.$('.aihot-tabs').$('button=Free-credit catalogue').click();
+    await expect(browser.$('.aihot-panel select')).toHaveValue('all');
+    await expect(browser.$('.aihot-credit')).toHaveText(expect.stringContaining("Example free-credit offer"));
+    await expect(browser.$('.aihot-credit')).toHaveText(expect.stringContaining("Eligible accounts only"));
+    await expect(browser.$('.aihot-credit')).toHaveText(expect.stringContaining("No explicit deadline supplied by the source"));
+    await expect(browser.$('.aihot-credit').$('button=Open claim website')).toBeDisabled();
+    const creditBounds = await browser.tauri.execute(async () => {
+      const card = document.querySelector<HTMLElement>('.aihot-credit')!;
+      card.scrollIntoView({ block: 'start', behavior: 'instant' });
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      return { overflow: card.scrollWidth - card.clientWidth, text: card.textContent };
+    });
+    expect(creditBounds.overflow).toBeLessThanOrEqual(1);
+    expect(creditBounds.text).toContain("100 example credits");
+    await browser.saveScreenshot("output/handoff/aihot-credit-catalogue.png");
+
+    await browser.tauri.execute(() => document.querySelector('.aihot-preferences')?.scrollIntoView({ block: 'center' }));
+    await browser.$('.aihot-preferences summary').click();
+    await browser.tauri.execute(() => document.querySelector('.aihot-settings')?.scrollIntoView({ block: 'center' }));
+    await browser.$('.aihot-settings input').click();
+    await browser.waitUntil(async () => browser.tauri.execute(async (tauri) => {
+      const p = await tauri.core.invoke('get_preferences') as Record<string, unknown>;
+      return p.aihotEnabled === true && p.aihotNotificationsEnabled === false;
+    }));
+    await browser.tauri.execute(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+    await browser.waitUntil(async () => (await browser.$('.aihot-summary').getText()).includes('1 unread'));
+    await browser.tauri.execute(async (tauri) => {
+      const p = await tauri.core.invoke('get_preferences') as Record<string, unknown>;
+      await tauri.core.invoke('set_preferences', { preferences: { ...p, compactLayout: 'bar', barEdge: 'right', stayExpanded: false } });
+      setTimeout(() => window.location.reload(), 50);
+    });
+    await browser.$('.quota-bar .compact-aihot-badge').waitForDisplayed({ timeout: 15_000 });
+    const badgeBounds = await browser.tauri.execute(() => {
+      const badge = document.querySelector('.quota-bar .compact-aihot-badge')!.getBoundingClientRect();
+      const bar = document.querySelector('.quota-bar')!.getBoundingClientRect();
+      const value = document.querySelector('.bar-metric b')!.getBoundingClientRect();
+      const freshness = document.querySelector('.bar-freshness')!.getBoundingClientRect();
+      return { overlapsFreshness: badge.left < freshness.right && badge.right > freshness.left && badge.top < freshness.bottom && badge.bottom > freshness.top, inside: badge.left >= bar.left && badge.right <= bar.right && badge.top >= bar.top && badge.bottom <= bar.bottom,
+        overlapsValue: badge.left < value.right && badge.right > value.left && badge.top < value.bottom && badge.bottom > value.top };
+    });
+    expect(badgeBounds.inside).toBe(true);
+    expect(badgeBounds.overlapsValue).toBe(false);
+    expect(badgeBounds.overlapsFreshness).toBe(false);
+    await browser.saveScreenshot('output/handoff/aihot-compact-unread.png');
+    await browser.$('.quota-bar .compact-aihot-badge').click();
+    await browser.$('.aihot-panel').waitForDisplayed();
+    await browser.tauri.execute(() => document.querySelector('.aihot-filter-row')?.scrollIntoView({ block: 'center' }));
+    await browser.$('.aihot-filter-row').$('button=Mark reports read').click();
+    await browser.waitUntil(async () => browser.tauri.execute(async (tauri) => {
+      const p = await tauri.core.invoke('get_preferences') as Record<string, unknown>;
+      return Array.isArray(p.aihotReadKeys) && p.aihotReadKeys.length === 1;
+    }));
+    await browser.tauri.execute(async (tauri) => {
+      const p = await tauri.core.invoke('get_preferences') as Record<string, unknown>;
+      await tauri.core.invoke('set_preferences', { preferences: { ...p, compactLayout: 'float', stayExpanded: true } });
+      (window as unknown as Record<string, unknown>).__aihotReloadPending = true;
+      setTimeout(() => window.location.reload(), 50);
+    });
+    await browser.waitUntil(async () => browser.tauri.execute(() => !(window as unknown as Record<string, unknown>).__aihotReloadPending && Boolean(document.querySelector('.aihot-summary'))), { timeout: 15_000 });
+    await browser.$('.aihot-summary').waitForDisplayed({ timeout: 15_000 });
+    await expect(browser.$('.aihot-summary')).toHaveText(expect.stringContaining('No new updates for enabled providers'));
+    await expect(browser.$('.compact-aihot-badge')).not.toBeExisting();
+    await browser.tauri.execute(() => document.querySelector('.aihot-summary button')?.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    await browser.$('.aihot-panel').waitForDisplayed();
+    await browser.tauri.execute(() => document.querySelector('.aihot-preferences')?.scrollIntoView({ block: 'center' }));
+    await browser.$('.aihot-preferences summary').click();
+    await browser.tauri.execute(() => document.querySelector('.aihot-settings')?.scrollIntoView({ block: 'center' }));
+    await browser.$('.aihot-settings input').click();
   });
 
   it("loads inside Tauri with the test bridge available", async () => {

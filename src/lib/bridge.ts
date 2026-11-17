@@ -2,7 +2,7 @@ import type { AppDiagnostics, BarPlacement, CockpitRegion, CodexProfileStats, Co
 import { EMPTY_RUNTIME_STATE, normalizeRuntimeState } from "./activity";
 import { DEFAULT_WIDGET_PREFERENCES } from "./preferences";
 import type { CodexExtensionsReport } from "./codexExtensions";
-import type { AiHotReport } from "./aihot";
+import type { AiHotReport, AiHotCreditsReport } from "./aihot";
 import { createPreviewResetForecast } from "./resetForecastPreview";
 
 const defaultPreferences = DEFAULT_WIDGET_PREFERENCES;
@@ -291,6 +291,27 @@ export async function fetchAiHotResets(): Promise<AiHotReport> {
 }
 
 export type UsageExportFormat = "csv" | "json" | "svg" | "md";
+
+export async function fetchAiHotCredits(): Promise<AiHotCreditsReport> {
+  if ((import.meta.env.DEV || import.meta.env.VITE_WDIO === "1") && usesSyntheticData()) return {
+    status: "healthy", checkedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    sourceUrl: "https://aihot.news/free-tokens", error: null,
+    offers: [{ id: "preview-credit", provider: "Codex", title: "Example free-credit offer", category: "daily", amount: "100 example credits",
+      instructions: "Review the source conditions before claiming.", models: "Example model", requirements: "Eligible accounts only",
+      validity: "Example offer; not redeemable", deadlineAt: null, verifiedAt: new Date().toISOString(), verification: "Synthetic preview",
+      claimUrl: null, sourceUrl: "https://aihot.news/free-tokens" }],
+  };
+  requireNativeDataAccess();
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<AiHotCreditsReport>("get_aihot_credits");
+}
+
+export async function openAiHotOffer(offerId: string): Promise<void> {
+  if ((import.meta.env.DEV || import.meta.env.VITE_WDIO === "1") && usesSyntheticData()) return;
+  requireNativeDataAccess();
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<void>("open_aihot_offer", { offerId });
+}
 
 export async function exportUsageData(content: string, format: UsageExportFormat): Promise<string | null> {
   const filename = `quota-float-usage-${new Date().toISOString().slice(0, 10)}.${format}`;

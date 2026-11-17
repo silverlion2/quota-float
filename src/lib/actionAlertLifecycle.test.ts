@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { normalizeActionAlertHistory, reconcileActionAlertHistory } from "./actionAlertLifecycle";
-import { buildActionAlerts } from "./actionAlerts";
+import { buildActionAlerts, type ActionAlert } from "./actionAlerts";
 import { EMPTY_RUNTIME_STATE, normalizeRuntimeState, runtimeStatesEqual } from "./activity";
 import { DEFAULT_WIDGET_PREFERENCES as prefs } from "./preferences";
 import type { ProviderSnapshot } from "../types";
@@ -10,6 +10,24 @@ const s: ProviderSnapshot = { provider: "codex", displayName: "Codex", status: "
   shortWindow: null, weeklyWindow: null, resetCredits: 1, resetCreditExpiresAt: [at(2)], message: null };
 const alerts = buildActionAlerts([s], prefs, now);
 const initial = () => reconcileActionAlertHistory([], alerts, [s], [], now);
+
+describe("public reminder history is independent of personal quota", () => {
+  const publicAlert: ActionAlert = { id: "action:aihot:codex:0123456789abcdef:confirmed", provider: "codex", kind: "public-reset", severity: "notice",
+    title: "Public reset report", detail: "Public information; account eligibility unknown", actionLabel: "Review source", action: "aihot",
+    deadline: null, repeatMinutes: Infinity, observedAt: at(-10), validUntil: at(300), publicStatus: "confirmed" };
+  it("uses source verification time and survives persistence without personal snapshots", () => {
+    const history = reconcileActionAlertHistory([], [publicAlert], [], [], now);
+    expect(history[0].lastSeenAt).toBe(at(-10));
+    expect(normalizeActionAlertHistory(history)).toEqual(history);
+    expect(reconcileActionAlertHistory(history, [publicAlert], [{ ...s, resetCredits: 0 }], [], new Date(at(1)))).toEqual(history);
+  });
+  it("closes a removed public reminder without requiring or implying personal reset evidence", () => {
+    const history = reconcileActionAlertHistory([], [publicAlert], [], [], now);
+    const closed = reconcileActionAlertHistory(history, [], [], ["codex"], new Date(at(1)));
+    expect(closed[0]).toMatchObject({ kind: "public-reset", status: "no-longer-observed", deadline: null });
+    expect(closed[0].detail).toContain("eligibility unknown");
+  });
+});
 describe("local reminder history", () => {
   it("records without notification receipts and persists through normalization", () => {
     const history = initial();

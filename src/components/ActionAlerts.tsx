@@ -15,7 +15,7 @@ interface ActionAlertsProps {
   onRefresh: () => void;
   history?: ActionAlertRecord[];
 }
-type Filter = "all" | "expiry" | "quota" | "later";
+type Filter = "all" | "expiry" | "quota" | "public" | "later";
 
 export function ActionAlerts({ alerts, language, snoozes = {}, now, onAction, onSnooze, onResume, onRefresh, history = [] }: ActionAlertsProps) {
   const [expanded, setExpanded] = useState(false);
@@ -34,9 +34,10 @@ export function ActionAlerts({ alerts, language, snoozes = {}, now, onAction, on
   const date = (value: string) => Number.isFinite(Date.parse(value)) ? new Intl.DateTimeFormat(en ? "en-US" : "zh-CN", {
     year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", timeZoneName: "short",
   }).format(new Date(value)) : text("Time unavailable", "时间未知");
-  const category = (kind: ActionAlert["kind"]) => kind === "quota-reset-unused" ? text("Quota reset", "额度重置")
+  const category = (kind: ActionAlert["kind"]) => kind === "public-reset" ? text("Public information", "公开消息") : kind === "quota-reset-unused" ? text("Quota reset", "额度重置")
     : kind === "low-quota" ? text("Low quota", "额度不足") : kind === "signed-out" ? text("Sign-in needed", "需要登录") : text("Expiry reminder", "到期提醒");
   const urgency = (alert: ActionAlert) => {
+    if (alert.kind === "public-reset") return alert.publicStatus === "confirmed" ? text("Public report", "公开报道") : text("Unconfirmed announcement", "未确认预告");
     if (!alert.deadline || !Number.isFinite(Date.parse(alert.deadline))) return text(alert.severity === "critical" ? "Urgent" : "Pending", alert.severity === "critical" ? "紧急" : "待处理");
     const left = Date.parse(alert.deadline) - now.getTime();
     if (left <= 0) return text("Time reached · refresh", "已到记录时间 · 请刷新");
@@ -64,7 +65,7 @@ export function ActionAlerts({ alerts, language, snoozes = {}, now, onAction, on
       <details className="action-alerts__evidence"><summary>{text("Why this reminder", "提醒依据")}</summary><p>{alert.detail}</p>{alert.evidenceLabel ? <p>{alert.evidenceLabel}</p> : null}</details>
     </article>;
   };
-  const filtered = ordered.filter((alert) => filter === "all" || (filter === "later" ? snoozed(alert) : filter === "expiry" ? alert.kind.includes("expiry") : alert.kind === "low-quota" || alert.kind === "quota-reset-unused"));
+  const filtered = ordered.filter((alert) => filter === "all" || (filter === "later" ? snoozed(alert) : filter === "expiry" ? alert.kind.includes("expiry") : filter === "public" ? alert.kind === "public-reset" : alert.kind === "low-quota" || alert.kind === "quota-reset-unused"));
 
   return <section className="action-alerts" aria-label={text("Action reminders", "待办提醒")} onMouseDown={(event) => event.stopPropagation()}>
     <div className="action-alerts__heading">
@@ -73,7 +74,7 @@ export function ActionAlerts({ alerts, language, snoozes = {}, now, onAction, on
     </div>
     {alerts.length ? <div className="action-alerts__summary" aria-label={text("Reminder summary", "提醒摘要")}><span className={urgent ? "has-urgent" : ""}><b>{urgent}</b> {text("Urgent", "紧急")}</span><span><b>{active.length - urgent}</b> {text("Pending", "待处理")}</span><span><b>{alerts.length - active.length}</b> {text("Later", "稍后")}</span></div> : null}
     {expanded ? <>
-      <div className="action-alerts__filters" role="group" aria-label={text("Filter reminders", "筛选提醒")}>{([ ["all", text("All", "全部")], ["expiry", text("Expiry", "到期")], ["quota", text("Quota", "额度")], ["later", text("Later", "稍后")] ] as [Filter, string][]).map(([value, label]) => <button type="button" key={value} aria-pressed={filter === value} onClick={() => setFilter(value)}>{label}</button>)}</div>
+      <div className="action-alerts__filters" role="group" aria-label={text("Filter reminders", "筛选提醒")}>{([ ["all", text("All", "全部")], ["expiry", text("Expiry", "到期")], ["quota", text("Quota", "额度")], ["public", text("Public", "公开")], ["later", text("Later", "稍后")] ] as [Filter, string][]).map(([value, label]) => <button type="button" key={value} aria-pressed={filter === value} onClick={() => setFilter(value)}>{label}</button>)}</div>
       <div id={queueId} className="action-alerts__queue" tabIndex={0} aria-label={text("All reminders", "全部提醒")}>{filtered.length ? filtered.map(row) : <p>{text("No reminders in this category.", "此分类暂无提醒。")}</p>}</div>
     </> : active[0] ? <><div className="action-alerts__next">{text("NEXT ACTION", "优先处理")}</div>{row(active[0])}</> : <p className="action-alerts__all-paused">{alerts.length ? text("All reminders snoozed. View all for resume times.", "全部提醒已暂缓，展开可查看恢复时间。") : text("No active reminders. Past records remain available below.", "当前没有待处理提醒，可在下方回看本地记录。")}</p>}
     {closed.length ? <details className="action-alerts__history"><summary>{text("Local history", "本地回看")} <span>{closed.length}</span></summary><div className="action-alerts__history-list">{closed.map((record) => <article key={record.key}><strong>{record.provider} · {category(record.kind)}</strong><p>{record.status === "deadline-passed" ? text("Recorded time passed; usage still needs checking.", "已过记录时间，是否使用待核对。") : text("No longer meets reminder conditions after refresh.", "刷新后已不再满足提醒条件。")}</p>{record.deadline ? <time dateTime={record.deadline}>{date(record.deadline)}</time> : null}<details><summary>{text("Recorded context", "当时依据")}</summary><p>{record.detail}</p><p>{text("Last observed: ", "最后观察：")}{date(record.lastSeenAt)}</p></details></article>)}</div></details> : null}

@@ -1193,3 +1193,17 @@ describe("compact all-provider action badge", () => {
     expect(document.querySelector("main")).toHaveAttribute("data-has-attention", "true");
   });
 });
+
+
+it.each([QuotaBar, QuotaBottleneckBar])("opens linked AIHOT reports from a compact badge without dragging or changing quota", (View) => {
+  const open = vi.fn(); const drag = vi.fn(); const select = vi.fn();
+  const props = { snapshot: codex, snapshots: [codex], edge: "right" as const, language: "en" as const, onSelectProvider: select, onDrag: drag, onHover: vi.fn(), onAiHotOpen: open };
+  const { rerender, container } = render(<View {...props} aihotCount={3} attentionLabel="Personal quota warning" />);
+  const badge = screen.getByRole("button", { name: "AIHOT: 3 unread public reports" });
+  fireEvent.mouseDown(badge, { button: 0 }); fireEvent.click(badge);
+  expect(open).toHaveBeenCalledTimes(1); expect(drag).not.toHaveBeenCalled(); expect(select).not.toHaveBeenCalled();
+  expect(container.querySelector(".compact-action-badge")).toBeTruthy();
+  expect(container.textContent).toContain("74%");
+  rerender(<View {...props} aihotCount={0} />);
+  expect(screen.queryByRole("button", { name: /AIHOT:/ })).toBeNull();
+});

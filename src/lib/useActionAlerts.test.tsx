@@ -3,6 +3,8 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { canDeliverActionAlert, snoozeActionAlert, useActionAlerts } from "./useActionAlerts";
 import { buildActionAlerts } from "./actionAlerts";
+import { buildAiHotActionAlerts, buildAiHotSignals } from "./aihotIntegration";
+import type { AiHotReport } from "./aihot";
 import { EMPTY_RUNTIME_STATE, normalizeRuntimeState } from "./activity";
 import { DEFAULT_WIDGET_PREFERENCES as defaults } from "./preferences";
 import { sendDesktopNotification } from "./bridge";
@@ -18,6 +20,67 @@ const alert = buildActionAlerts([snapshot], prefs, now)[0];
 const state = () => structuredClone(EMPTY_RUNTIME_STATE);
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); vi.mocked(sendDesktopNotification).mockReset().mockResolvedValue(true); });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
+
+describe("public AIHOT reminder delivery", () => {
+  const publicReport: AiHotReport = { checkedAt: now.toISOString(), sources: [{ provider: "codex", status: "healthy", updatedAt: now.toISOString(),
+    sourceUrl: "https://aihot.news/codex-reset", error: null, events: [{ id: "synthetic-reset", title: "Reset credit", status: "confirmed",
+      updatedAt: at(-5), reportedAt: at(-5), scope: null, url: "https://aihot.news/codex-reset" }] }] };
+  const publicPrefs = { ...prefs, aihotEnabled: true, aihotNotificationsEnabled: true };
+  const alertsAt = (date: Date) => buildAiHotActionAlerts(buildAiHotSignals(publicReport, { enabled: true, enabledProviders: ["codex"] }, date), "en");
+  const publicAlert = alertsAt(now)[0];
+
+  it("requires separate opt-ins, confirmed status, unread/fresh state and enabled provider", () => {
+    expect(canDeliverActionAlert(publicAlert, publicPrefs, state(), now)).toBe(true);
+    for (const changed of [{ aihotEnabled: false }, { aihotNotificationsEnabled: false }, { notificationsEnabled: false },
+      { pausedProviders: ["codex"] as const }, { hiddenProviders: ["codex"] as const }]) {
+      expect(canDeliverActionAlert(publicAlert, { ...publicPrefs, ...changed } as typeof publicPrefs, state(), now)).toBe(false);
+    }
+    expect(canDeliverActionAlert({ ...publicAlert, publicStatus: "pending" }, publicPrefs, state(), now)).toBe(false);
+    expect(canDeliverActionAlert(publicAlert, publicPrefs, { ...state(), aihotReadKeys: [publicAlert.publicReadKey!] }, now)).toBe(false);
+    expect(canDeliverActionAlert(publicAlert, publicPrefs, state(), new Date(publicAlert.validUntil!))).toBe(false);
+    const quiet = { ...publicPrefs, quietHoursStart: now.getHours(), quietHoursEnd: (now.getHours() + 1) % 24, urgentExpiryDuringQuietHours: true };
+    expect(canDeliverActionAlert(publicAlert, quiet, state(), now)).toBe(false);
+  });
+
+  it("shows public reminders with desktop opt-in off and persists one receipt on repeated polls", async () => {
+    const runtime = { current: state() };
+    const commit = (next: RuntimeState) => { runtime.current = next; };
+    const hook = renderHook(({ preferences }) => useActionAlerts([], preferences, runtime, commit, alertsAt), { initialProps: { preferences: { ...publicPrefs, aihotNotificationsEnabled: false } } });
+    expect(hook.result.current.alerts).toHaveLength(1);
+    await act(async () => {});
+    expect(sendDesktopNotification).not.toHaveBeenCalled();
+    hook.rerender({ preferences: publicPrefs });
+    await act(async () => {});
+    expect(sendDesktopNotification).toHaveBeenCalledOnce();
+    expect(runtime.current.lastNotifications[publicAlert.id]).toBeDefined();
+    await act(async () => { vi.advanceTimersByTime(60_000); });
+    expect(sendDesktopNotification).toHaveBeenCalledOnce();
+    expect(runtime.current.events[0].detail).toContain("not confirmation of your account");
+  });
+
+  it("revalidates the public callback immediately before submission", async () => {
+    const runtime = { current: state() };
+    const commit = (next: RuntimeState) => { runtime.current = next; };
+    const getPublic = vi.fn().mockReturnValueOnce([publicAlert]).mockReturnValue([]);
+    renderHook(() => useActionAlerts([], publicPrefs, runtime, commit, getPublic));
+    await act(async () => {});
+    expect(getPublic.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(sendDesktopNotification).not.toHaveBeenCalled();
+    expect(runtime.current.lastNotifications[publicAlert.id]).toBeUndefined();
+  });
+
+  it("expires public freshness without interpreting a personal balance change", async () => {
+    const runtime = { current: state() };
+    const commit = (next: RuntimeState) => { runtime.current = next; };
+    const getPublic = (date: Date) => date.getTime() < now.getTime() + 10_000 ? [{ ...publicAlert, validUntil: at(1 / 6) }] : [];
+    const hook = renderHook(() => useActionAlerts([], { ...publicPrefs, aihotNotificationsEnabled: false }, runtime, commit, getPublic));
+    expect(hook.result.current.alerts).toHaveLength(1);
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+    expect(hook.result.current.alerts).toEqual([]);
+    expect(runtime.current.actionAlertHistory?.[0].status).toBe("no-longer-observed");
+    expect(runtime.current.events).toEqual([]);
+  });
+});
 
 describe("deadline delivery policy", () => {
   it("honors master, expiry switch and quiet hours; bypass is opt-in and expiry-only", () => {

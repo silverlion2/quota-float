@@ -9,6 +9,20 @@ const now = new Date("2026-10-31T12:00:00Z");
 const critical: ActionAlert = { id: "codex-reset", provider: "codex", kind: "reset-expiry", severity: "critical", title: "Reset expires soon", detail: "Check usage before expiry", actionLabel: "Open usage", action: "codex-usage", deadline: "2026-10-31T13:00:00Z", repeatMinutes: 15 };
 const other: ActionAlert = { ...critical, id: "claude-low", provider: "claude", kind: "low-quota", severity: "warning", title: "Claude quota low", actionLabel: "View Claude", action: "provider", deadline: null };
 afterEach(cleanup);
+
+it("separates public announcements from personal quota reminders and opens the public source action", () => {
+  const publicAlert: ActionAlert = { ...other, id: "action:aihot:codex:0123456789abcdef:pending", provider: "codex", kind: "public-reset", severity: "notice",
+    title: "Codex public announcement", detail: "Public information, not your personal balance", action: "aihot", actionLabel: "Review public source", publicStatus: "pending", deadline: null };
+  const onAction = vi.fn();
+  render(<ActionAlerts alerts={[other, publicAlert]} language="en" now={now} onAction={onAction} onSnooze={vi.fn()} onRefresh={vi.fn()} />);
+  fireEvent.click(screen.getByRole("button", { name: "View all" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Public$/ }));
+  expect(screen.queryByText(other.title)).not.toBeInTheDocument();
+  expect(screen.getByText("Unconfirmed announcement")).toBeVisible();
+  expect(document.querySelector("time")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Review public source" }));
+  expect(onAction).toHaveBeenCalledWith(publicAlert);
+});
 const setup = (alerts = [other, critical], snoozes: Record<string, string> = {}) => {
   const onAction = vi.fn(); const onSnooze = vi.fn(); const onRefresh = vi.fn();
   const view = render(<ActionAlerts alerts={alerts} snoozes={snoozes} language="en" now={now} onAction={onAction} onSnooze={onSnooze} onRefresh={onRefresh} />);

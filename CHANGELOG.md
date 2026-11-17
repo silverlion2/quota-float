@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Link AIHOT public reports to enabled platforms, compact unread badges and the reminder center, with persisted read state and opt-in, confirmation-only desktop notices.
+- Display the documented AIHOT free-credit catalogue inside the app, including conditions, source verification and explicit deadlines; validate claim navigation through native cached offer IDs.
+
 ## 0.3.37 - 2026-11-16
 
 - Integrate AIHOT public quota-reset reports and free-credit source links in the control center, with on-demand native reads, bounded caching, provider filtering and distinct public and personal quota states.

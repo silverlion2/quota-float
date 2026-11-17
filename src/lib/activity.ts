@@ -21,6 +21,7 @@ export const EMPTY_RUNTIME_STATE: RuntimeState = {
   savedLayouts: [],
   lastNotifications: {},
   alertSnoozes: {},
+  aihotReadKeys: [],
   actionAlertHistory: [],
   dailyPaceBaselines: {},
 };
@@ -330,6 +331,7 @@ export function normalizeRuntimeState(value: unknown): RuntimeState {
     events: Array.isArray(candidate.events) ? candidate.events.map(activityEvent).filter((item): item is ActivityEvent => item !== null).slice(0, 200) : [],
     savedLayouts: Array.isArray(candidate.savedLayouts) ? candidate.savedLayouts.map(savedLayout).filter((item): item is RuntimeState["savedLayouts"][number] => item !== null).slice(0, 12) : [],
     lastNotifications,
+    aihotReadKeys: Array.isArray(candidate.aihotReadKeys) ? [...new Set(candidate.aihotReadKeys.filter((key): key is string => typeof key === "string" && key.startsWith("aihot:") && key.length <= 150 && !/[\u0000-\u001f\u007f]/.test(key)))].slice(-256) : [],
     actionAlertHistory: normalizeActionAlertHistory(candidate.actionAlertHistory),
     alertSnoozes: Object.fromEntries(Object.entries(record(candidate.alertSnoozes) ?? {})
       .filter(([key, value]) => key.startsWith("action:") && key.length <= 160 && validDate(value))
@@ -466,6 +468,7 @@ export function runtimeStatesEqual(left: RuntimeState, right: RuntimeState): boo
     && sameArrayEntries(left.events, right.events)
     && sameArrayEntries(left.savedLayouts, right.savedLayouts)
     && sameRecordEntries(left.lastNotifications, right.lastNotifications)
+    && JSON.stringify(left.aihotReadKeys ?? []) === JSON.stringify(right.aihotReadKeys ?? [])
     && sameRecordEntries(left.alertSnoozes ?? {}, right.alertSnoozes ?? {})
     && sameArrayEntries(left.actionAlertHistory ?? [], right.actionAlertHistory ?? [])
     && sameRecordEntries(left.dailyPaceBaselines, right.dailyPaceBaselines);

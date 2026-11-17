@@ -1091,7 +1091,7 @@ export const QuotaCard = memo(function QuotaCard({
   );
 });
 
-export const QuotaOrb = memo(function QuotaOrb({ snapshot, onDrag, onHover, language = "zh-CN", compactLayout = "float", colorTheme = "aurora", accentColor = "#397ae0", resolvedAppearance = "light", attentionLabel }: Pick<Props, "snapshot" | "onDrag" | "onHover"> & { language?: Language; compactLayout?: CompactLayout; colorTheme?: ColorTheme; accentColor?: string; resolvedAppearance?: ResolvedAppearance; attentionLabel?: string }) {
+export const QuotaOrb = memo(function QuotaOrb({ snapshot, onDrag, onHover, language = "zh-CN", compactLayout = "float", colorTheme = "aurora", accentColor = "#397ae0", resolvedAppearance = "light", attentionLabel, aihotCount = 0 }: Pick<Props, "snapshot" | "onDrag" | "onHover"> & { language?: Language; compactLayout?: CompactLayout; colorTheme?: ColorTheme; accentColor?: string; resolvedAppearance?: ResolvedAppearance; attentionLabel?: string; aihotCount?: number; onAiHotOpen?: () => void }) {
   const now = useMinuteClock();
   const [idle, setIdle] = useState(false);
   const idleTimer = useRef<number | null>(null);
@@ -1162,6 +1162,7 @@ export const QuotaOrb = memo(function QuotaOrb({ snapshot, onDrag, onHover, lang
       onMouseDown={(event) => { if (event.button === 0) void onDrag(); }}
       aria-label={available ? `${staleUsable ? `${t.dataStale} · ` : ""}${accessibleLabel}` : snapshot.status === "loading" ? stateLabel : localizedBackendMessage(snapshot.message, activeLanguage, snapshot.displayName) ?? t.unavailableStatus}
     >
+      {aihotCount > 0 ? <span className="compact-aihot-badge" role="img" aria-label={`AIHOT: ${aihotCount} ${activeLanguage === "en" ? "unread public reports" : "条未读公开动态"}`}>A{Math.min(aihotCount, 9)}{aihotCount > 9 ? "+" : ""}</span> : null}
       {attentionLabel ? <span className="compact-action-badge" role="img" aria-label={`${activeLanguage === "en" ? "Pending action across providers" : "全部平台待办提醒"}: ${attentionLabel}`} title={`${activeLanguage === "en" ? "Pending action across providers" : "全部平台待办提醒"}: ${attentionLabel}`}>!</span> : null}
       <div className="aurora" aria-hidden="true" />
       {available ? (
@@ -1201,6 +1202,8 @@ function compactFreshness(value: string, now = new Date()): string {
 }
 
 interface QuotaBarProps {
+  aihotCount?: number;
+  onAiHotOpen?: () => void;
   attentionLabel?: string;
   snapshot: ProviderSnapshot;
   snapshots: ProviderSnapshot[];
@@ -1223,6 +1226,8 @@ export const QuotaBar = memo(function QuotaBar({
   accentColor = "#397ae0",
   resolvedAppearance = "dark",
   attentionLabel,
+  aihotCount = 0,
+  onAiHotOpen,
   onSelectProvider,
   onDrag,
   onHover,
@@ -1327,6 +1332,7 @@ export const QuotaBar = memo(function QuotaBar({
       </span>
       <span className="bar-freshness" title={activeLanguage === "en" ? `Updated ${freshness}` : `更新于 ${freshness}`}>{activeLanguage === "en" ? `Updated ${freshness}` : `更新 ${freshness}`}</span>
       </button>
+      {aihotCount > 0 ? <button type="button" className="compact-aihot-badge" aria-label={`AIHOT: ${aihotCount} ${activeLanguage === "en" ? "unread public reports" : "条未读公开动态"}`} title={activeLanguage === "en" ? "Open AIHOT public reports" : "查看 AIHOT 公开动态"} onMouseDown={event => event.stopPropagation()} onClick={() => { cancelHover(); onAiHotOpen?.(); }}>A{Math.min(aihotCount, 9)}{aihotCount > 9 ? "+" : ""}</button> : null}
       {attentionLabel ? <span className="compact-action-badge" role="img" aria-label={`${activeLanguage === "en" ? "Pending action across providers" : "全部平台待办提醒"}: ${attentionLabel}`} title={`${activeLanguage === "en" ? "Pending action across providers" : "全部平台待办提醒"}: ${attentionLabel}`}>!</span> : null}
       <span className="bar-progress" aria-hidden="true"><i /></span>
     </main>
@@ -1364,6 +1370,8 @@ export const QuotaBottleneckBar = memo(function QuotaBottleneckBar({
   accentColor = "#397ae0",
   resolvedAppearance = "dark",
   attentionLabel,
+  aihotCount = 0,
+  onAiHotOpen,
   onSelectProvider,
   onDrag,
   onHover,
@@ -1469,6 +1477,7 @@ export const QuotaBottleneckBar = memo(function QuotaBottleneckBar({
         <b>{leadMetric.value}</b>
         <ArrowSquareOut />
       </button>
+      {aihotCount > 0 ? <button type="button" className="compact-aihot-badge" aria-label={`AIHOT: ${aihotCount} ${activeLanguage === "en" ? "unread public reports" : "条未读公开动态"}`} title={activeLanguage === "en" ? "Open AIHOT public reports" : "查看 AIHOT 公开动态"} onMouseDown={event => event.stopPropagation()} onClick={() => { cancelHover(); onAiHotOpen?.(); }}>A{Math.min(aihotCount, 9)}{aihotCount > 9 ? "+" : ""}</button> : null}
       {attentionLabel ? <span className="compact-action-badge" role="img" aria-label={`${activeLanguage === "en" ? "Pending action across providers" : "全部平台待办提醒"}: ${attentionLabel}`} title={`${activeLanguage === "en" ? "Pending action across providers" : "全部平台待办提醒"}: ${attentionLabel}`}>!</span> : null}
       <span className="bar-progress" aria-hidden="true"><i /></span>
     </main>

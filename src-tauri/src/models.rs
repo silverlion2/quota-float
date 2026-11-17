@@ -123,6 +123,10 @@ pub struct WidgetPreferences {
     #[serde(default = "default_true")]
     pub notify_on_unused_quota: bool,
     #[serde(default)]
+    pub aihot_enabled: bool,
+    #[serde(default)]
+    pub aihot_notifications_enabled: bool,
+    #[serde(default)]
     pub urgent_expiry_during_quiet_hours: bool,
     #[serde(default = "default_quiet_start")]
     pub quiet_hours_start: u8,
@@ -248,6 +252,8 @@ impl Default for WidgetPreferences {
             notify_on_recovery: true,
             notify_on_credit_expiry: true,
             notify_on_unused_quota: true,
+            aihot_enabled: false,
+            aihot_notifications_enabled: false,
             urgent_expiry_during_quiet_hours: false,
             quiet_hours_start: default_quiet_start(),
             quiet_hours_end: default_quiet_end(),
@@ -433,6 +439,32 @@ fn is_safe_hex_color(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::WidgetPreferences;
+
+    #[test]
+    fn aihot_preferences_default_off_and_roundtrip_explicit_opt_in() {
+        let defaults = WidgetPreferences::default();
+        assert!(!defaults.aihot_enabled);
+        assert!(!defaults.aihot_notifications_enabled);
+        let mut legacy = serde_json::to_value(&defaults).unwrap();
+        legacy.as_object_mut().unwrap().remove("aihotEnabled");
+        legacy
+            .as_object_mut()
+            .unwrap()
+            .remove("aihotNotificationsEnabled");
+        let parsed: WidgetPreferences = serde_json::from_value(legacy).unwrap();
+        assert!(!parsed.aihot_enabled);
+        assert!(!parsed.aihot_notifications_enabled);
+        let enabled = WidgetPreferences {
+            aihot_enabled: true,
+            aihot_notifications_enabled: true,
+            ..defaults
+        }
+        .normalized();
+        let restored: WidgetPreferences =
+            serde_json::from_slice(&serde_json::to_vec(&enabled).unwrap()).unwrap();
+        assert!(restored.aihot_enabled);
+        assert!(restored.aihot_notifications_enabled);
+    }
 
     #[test]
     fn skipped_update_version_is_optional_for_existing_preferences() {

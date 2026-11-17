@@ -143,6 +143,9 @@ export interface WidgetPreferences {
   notifyOnRecovery: boolean;
   notifyOnCreditExpiry?: boolean;
   notifyOnUnusedQuota?: boolean;
+  /** Anonymous public information monitoring; never changes personal quotas. */
+  aihotEnabled?: boolean;
+  aihotNotificationsEnabled?: boolean;
   urgentExpiryDuringQuietHours?: boolean;
   quietHoursStart: number;
   quietHoursEnd: number;
@@ -286,6 +289,7 @@ export interface RuntimeState {
   lastNotifications: Record<string, string>;
   /** Stage-specific deferrals; an urgency escalation becomes actionable again. */
   alertSnoozes?: Record<string, string>;
+  aihotReadKeys?: string[];
   actionAlertHistory?: import("./lib/actionAlertLifecycle").ActionAlertRecord[];
   dailyPaceBaselines: Record<string, DailyPaceBaseline>;
 }

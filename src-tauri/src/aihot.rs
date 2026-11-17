@@ -221,7 +221,7 @@ fn normalize(bytes: &[u8], index: usize, now: DateTime<Utc>) -> Result<AiHotSour
     })
 }
 
-fn request_interval(headers: &HeaderMap, now: DateTime<Utc>) -> Duration {
+pub(crate) fn request_interval(headers: &HeaderMap, now: DateTime<Utc>) -> Duration {
     let cache_seconds = headers
         .get(CACHE_CONTROL)
         .and_then(|value| value.to_str().ok())

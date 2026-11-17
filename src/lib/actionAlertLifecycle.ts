@@ -15,7 +15,7 @@ export interface ActionAlertRecord {
   closedAt?: string;
 }
 
-const kinds = new Set(["reset-expiry", "credit-expiry", "stale-expiry", "low-quota", "signed-out", "quota-reset-unused"]);
+const kinds = new Set(["reset-expiry", "credit-expiry", "stale-expiry", "low-quota", "signed-out", "quota-reset-unused", "public-reset"]);
 const statuses = new Set(["active", "no-longer-observed", "deadline-passed"]);
 const validDate = (v: unknown): v is string => typeof v === "string" && Number.isFinite(Date.parse(v));
 export function normalizeActionAlertHistory(value: unknown): ActionAlertRecord[] {
@@ -45,7 +45,7 @@ export function reconcileActionAlertHistory(previous: ActionAlertRecord[], alert
     const key = actionAlertIdentity(alert);
     observed.add(key);
     const old = records.get(key);
-    const snapshotAt = snapshots.find(item => item.provider === alert.provider)?.updatedAt;
+    const snapshotAt = alert.kind === "public-reset" ? alert.observedAt : snapshots.find(item => item.provider === alert.provider)?.updatedAt;
     const lastSeenAt = validDate(snapshotAt) ? snapshotAt : at;
     // Do not rewrite countdown text or persist a heartbeat every 30 seconds.
     if (old?.status === "active" && old.lastSeenAt === lastSeenAt && old.kind === alert.kind) continue;
@@ -54,6 +54,11 @@ export function reconcileActionAlertHistory(previous: ActionAlertRecord[], alert
   }
   for (const [key, item] of records) {
     if (item.status !== "active" || observed.has(key)) continue;
+    if (item.kind === "public-reset") {
+      // Callback eligibility/read state owns public reminders. Personal quota cannot prove a public event resolved.
+      records.set(key, { ...item, status: "no-longer-observed", closedAt: at });
+      continue;
+    }
     if (item.deadline && Date.parse(item.deadline) <= now.getTime()) {
       records.set(key, { ...item, status: "deadline-passed", closedAt: at });
       continue;

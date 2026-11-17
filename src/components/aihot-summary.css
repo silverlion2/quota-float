@@ -1,0 +1,12 @@
+.aihot-summary{margin:8px 0;padding:10px 12px;border:1px solid var(--ui-border,rgba(100,130,180,.28));border-radius:12px;background:var(--ui-panel,rgba(100,130,180,.06));font-size:12px;overflow-wrap:anywhere;}
+.aihot-summary>div,.aihot-summary footer{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.aihot-summary>div>span{font-size:11px;text-align:right;}
+.aihot-summary p{margin:7px 0;line-height:1.45;}
+.aihot-summary small{opacity:.75;line-height:1.4;}
+.aihot-summary button{flex:none;padding:5px 8px;border:1px solid var(--ui-border,rgba(100,130,180,.28));border-radius:7px;color:inherit;background:transparent;cursor:pointer;font:inherit;}
+.compact-aihot-badge{position:absolute;z-index:5;right:4px;bottom:4px;display:grid;place-items:center;min-width:16px;height:16px;padding:0 2px;border:1px solid var(--ui-panel,#18232b);border-radius:6px;color:#fff;background:#365fc0;font:700 9px/1 var(--font-ui,sans-serif);box-sizing:border-box;cursor:pointer;}
+.quota-orb>.compact-aihot-badge{right:8px;bottom:8px;pointer-events:none;}
+.quota-bar:not(.quota-bar--top):has(>.compact-aihot-badge) .bar-freshness{max-width:30px;justify-self:start;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.quota-bar.quota-bar--top:has(>.compact-aihot-badge){padding-right:30px;}
+.quota-bottleneck-bar:has(>.compact-aihot-badge) .bottleneck-summary svg{visibility:hidden;}
+.quota-bottleneck-bar:not(.quota-bar--top)>.compact-aihot-badge{bottom:10px;right:7px;}

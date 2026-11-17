@@ -10,6 +10,8 @@ import {
   fetchCodexTokenUsage,
   fetchCodexExtensions,
   fetchAiHotResets,
+  fetchAiHotCredits,
+  openAiHotOffer,
   getVolcengineDiagnostics,
   getWidgetContentHeightLimit,
   listenDesktopEvents,
@@ -89,6 +91,8 @@ describe("widget transitions", () => {
     ["account Profile", () => fetchCodexProfileStats()],
     ["extensions", () => fetchCodexExtensions()],
     ["AIHOT public reports", () => fetchAiHotResets()],
+    ["AIHOT credit catalogue", () => fetchAiHotCredits()],
+    ["AIHOT offer navigation", () => openAiHotOffer("offer-id")],
     ["Volcengine diagnostics", () => getVolcengineDiagnostics()],
     ["Volcengine reconnect", () => reconnectVolcengine()],
   ] as const)("rejects production browser %s access instead of showing synthetic success", async (_name, read) => {
@@ -117,6 +121,10 @@ describe("widget transitions", () => {
     expect(api.invoke).toHaveBeenCalledWith("get_codex_reset_forecast");
     await fetchAiHotResets();
     expect(api.invoke).toHaveBeenCalledWith("get_aihot_resets");
+    await fetchAiHotCredits();
+    expect(api.invoke).toHaveBeenCalledWith("get_aihot_credits");
+    await openAiHotOffer("opaque-id");
+    expect(api.invoke).toHaveBeenCalledWith("open_aihot_offer", { offerId: "opaque-id" });
   });
 
   it("keeps native E2E provider reads on isolated synthetic data", async () => {
@@ -129,6 +137,9 @@ describe("widget transitions", () => {
     const usage = await fetchCodexTokenUsage(true, true);
     const extensions = await fetchCodexExtensions();
     const aihot = await fetchAiHotResets();
+    const credits = await fetchAiHotCredits();
+    await openAiHotOffer("preview-credit");
+    expect(credits.offers[0]).toMatchObject({ id: "preview-credit", claimUrl: null });
     const diagnostics = await getVolcengineDiagnostics();
     const reconnected = await reconnectVolcengine();
 

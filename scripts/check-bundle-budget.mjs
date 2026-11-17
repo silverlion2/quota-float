@@ -5,10 +5,10 @@ import path from "node:path";
 const root = path.resolve("dist");
 const limits = {
   entryJavaScript: 430 * 1024,
-  // On-demand AIHOT panel; measured growth: docs/AIHOT-INTEGRATION-2026-11-16.md.
-  totalJavaScript: 628 * 1024,
-  totalJavaScriptGzip: 195 * 1024,
-  totalCss: 158 * 1024,
+  // Linked AIHOT reports/catalogue; measured allocation: docs/AIHOT-DEEP-INTEGRATION-2026-11-17.md.
+  totalJavaScript: 650 * 1024,
+  totalJavaScriptGzip: 202 * 1024,
+  totalCss: 164 * 1024,
 };
 
 async function filesIn(directory) {

@@ -6,9 +6,16 @@ import { sendDesktopNotification, usesSyntheticData } from "./bridge";
 import { deliverNotificationOnce } from "./notificationDelivery";
 import { reconcileActionAlertHistory } from "./actionAlertLifecycle";
 
+const noPublicAlerts = (_now: Date): ActionAlert[] => [];
+
 export function canDeliverActionAlert(alert: ActionAlert, preferences: WidgetPreferences, state: RuntimeState, now: Date): boolean {
   const expiry = alert.kind === "reset-expiry" || alert.kind === "credit-expiry" || alert.kind === "stale-expiry";
   if (!preferences.notificationsEnabled || (expiry && preferences.notifyOnCreditExpiry === false)) return false;
+  if (alert.kind === "public-reset" && (!preferences.aihotEnabled || !preferences.aihotNotificationsEnabled
+    || alert.publicStatus !== "confirmed" || !alert.publicReadKey || alert.id !== `action:${alert.publicReadKey}`
+    || state.aihotReadKeys?.includes(alert.publicReadKey) || preferences.hiddenProviders.includes(alert.provider)
+    || preferences.pausedProviders.includes(alert.provider) || !Number.isFinite(Date.parse(alert.validUntil ?? ""))
+    || Date.parse(alert.validUntil!) <= now.getTime())) return false;
   if (alert.kind === "quota-reset-unused" && preferences.notifyOnUnusedQuota === false) return false;
   if (isQuietHour(now.getHours(), preferences.quietHoursStart, preferences.quietHoursEnd)
     && !(expiry && alert.severity === "critical" && preferences.urgentExpiryDuringQuietHours)) return false;
@@ -33,16 +40,17 @@ export function snoozeActionAlert(state: RuntimeState, alert: ActionAlert, now: 
 export function useActionAlerts(
   snapshots: ProviderSnapshot[], preferences: WidgetPreferences,
   runtime: RefObject<RuntimeState>, commit: (next: RuntimeState) => void,
+  getPublicAlerts: (now: Date) => ActionAlert[] = noPublicAlerts,
 ) {
   const [now, setNow] = useState(() => new Date());
   const [deliveryIssue, setDeliveryIssue] = useState(false);
-  const current = useRef({ snapshots, preferences });
-  current.current = { snapshots, preferences };
+  const current = useRef({ snapshots, preferences, getPublicAlerts });
+  current.current = { snapshots, preferences, getPublicAlerts };
   const attempts = useRef(new Map<string, number>());
   const delivering = useRef(false);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const alerts = useMemo(() => buildActionAlerts(snapshots, preferences, now), [snapshots, preferences, now]);
+  const alerts = useMemo(() => [...buildActionAlerts(snapshots, preferences, now), ...getPublicAlerts(now)], [snapshots, preferences, now, getPublicAlerts]);
   useEffect(() => {
     const previous = runtime.current.actionAlertHistory ?? [];
     const history = reconcileActionAlertHistory(previous, alerts, snapshots, preferences.pausedProviders, now);
@@ -54,7 +62,7 @@ export function useActionAlerts(
     let delay = 30_000;
     for (const item of alerts) {
       const deadline = Date.parse(item.deadline ?? "");
-      for (const when of [Date.parse(runtime.current.alertSnoozes?.[item.id] ?? ""), deadline,
+      for (const when of [Date.parse(runtime.current.alertSnoozes?.[item.id] ?? ""), deadline, Date.parse(item.validUntil ?? ""),
         ...[15, 60, 360, 1440].map((minutes) => deadline - minutes * 60_000)]) {
         if (when > wall) delay = Math.min(delay, when - wall);
       }
@@ -101,7 +109,7 @@ export function useActionAlerts(
       async () => {
         const at = new Date();
         const candidates = new Set(due.map(item => item.id));
-        submitted = buildActionAlerts(current.current.snapshots, current.current.preferences, at)
+        submitted = [...buildActionAlerts(current.current.snapshots, current.current.preferences, at), ...current.current.getPublicAlerts(at)]
           .filter(item => candidates.has(item.id) && canDeliverActionAlert(item, current.current.preferences, runtime.current, at));
         if (!submitted.length) return false;
         const en = current.current.preferences.language === "en";
