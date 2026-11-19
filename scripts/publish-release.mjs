@@ -9,6 +9,22 @@ const ROOT = resolve(SCRIPT_DIR, "..");
 const WORKFLOW = "release.yml";
 const VERSION_SPEC = /^(?:patch|minor|major|beta|stable|\d+\.\d+\.\d+(?:-beta\.\d+)?)$/;
 const DEFAULT_RECORD = resolve(ROOT, "output", "release-resume.json");
+const PLATFORMS = ["all", "windows", "macos"];
+
+function releasePlatform(value = "all") {
+  if (!PLATFORMS.includes(value)) throw new Error("Platform must be all, windows or macos.");
+  return value;
+}
+
+export function releaseRunTitle(record) {
+  return `Release ${record.versionSpec} (publish=${record.mode === "publish"}, platform=${releasePlatform(record.platform)})`;
+}
+
+export function releaseRunsConflict(run, platform) {
+  releasePlatform(platform);
+  const other = /, platform=(all|windows|macos)\)$/.exec(run.displayTitle ?? "")?.[1] ?? "all";
+  return platform === "all" || other === "all" || platform === other;
+}
 
 const REQUIRED_ASSETS = [
   ["updater manifest", (name) => name === "latest.json"],
@@ -54,16 +70,20 @@ function sleep(milliseconds) {
   return new Promise((resolveSleep) => setTimeout(resolveSleep, milliseconds));
 }
 
-export function missingReleaseAssets(assetNames) {
-  return REQUIRED_ASSETS.filter(([, matches]) => !assetNames.some(matches)).map(([label]) => label);
+export function missingReleaseAssets(assetNames, platform = "all") {
+  releasePlatform(platform);
+  const required = platform === "all" ? REQUIRED_ASSETS : REQUIRED_ASSETS.filter(([label]) =>
+    platform === "windows" ? label.startsWith("Windows") : label.startsWith("macOS"));
+  return required.filter(([, matches]) => !assetNames.some(matches)).map(([label]) => label);
 }
 
-export function selectNewWorkflowRun(runs, previousRunIds, sourceSha) {
+export function selectNewWorkflowRun(runs, previousRunIds, sourceSha, expectedTitle = null) {
   const matches = runs
     .filter(
       (run) =>
         run.event === "workflow_dispatch" &&
         run.headSha === sourceSha &&
+        (expectedTitle === null || run.displayTitle === expectedTitle) &&
         !previousRunIds.has(String(run.databaseId)),
     );
   if (matches.length > 1) throw new Error("Multiple new release runs match this source. Dispatch will not be repeated; inspect GitHub and resume an identified run.");
@@ -74,16 +94,35 @@ function jobByName(jobs, name) {
   return jobs.find((job) => job.name === name);
 }
 
-export function workflowVerificationErrors(run, { stable }) {
+export function workflowVerificationErrors(run, { stable, platform = "all", requirePlatformFeeds = false }) {
+  releasePlatform(platform);
   const errors = [];
   if (run.status !== "completed" || run.conclusion !== "success") {
     errors.push(`workflow=${run.status}/${run.conclusion ?? "unknown"}`);
   }
 
-  for (const name of ["verify", "create-release-ref", "create-draft", "finalize"]) {
+  for (const name of ["verify", "create-release-ref", "create-draft", platform === "all" ? "finalize" : "finalize-platform"]) {
     const job = jobByName(run.jobs ?? [], name);
     if (!job || job.conclusion !== "success") errors.push(`${name} did not succeed`);
   }
+
+  if (platform !== "all") {
+    const selected = jobByName(run.jobs ?? [], `publish-${platform}`);
+    if (!selected || selected.conclusion !== "success") errors.push(`${platform} publish job did not succeed`);
+    const other = platform === "windows" ? "macos" : "windows";
+    for (const name of [`publish-${other}`, "finalize", ...(platform === "macos" ? ["upgrade-smoke"] : [])]) {
+      if (jobByName(run.jobs ?? [], name)?.conclusion !== "skipped") errors.push(`${name} was not skipped for ${platform}`);
+    }
+    if (platform === "windows") {
+      const defender = selected?.steps?.find((step) => step.name === "Scan the exact Windows release artifacts with Microsoft Defender");
+      if (defender?.conclusion !== "success") errors.push("Microsoft Defender release scan did not succeed");
+      if (jobByName(run.jobs ?? [], "upgrade-smoke")?.conclusion !== "success") errors.push("stable upgrade smoke did not succeed");
+    }
+    if (!stable) errors.push("Independent platform feeds require a stable version");
+    return errors;
+  }
+  const feedJob = jobByName(run.jobs ?? [], "promote-all-feeds");
+  if (stable && (requirePlatformFeeds || feedJob) && feedJob?.conclusion !== "success") errors.push("platform feed promotion did not succeed");
 
   const publishJobs = (run.jobs ?? []).filter((job) => job.name.startsWith("publish-draft"));
   const windowsJob = jobByName(run.jobs ?? [], "publish-windows") ?? publishJobs.find((job) => job.name.includes("windows-latest"));
@@ -108,12 +147,12 @@ export function workflowVerificationErrors(run, { stable }) {
   return errors;
 }
 
-export function releaseVerificationErrors(release, tag) {
+export function releaseVerificationErrors(release, tag, platform = "all") {
   const errors = [];
   if (release.tagName !== tag) errors.push(`release tag is ${release.tagName ?? "missing"}, expected ${tag}`);
   if (release.isDraft) errors.push("release is still a draft");
   if (release.isPrerelease !== tag.includes("-")) errors.push("release prerelease state does not match the tag");
-  const missing = missingReleaseAssets((release.assets ?? []).map((asset) => asset.name));
+  const missing = missingReleaseAssets((release.assets ?? []).map((asset) => asset.name), platform);
   if (missing.length > 0) errors.push(`missing assets: ${missing.join(", ")}`);
   return errors;
 }
@@ -150,9 +189,9 @@ function workflowRuns(repo) {
   ]);
 }
 
-async function awaitDispatchedRun(previousRunIds, sourceSha, repo) {
+async function awaitDispatchedRun(previousRunIds, sourceSha, repo, expectedTitle = null) {
   for (let attempt = 0; attempt < 20; attempt += 1) {
-    const selected = selectNewWorkflowRun(await workflowRuns(repo), previousRunIds, sourceSha);
+    const selected = selectNewWorkflowRun(await workflowRuns(repo), previousRunIds, sourceSha, expectedTitle);
     if (selected) return selected;
     await sleep(3_000);
   }
@@ -170,6 +209,8 @@ export function validateRecoveryRecord(record, repo) {
   if (!Array.isArray(record.previousRunIds) || record.previousRunIds.some((id) => !/^\d+$/.test(String(id)))) {
     throw new Error("Recovery record has an invalid prior run inventory.");
   }
+  releasePlatform(record.platform);
+  if (record.platform && record.platform !== "all" && record.tag.includes("-")) throw new Error("Independent platform feeds require a stable version.");
   return record;
 }
 
@@ -182,7 +223,8 @@ export function runIdentityErrors(record, remote, sourceVersion) {
   if (remote.head_sha !== record.sourceSha) errors.push("source SHA mismatch");
   const legacyTitle = `Release ${record.versionSpec}`;
   const boundTitle = `${legacyTitle} (publish=${record.mode === "publish"})`;
-  if (![legacyTitle, boundTitle].includes(remote.display_title)) errors.push("requested version or publish mode mismatch");
+  const titles = releasePlatform(record.platform) === "all" ? [legacyTitle, boundTitle, releaseRunTitle(record)] : [releaseRunTitle(record)];
+  if (!titles.includes(remote.display_title)) errors.push("requested version, publish mode or platform mismatch");
   try { if (`v${nextVersion(sourceVersion, record.versionSpec)}` !== record.tag) errors.push("target version mismatch"); }
   catch { errors.push("source version cannot produce the recorded target"); }
   return errors;
@@ -229,12 +271,13 @@ export function releaseAncestryErrors(tagCommit, mainCommit, comparison) {
 }
 
 export function recoveryRecordFromRun(remote, repo, sourceVersion) {
-  const title = /^Release (.+) \(publish=(true|false)\)$/.exec(remote.display_title ?? "");
+  const title = /^Release (.+) \(publish=(true|false)(?:, platform=(all|windows|macos))?\)$/.exec(remote.display_title ?? "");
   if (!title || !VERSION_SPEC.test(title[1])) throw new Error("This run does not expose its version and mode; resume requires its original recovery record.");
   const record = {
     schema: 1, repo, workflow: WORKFLOW, sourceSha: remote.head_sha,
     versionSpec: title[1], tag: `v${nextVersion(sourceVersion, title[1])}`,
     mode: title[2] === "true" ? "publish" : "dry-run", runId: String(remote.id), previousRunIds: [],
+    ...(title[3] ? { platform: title[3] } : {}),
   };
   validateRecoveryRecord(record, repo);
   const errors = runIdentityErrors(record, remote, sourceVersion);
@@ -243,7 +286,7 @@ export function recoveryRecordFromRun(remote, repo, sourceVersion) {
 }
 
 export function parsePublishArgs(args) {
-  const options = { spec: null, resume: false, runId: null, recordPath: DEFAULT_RECORD, recordExplicit: false, plan: false, dryRun: false, publish: false };
+  const options = { spec: null, resume: false, runId: null, recordPath: DEFAULT_RECORD, recordExplicit: false, plan: false, dryRun: false, publish: false, platform: "all", platformExplicit: false };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === "--resume") {
@@ -253,6 +296,10 @@ export function parsePublishArgs(args) {
       if (!args[index + 1] || args[index + 1].startsWith("--")) throw new Error("--record requires a path.");
       options.recordPath = resolve(ROOT, args[++index]);
       options.recordExplicit = true;
+    } else if (arg === "--platform") {
+      if (options.platformExplicit || !args[index + 1] || args[index + 1].startsWith("--")) throw new Error("--platform requires one platform.");
+      options.platform = releasePlatform(args[++index]);
+      options.platformExplicit = true;
     } else if (arg === "--plan") options.plan = true;
     else if (arg === "--dry-run") options.dryRun = true;
     else if (arg === "--yes") options.publish = true;
@@ -260,10 +307,13 @@ export function parsePublishArgs(args) {
     else throw new Error(`Unknown or duplicate argument: ${arg}`);
   }
   if (options.resume) {
-    if (options.spec || options.plan || options.dryRun || options.publish) throw new Error("--resume cannot be combined with a version, --yes, --dry-run, or --plan.");
+    if (options.spec || options.plan || options.dryRun || options.publish || options.platformExplicit) throw new Error("--resume cannot be combined with a version, --yes, --dry-run, --plan, or --platform; the saved run determines its platform.");
     if (options.runId !== null && !/^\d+$/.test(options.runId)) throw new Error("--resume requires a numeric workflow run ID.");
   } else if (!VERSION_SPEC.test(options.spec ?? "") || [options.plan, options.dryRun, options.publish].filter(Boolean).length !== 1) {
     throw new Error("Choose a supported version and exactly one of --plan, --dry-run, or --yes.");
+  }
+  if (!options.resume && !options.recordExplicit && options.platform !== "all") {
+    options.recordPath = resolve(ROOT, "output", `release-${options.platform}-resume.json`);
   }
   return options;
 }
@@ -274,7 +324,7 @@ function saveRecord(record, path) {
   writeFileSync(temporary, `${JSON.stringify(record, null, 2)}\n`);
   renameSync(temporary, path);
   console.log(`Recovery record: ${path}`);
-  console.log(`Repository: ${record.repo}; source: ${record.sourceSha}; target: ${record.tag}; mode: ${record.mode}; run: ${record.runId ?? "awaiting discovery"}`);
+  console.log(`Repository: ${record.repo}; source: ${record.sourceSha}; target: ${record.tag}; platform: ${record.platform ?? "all"}; mode: ${record.mode}; run: ${record.runId ?? "awaiting discovery"}`);
 }
 
 async function sourcePackageVersion(record) {
@@ -285,7 +335,8 @@ async function sourcePackageVersion(record) {
 
 async function verifyExistingRun(record, recordPath) {
   if (!record.runId) {
-    const discovered = await awaitDispatchedRun(new Set(record.previousRunIds.map(String)), record.sourceSha, record.repo);
+    const discovered = await awaitDispatchedRun(new Set(record.previousRunIds.map(String)), record.sourceSha, record.repo,
+      record.platform === undefined ? null : releaseRunTitle(record));
     record.runId = String(discovered.databaseId);
     saveRecord(record, recordPath);
   }
@@ -311,7 +362,7 @@ async function verifyExistingRun(record, recordPath) {
   if (outcome === "failed") throw new Error(`Remote workflow completed with ${details.conclusion}: ${details.url}`);
   if (record.mode === "dry-run") {
     const refJob = jobByName(details.jobs ?? [], "create-release-ref");
-    const publishingJobs = ["create-release-ref", "create-draft", "publish-windows", "publish-macos", "assemble-updater", "finalize", "upgrade-smoke"];
+    const publishingJobs = ["create-release-ref", "create-draft", "publish-windows", "publish-macos", "assemble-updater", "finalize", "finalize-platform", "promote-all-feeds", "upgrade-smoke"];
     if (!refJob || refJob.conclusion !== "skipped" || jobByName(details.jobs ?? [], "verify")?.conclusion !== "success" ||
         (details.jobs ?? []).some((job) => (publishingJobs.includes(job.name) || job.name.startsWith("publish-draft")) && job.conclusion !== "skipped")) {
       throw new Error("Run does not match the recorded dry-run mode.");
@@ -319,9 +370,10 @@ async function verifyExistingRun(record, recordPath) {
     console.log(`Remote verification passed for ${record.tag}. No release refs or assets were created.`);
     return;
   }
-  const errors = workflowVerificationErrors(details, { stable: !record.tag.includes("-") });
+  const platform = releasePlatform(record.platform);
+  const errors = workflowVerificationErrors(details, { stable: !record.tag.includes("-"), platform, requirePlatformFeeds: record.platform !== undefined });
   const release = await readJson(["release", "view", record.tag, "--repo", record.repo, "--json", "tagName,isDraft,isPrerelease,url,targetCommitish,assets"]);
-  errors.push(...releaseVerificationErrors(release, record.tag));
+  errors.push(...releaseVerificationErrors(release, record.tag, platform));
   const tagCommit = await api(record.repo, `commits/${record.tag}`);
   const mainCommit = await api(record.repo, "commits/main");
   const comparison = tagCommit.sha !== mainCommit.sha ? await api(record.repo, `compare/${tagCommit.sha}...${mainCommit.sha}`) : null;
@@ -333,22 +385,25 @@ async function verifyExistingRun(record, recordPath) {
   if (publicRelease.tag_name !== record.tag || publicRelease.target_commitish !== tagCommit.sha) {
     throw new Error("Public release identity changed before artifact verification.");
   }
-  const freshReleaseErrors = releaseVerificationErrors({ tagName: publicRelease.tag_name, isDraft: publicRelease.draft, isPrerelease: publicRelease.prerelease, assets: publicRelease.assets }, record.tag);
+  const freshReleaseErrors = releaseVerificationErrors({ tagName: publicRelease.tag_name, isDraft: publicRelease.draft, isPrerelease: publicRelease.prerelease, assets: publicRelease.assets }, record.tag, platform);
   if (publicRelease.target_commitish !== tagCommit.sha) freshReleaseErrors.push("public release target changed before artifact verification");
   if (freshReleaseErrors.length) throw new Error(`Public artifact identity verification failed: ${freshReleaseErrors.join("; ")}`);
   const configFile = await api(record.repo, `contents/src-tauri/tauri.conf.json?ref=${tagCommit.sha}`);
   if (configFile.encoding !== "base64") throw new Error("Cannot read the released updater public key.");
   const releasedConfig = JSON.parse(Buffer.from(configFile.content, "base64").toString("utf8"));
   const { verifyPublicArtifacts } = await import("./verify-public-artifacts.mjs");
-  const artifactVerification = await verifyPublicArtifacts({
+  const artifactVerification = platform === "all" ? await verifyPublicArtifacts({
     release: publicRelease,
     publicKey: releasedConfig.plugins?.updater?.pubkey,
     outputDirectory: resolve(ROOT, "output", "release-runs", `${record.runId}-artifacts`),
-  });
+  }) : runJson("node", ["scripts/platform-release.mjs", "verify", "--repository", record.repo,
+    "--tag", record.tag, "--release-id", String(publicRelease.id), "--release-commit", tagCommit.sha,
+    "--platform", platform, "--run-id", String(record.runId),
+    "--output", resolve(ROOT, "output", "release-runs", `${record.runId}-artifacts`)]);
   console.log(`Artifact verification report: ${artifactVerification.reportPath}`);
-  const report = { ...record, verifiedAt: new Date().toISOString(), releaseCommit: tagCommit.sha, mainAtVerification: mainCommit.sha, mainAdvanced: mainCommit.sha !== tagCommit.sha, releaseUrl: release.url, assets: release.assets, timings: workflowTimings(details.jobs ?? []), verification: "workflow, Defender step, public state, artifact integrity, signatures and commit identity", artifactVerification };
+  const report = { ...record, platform, verifiedAt: new Date().toISOString(), releaseCommit: tagCommit.sha, mainAtVerification: mainCommit.sha, mainAdvanced: mainCommit.sha !== tagCommit.sha, releaseUrl: release.url, assets: release.assets, timings: workflowTimings(details.jobs ?? []), verification: `${platform} workflow gates, public state, artifact integrity, signatures and commit identity`, artifactVerification };
   saveRecord(report, resolve(ROOT, "output", "release-runs", `${record.runId}-verification.json`));
-  console.log(`Published and verified ${record.tag}: ${release.url}`);
+  console.log(`Published and verified ${record.tag} (${platform === "all" ? "both platforms" : platform}): ${release.url}`);
   console.log(`Release commit: ${tagCommit.sha}`);
   console.log(`Verified assets: ${release.assets.map((asset) => asset.name).join(", ")}`);
 }
@@ -362,6 +417,7 @@ function assertLocalReleaseState() {
 function printUsage() {
   console.log(`Usage:
   npm run publish:release -- patch --yes
+  npm run publish:release -- patch --platform windows --yes
   npm run publish:release -- patch --dry-run
   npm run publish:release -- patch --plan
   npm run publish:release -- --resume
@@ -371,7 +427,9 @@ function printUsage() {
 --dry-run  Run the remote verification gate without creating a commit, tag, or Release.
 --plan     Validate local state and print the target version without network access.
 --resume   Only observe and verify an existing run; never bump, tag, dispatch, or publish.
---record   Recovery JSON location (default: output/release-resume.json).
+--record   Recovery JSON location (default: output/release-resume.json;
+           independent dispatches use output/release-PLATFORM-resume.json).
+--platform all (default), windows, or macos; independent platforms require stable versions.
            A run ID without a saved record requires a version/mode-bound run title.`);
 }
 
@@ -382,7 +440,7 @@ async function main() {
     return;
   }
 
-  const { spec, plan, publish, resume, runId, recordPath, recordExplicit } = parsePublishArgs(args);
+  const { spec, plan, publish, resume, runId, recordPath, recordExplicit, platform } = parsePublishArgs(args);
   if (resume) {
     const { nameWithOwner: repo } = await readJson(["repo", "view", "--json", "nameWithOwner"]);
     let record;
@@ -412,7 +470,8 @@ async function main() {
   assertLocalReleaseState();
   const target = run("npm", ["run", "--silent", "release", "--", spec, "--print-target"]);
   const tag = `v${target}`;
-  console.log(`Release target: ${tag}`);
+  if (platform !== "all" && tag.includes("-")) throw new Error("Independent platform feeds require a stable version; use --platform all for beta.");
+  console.log(`Release target: ${tag}; platform: ${platform}`);
   if (plan) {
     console.log("Plan complete. No network request or repository change was made.");
     return;
@@ -428,17 +487,17 @@ async function main() {
   if (run("git", ["tag", "--list", tag])) throw new Error(`${tag} already exists.`);
 
   const before = await workflowRuns(repo);
-  const active = before.filter((run) => run.status !== "completed");
+  const active = before.filter((run) => run.status !== "completed" && releaseRunsConflict(run, platform));
   if (active.length > 0) {
     throw new Error(`Another release workflow is active: ${active[0].url}`);
   }
   const previousRunIds = new Set(before.map((run) => String(run.databaseId)));
   const publishValue = publish ? "true" : "false";
   console.log(`${publish ? "Publishing" : "Verifying"} ${tag} through GitHub Actions...`);
-  const record = { schema: 1, repo, workflow: WORKFLOW, sourceSha, tag, versionSpec: spec, mode: publish ? "publish" : "dry-run", runId: null, previousRunIds: [...previousRunIds], dispatchedAt: new Date().toISOString() };
+  const record = { schema: 1, repo, workflow: WORKFLOW, sourceSha, tag, versionSpec: spec, platform, mode: publish ? "publish" : "dry-run", runId: null, previousRunIds: [...previousRunIds], dispatchedAt: new Date().toISOString() };
   saveRecord(record, recordPath);
   await dispatchOnceAndRecover({
-    dispatch: () => run("gh", ["workflow", "run", WORKFLOW, "--repo", repo, "--ref", "main", "-f", `version=${spec}`, "-f", `publish=${publishValue}`]),
+    dispatch: () => run("gh", ["workflow", "run", WORKFLOW, "--repo", repo, "--ref", "main", "-f", `version=${spec}`, "-f", `publish=${publishValue}`, "-f", `platform=${platform}`]),
     discover: () => verifyExistingRun(record, recordPath),
     onUnconfirmed: (error) => console.warn(`Dispatch response was not confirmed: ${error.message}. Looking for a matching run; dispatch will not be repeated.`),
   });

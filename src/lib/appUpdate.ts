@@ -2,7 +2,7 @@ import type { DownloadEvent, Update } from "@tauri-apps/plugin-updater";
 import { isTauri } from "./bridge";
 import type { UpdateChannel } from "../types";
 
-export const RELEASE_URL = "https://github.com/silverlion2/quota-float/releases/latest";
+export const RELEASE_URL = "https://github.com/silverlion2/quota-float/releases";
 
 export type AppUpdatePlatform = "windows" | "macos";
 
@@ -67,13 +67,16 @@ function updatePlatform(): AppUpdatePlatform {
 }
 
 function updateInfo(update: Update): AppUpdateInfo {
+  const version = semverParts(update.version);
+  if (!version || version.beta !== null) throw new Error("Invalid stable update version.");
   return {
     version: update.version,
     body: update.body?.trim() || null,
     date: update.date ?? null,
     platform: updatePlatform(),
     channel: "stable",
-    releaseUrl: RELEASE_URL,
+    // Platform feeds can advance independently; /latest may name another platform's release.
+    releaseUrl: stableReleasePage(update),
     automaticInstall: updatePlatform() === "windows",
   };
 }
@@ -120,17 +123,50 @@ interface GithubRelease {
   body?: string;
   published_at?: string;
   html_url?: string;
+  assets?: { name?: string; browser_download_url?: string; state?: string; size?: number }[];
 }
 
-function highestBetaRelease(releases: GithubRelease[], currentVersion: string): GithubRelease | null {
+function releasePageForVersion(version: string): string {
+  return `https://github.com/silverlion2/quota-float/releases/tag/v${version.replace(/^v/, "")}`;
+}
+
+function stableReleasePage(update: Update): string {
+  const canonical = releasePageForVersion(update.version);
+  const declared = update.rawJson?.release_url;
+  // The initial Windows-only bootstrap has its own tag, but never trust arbitrary manifest links.
+  const windowsBootstrap = canonical.replace("/tag/v", "/tag/windows-v");
+  return declared === canonical || (updatePlatform() === "windows" && declared === windowsBootstrap)
+    ? declared : canonical;
+}
+
+function hasPlatformInstaller(release: GithubRelease, platform: AppUpdatePlatform): boolean {
+  if (!Array.isArray(release.assets) || !release.tag_name) return false;
+  const version = release.tag_name.replace(/^v/, "");
+  const suffix = platform === "macos" ? "universal.dmg" : "x64-setup.exe";
+  return release.assets.some((asset) => {
+    if (!asset || (asset.state !== undefined && asset.state !== "uploaded") || !(typeof asset.size === "number" && asset.size > 0)) return false;
+    if (asset.name !== `Quota.Float_${version}_${suffix}` && asset.name !== `Quota Float_${version}_${suffix}`) return false;
+    try {
+      const url = new URL(asset.browser_download_url ?? "");
+      return url.origin === "https://github.com" && !url.username && !url.password && !url.search && !url.hash
+        && decodeURIComponent(url.pathname) === `/silverlion2/quota-float/releases/download/v${version}/${asset.name}`;
+    } catch {
+      return false;
+    }
+  });
+}
+
+function highestBetaRelease(releases: GithubRelease[], currentVersion: string, platform: AppUpdatePlatform): GithubRelease | null {
   const current = semverParts(currentVersion);
   if (!current) return null;
   return releases
+    .filter((release) => release && typeof release.tag_name === "string")
     .map((release) => ({ release, version: release.tag_name ? semverParts(release.tag_name) : null }))
     .filter((candidate): candidate is { release: GithubRelease; version: SemverParts } => (
       candidate.release.prerelease === true
       && candidate.release.draft !== true
-      && Boolean(candidate.release.html_url)
+      && candidate.release.tag_name?.startsWith("v") === true
+      && hasPlatformInstaller(candidate.release, platform)
       && candidate.version?.beta !== null
       && candidate.version !== null
     ))
@@ -167,10 +203,11 @@ async function checkBetaUpdate(controller: AbortController): Promise<AppUpdateIn
       if (timedOut) throw new UpdateCheckError("beta-timeout");
       return null;
     }
-    const release = highestBetaRelease(payload as GithubRelease[], current);
-    if (!release?.tag_name || !release.html_url) return null;
+    const platform = updatePlatform();
+    const release = highestBetaRelease(payload as GithubRelease[], current, platform);
+    if (!release?.tag_name) return null;
     const version = release.tag_name.replace(/^v/, "");
-    return { version, body: release.body?.trim() || null, date: release.published_at ?? null, platform: updatePlatform(), channel: "beta", releaseUrl: release.html_url, automaticInstall: false };
+    return { version, body: release.body?.trim() || null, date: release.published_at ?? null, platform, channel: "beta", releaseUrl: releasePageForVersion(version), automaticInstall: false };
   } catch (error) {
     if (signal.aborted && timedOut) throw new UpdateCheckError("beta-timeout");
     if (signal.aborted) return null;
@@ -209,8 +246,15 @@ export function checkForAppUpdate(channel: UpdateChannel = "stable"): Promise<Ap
       if (update) await Promise.resolve(update.close()).catch(() => undefined);
       return null;
     }
-    pendingUpdate = update;
-    return update ? updateInfo(update) : null;
+    if (!update) return null;
+    try {
+      const info = updateInfo(update);
+      pendingUpdate = update;
+      return info;
+    } catch (error) {
+      await Promise.resolve(update.close()).catch(() => undefined);
+      throw error;
+    }
   })().then((result) => generation === checkGeneration ? result : null)
     .finally(() => {
       if (checkFlight?.generation === generation) checkFlight = null;
@@ -264,6 +308,7 @@ export async function downloadAppUpdate(onProgress: (progress: AppUpdateProgress
 
 export async function installAppUpdate(): Promise<void> {
   if (!pendingUpdate) throw new Error("No downloaded app update is ready to install.");
+  if (updatePlatform() === "macos") throw new Error("macOS updates are installed manually from GitHub Releases.");
   await pendingUpdate.install();
   const { relaunch } = await import("@tauri-apps/plugin-process");
   await relaunch();

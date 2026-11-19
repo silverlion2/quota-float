@@ -18,6 +18,20 @@ vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: mocks.openUrl }));
 vi.mock("@tauri-apps/plugin-process", () => ({ relaunch: mocks.relaunch }));
 vi.mock("@tauri-apps/api/app", () => ({ getVersion: mocks.getVersion }));
 
+function betaRelease(version: string, platform: "windows" | "macos" = "windows") {
+  const tag = `v${version}`;
+  const name = `Quota.Float_${version}_${platform === "macos" ? "universal.dmg" : "x64-setup.exe"}`;
+  return {
+    prerelease: true, draft: false, tag_name: tag,
+    html_url: `https://github.com/silverlion2/quota-float/releases/tag/${tag}`,
+    assets: [{ name, state: "uploaded", size: 100, browser_download_url: `https://github.com/silverlion2/quota-float/releases/download/${tag}/${name}` }],
+  };
+}
+
+function useMac() {
+  vi.stubGlobal("navigator", { userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)" });
+}
+
 const fakeUpdate = {
   version: "0.2.0",
   body: "A calmer update flow.",
@@ -41,6 +55,97 @@ afterEach(() => {
 });
 
 describe("app updater", () => {
+  it("opens all releases as the fallback rather than the legacy shared latest", async () => {
+    const { openReleasePage } = await import("./appUpdate");
+    await openReleasePage();
+    expect(mocks.openUrl).toHaveBeenCalledWith("https://github.com/silverlion2/quota-float/releases");
+  });
+
+  it("uses the independent native platform feed without a shared latest fallback", async () => {
+    const config = await import("../../src-tauri/tauri.conf.json");
+    expect(config.plugins.updater.endpoints).toEqual([
+      "https://raw.githubusercontent.com/silverlion2/quota-float/update-channels/stable/{{target}}.json",
+    ]);
+  });
+
+  it("keeps macOS updates manual and links the exact older platform release", async () => {
+    useMac();
+    mocks.check.mockResolvedValue({ ...fakeUpdate, version: "0.3.37" });
+    const { checkForAppUpdate, downloadAppUpdate, installAppUpdate } = await import("./appUpdate");
+    await expect(checkForAppUpdate()).resolves.toMatchObject({
+      version: "0.3.37", platform: "macos", automaticInstall: false,
+      releaseUrl: "https://github.com/silverlion2/quota-float/releases/tag/v0.3.37",
+    });
+    await expect(downloadAppUpdate(vi.fn())).rejects.toThrow("macOS");
+    await expect(installAppUpdate()).rejects.toThrow("macOS");
+    expect(mocks.download).not.toHaveBeenCalled();
+    expect(mocks.install).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "https://evil.test/releases/tag/v0.2.0",
+    "https://github.com/silverlion2/quota-float/releases/latest",
+    "https://github.com/silverlion2/quota-float/releases/tag/v9.0.0",
+    "https://github.com/silverlion2/quota-float/releases/tag/v0.2.0?redirect=evil",
+    "https://github.com/silverlion2/quota-float/releases/tag/windows-v0.2.0#redirect",
+  ])("derives the exact release when manifest release_url is unsafe or mismatched: %s", async (release_url) => {
+    mocks.check.mockResolvedValue({ ...fakeUpdate, rawJson: { release_url } });
+    const { checkForAppUpdate } = await import("./appUpdate");
+    await expect(checkForAppUpdate()).resolves.toMatchObject({ releaseUrl: "https://github.com/silverlion2/quota-float/releases/tag/v0.2.0" });
+  });
+
+  it("accepts an exact Windows bootstrap tag only on Windows", async () => {
+    mocks.check.mockResolvedValue({ ...fakeUpdate, rawJson: { release_url: "https://github.com/silverlion2/quota-float/releases/tag/windows-v0.2.0" } });
+    const { checkForAppUpdate, discardAppUpdate } = await import("./appUpdate");
+    await expect(checkForAppUpdate()).resolves.toMatchObject({ releaseUrl: "https://github.com/silverlion2/quota-float/releases/tag/windows-v0.2.0" });
+    await discardAppUpdate();
+    useMac();
+    await expect(checkForAppUpdate()).resolves.toMatchObject({ releaseUrl: "https://github.com/silverlion2/quota-float/releases/tag/v0.2.0" });
+  });
+
+  it.each(["0.2.0-beta.1", "../../latest", "0.2.0/path"])("rejects invalid stable version %s and closes its resource", async (version) => {
+    mocks.check.mockResolvedValue({ ...fakeUpdate, version });
+    const { checkForAppUpdate, getPendingAppUpdate } = await import("./appUpdate");
+    await expect(checkForAppUpdate()).rejects.toThrow("Invalid stable update version");
+    expect(mocks.close).toHaveBeenCalledOnce();
+    expect(getPendingAppUpdate()).toBeNull();
+  });
+
+  it.each(["windows", "macos"] as const)("only offers beta installers usable on %s", async (platform) => {
+    if (platform === "macos") useMac();
+    const ownRelease = betaRelease("0.4.0-beta.1", platform);
+    const otherRelease = betaRelease("0.5.0-beta.1", platform === "macos" ? "windows" : "macos");
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => [otherRelease, ownRelease] })));
+    const { checkForAppUpdate } = await import("./appUpdate");
+    await expect(checkForAppUpdate("beta")).resolves.toMatchObject({ version: "0.4.0-beta.1", platform, automaticInstall: false });
+  });
+
+  it("ignores missing, empty, wrong-version or foreign beta assets and derives safe release links", async () => {
+    const valid = betaRelease("0.4.0-beta.1");
+    const foreign = betaRelease("0.5.0-beta.1");
+    foreign.assets[0].browser_download_url = "https://evil.test/installer.exe";
+    const wrongTag = betaRelease("0.6.0-beta.1");
+    wrongTag.assets[0].browser_download_url = wrongTag.assets[0].browser_download_url.replace("/v0.6.0-beta.1/", "/v0.9.0-beta.1/");
+    const empty = betaRelease("0.7.0-beta.1");
+    empty.assets[0].size = 0;
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => [
+      null, foreign, wrongTag, empty,
+      { ...betaRelease("0.8.0-beta.1"), assets: [] },
+      { ...betaRelease("0.9.0-beta.1"), draft: true },
+      { ...valid, html_url: "https://evil.test/release" },
+    ] })));
+    const { checkForAppUpdate } = await import("./appUpdate");
+    await expect(checkForAppUpdate("beta")).resolves.toMatchObject({ version: "0.4.0-beta.1", releaseUrl: valid.html_url });
+  });
+
+  it("does not advertise a Windows-only beta to macOS", async () => {
+    useMac();
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => [betaRelease("0.4.0-beta.1")] })));
+    const { checkForAppUpdate } = await import("./appUpdate");
+    await expect(checkForAppUpdate("beta")).resolves.toBeNull();
+    expect(mocks.check).not.toHaveBeenCalled();
+  });
+
   it("returns release metadata without prompting", async () => {
     const { checkForAppUpdate } = await import("./appUpdate");
     await expect(checkForAppUpdate()).resolves.toEqual({
@@ -49,7 +154,7 @@ describe("app updater", () => {
       date: "2026-07-18T00:00:00Z",
       platform: "windows",
       channel: "stable",
-      releaseUrl: "https://github.com/silverlion2/quota-float/releases/latest",
+      releaseUrl: "https://github.com/silverlion2/quota-float/releases/tag/v0.2.0",
       automaticInstall: true,
     });
     expect(mocks.check).toHaveBeenCalledWith({ timeout: 15_000 });
@@ -88,7 +193,7 @@ describe("app updater", () => {
   it("discovers beta releases without feeding them to the automatic installer", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => ({
       ok: true,
-      json: async () => [{ prerelease: true, draft: false, tag_name: "v0.2.0-beta.1", body: "Preview", published_at: "2026-07-19T00:00:00Z", html_url: "https://github.com/silverlion2/quota-float/releases/tag/v0.2.0-beta.1" }],
+      json: async () => [{ ...betaRelease("0.2.0-beta.1"), body: "Preview", published_at: "2026-07-19T00:00:00Z" }],
     })));
     const { checkForAppUpdate } = await import("./appUpdate");
     await expect(checkForAppUpdate("beta")).resolves.toMatchObject({ version: "0.2.0-beta.1", channel: "beta", automaticInstall: false });
@@ -126,10 +231,10 @@ describe("app updater", () => {
     vi.stubGlobal("fetch", vi.fn(async () => ({
       ok: true,
       json: async () => [
-        { prerelease: true, draft: false, tag_name: "v0.4.0-beta.2", html_url: "https://example.test/beta-2" },
-        { prerelease: true, draft: false, tag_name: "v0.4.0-rc.1", html_url: "https://example.test/rc" },
-        { prerelease: true, draft: false, tag_name: "v0.4.0-beta.10", html_url: "https://example.test/beta-10" },
-        { prerelease: true, draft: false, tag_name: "v0.4.0-beta.01", html_url: "https://example.test/invalid" },
+        betaRelease("0.4.0-beta.2"),
+        betaRelease("0.4.0-rc.1"),
+        betaRelease("0.4.0-beta.10"),
+        betaRelease("0.4.0-beta.01"),
         { prerelease: false, draft: false, tag_name: "v0.5.0", html_url: "https://example.test/stable" },
       ],
     })));
@@ -137,7 +242,7 @@ describe("app updater", () => {
 
     await expect(checkForAppUpdate("beta")).resolves.toMatchObject({
       version: "0.4.0-beta.10",
-      releaseUrl: "https://example.test/beta-10",
+      releaseUrl: "https://github.com/silverlion2/quota-float/releases/tag/v0.4.0-beta.10",
       automaticInstall: false,
     });
   });

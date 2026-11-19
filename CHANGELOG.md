@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Publish Windows and macOS through independent verified stable update feeds; keep the legacy combined updater compatible and require one manual bootstrap for existing Windows clients until a combined migration release is ready.
+- Link update details to the exact platform release and filter beta downloads by platform, preserving manual macOS installation.
+- Verify public package signatures before advancing a platform feed, reject channel rollback, and validate both the previous Windows channel version and the legacy upgrade baseline.
+
 ## 0.3.39 - 2026-11-19
 
 - Fix the visible View AIHOT entry being intercepted by native window dragging; cover the full pointer press/release path in component and native WebView regressions.

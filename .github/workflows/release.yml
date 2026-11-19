@@ -1,6 +1,6 @@
 name: Release
 
-run-name: Release ${{ inputs.version || github.ref_name }} (publish=${{ github.event_name != 'workflow_dispatch' || inputs.publish }})
+run-name: Release ${{ inputs.version || github.ref_name }} (publish=${{ github.event_name != 'workflow_dispatch' || inputs.publish }}, platform=${{ inputs.platform || 'all' }})
 
 on:
   workflow_dispatch:
@@ -15,6 +15,12 @@ on:
         required: true
         default: false
         type: boolean
+      platform:
+        description: Release both platforms or one independent stable platform
+        required: true
+        default: all
+        type: choice
+        options: [all, windows, macos]
   push:
     tags:
       - "v*"
@@ -23,7 +29,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: quota-float-release
+  group: quota-float-release-${{ inputs.platform || 'all' }}
   cancel-in-progress: false
 
 jobs:
@@ -64,8 +70,10 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           REF_NAME: ${{ github.ref_name }}
           VERSION_SPEC: ${{ inputs.version }}
+          RELEASE_PLATFORM: ${{ inputs.platform || 'all' }}
         run: |
           set -euo pipefail
+          case "$RELEASE_PLATFORM" in all|windows|macos) ;; *) echo "Invalid release platform" >&2; exit 1 ;; esac
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             if [[ "$REF_NAME" != "main" ]]; then
               echo "Manual releases must be dispatched from main, not $REF_NAME." >&2
@@ -73,6 +81,10 @@ jobs:
             fi
             git switch -C main "$GITHUB_SHA"
             target="$(npm run --silent release -- "$VERSION_SPEC" --print-target)"
+            if [[ "$RELEASE_PLATFORM" != "all" && "$target" == *-* ]]; then
+              echo "Independent platform feeds require a stable version." >&2
+              exit 1
+            fi
             npm run release -- "$VERSION_SPEC" --dry-run --yes
             tag="v${target}"
           else
@@ -163,6 +175,7 @@ jobs:
           WINDOWS_PLATFORM_SIGNING: ${{ secrets.WINDOWS_CERTIFICATE != '' && secrets.WINDOWS_CERTIFICATE_PASSWORD != '' }}
           MACOS_PLATFORM_SIGNING: ${{ secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.KEYCHAIN_PASSWORD != '' }}
           MACOS_NOTARIZATION: ${{ secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
+          RELEASE_PLATFORM: ${{ inputs.platform || 'all' }}
         with:
           result-encoding: string
           script: |
@@ -172,12 +185,14 @@ jobs:
               tag_name: process.env.RELEASE_TAG,
               target_commitish: process.env.RELEASE_SHA,
             });
+            const platform = process.env.RELEASE_PLATFORM || "all";
             const signing = [
               `Windows Authenticode: ${process.env.WINDOWS_PLATFORM_SIGNING === "true" ? "verified by release CI" : "not configured"}`,
               `macOS Developer ID: ${process.env.MACOS_PLATFORM_SIGNING === "true" ? "verified by release CI" : "not configured"}`,
               `macOS notarization: ${process.env.MACOS_NOTARIZATION === "true" ? "validated by release CI" : "not configured"}`,
-            ];
-            return `${data.body}\n\n## Platform signing\n\n${signing.map((item) => `- ${item}`).join("\n")}\n\nTauri updater signatures are generated independently for both platforms.\n\n## Privacy\n\nQuota Float remains local-first: it reads existing local sign-in state only for quota requests and does not upload prompts, chats, raw quota responses, or local credentials.`;
+            ].filter((item) => platform === "all" || (platform === "windows" ? item.startsWith("Windows") : item.startsWith("macOS")));
+            const scope = platform === "all" ? "Windows and macOS" : platform === "windows" ? "Windows only" : "macOS only";
+            return `${data.body}\n\n## Platform scope\n\n${scope}.\n\n## Platform signing\n\n${signing.map((item) => `- ${item}`).join("\n")}\n\nTauri updater signatures are verified for the published platform artifacts.\n\n## Privacy\n\nQuota Float remains local-first: it reads existing local sign-in state only for quota requests and does not upload prompts, chats, raw quota responses, or local credentials.`;
       - name: Prepare one shared release draft before parallel builds
         id: draft
         uses: actions/github-script@v7
@@ -185,6 +200,7 @@ jobs:
           RELEASE_TAG: ${{ needs.verify.outputs.tag }}
           RELEASE_SHA: ${{ github.event_name == 'push' && github.sha || needs.create-release-ref.outputs.release_sha }}
           RELEASE_BODY: ${{ steps.release_notes.outputs.result }}
+          RELEASE_PLATFORM: ${{ inputs.platform || 'all' }}
         with:
           script: |
             const tag = process.env.RELEASE_TAG;
@@ -214,6 +230,7 @@ jobs:
                 body: process.env.RELEASE_BODY,
                 draft: true,
                 prerelease: tag.includes("-"),
+                ...(process.env.RELEASE_PLATFORM && process.env.RELEASE_PLATFORM !== "all" ? { make_latest: "false" } : {}),
               });
               release = data;
             }
@@ -221,7 +238,7 @@ jobs:
             core.info(`Both platform builders will upload to draft ${release.id} for ${tag}.`);
 
   publish-windows:
-    if: ${{ always() && !cancelled() && needs.create-draft.result == 'success' }}
+    if: ${{ always() && !cancelled() && needs.create-draft.result == 'success' && inputs.platform != 'macos' }}
     needs: [verify, create-release-ref, create-draft]
     permissions:
       contents: write
@@ -337,7 +354,7 @@ jobs:
           }
 
   publish-macos:
-    if: ${{ always() && !cancelled() && needs.create-draft.result == 'success' }}
+    if: ${{ always() && !cancelled() && needs.create-draft.result == 'success' && inputs.platform != 'windows' }}
     needs: [verify, create-release-ref, create-draft]
     permissions:
       contents: write
@@ -453,6 +470,7 @@ jobs:
     # GitHub only exposes draft releases to tokens with push access. The script performs GET/download calls only.
     permissions:
       contents: write
+      actions: read
     outputs:
       candidate_release_id: ${{ steps.upgrade.outputs.candidate_release_id }}
       candidate_asset_id: ${{ steps.upgrade.outputs.candidate_asset_id }}
@@ -462,18 +480,28 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ needs.verify.outputs.tag }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
       - name: Verify previous-to-candidate per-user upgrade while the release is draft
         id: upgrade
         shell: powershell
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./scripts/verify-windows-upgrade.ps1 -Repository "${{ github.repository }}" -CurrentTag "${{ needs.verify.outputs.tag }}" -CandidateReleaseId "${{ needs.publish-windows.outputs.release_id }}"
+        run: ./scripts/verify-windows-upgrade.ps1 -Repository "${{ github.repository }}" -CurrentTag "${{ needs.verify.outputs.tag }}" -CandidateReleaseId "${{ needs.publish-windows.outputs.release_id }}" -PlatformMode "${{ inputs.platform || 'all' }}"
+      - name: Verify legacy v0.3.37 migration to the exact candidate
+        if: ${{ inputs.platform == 'windows' && steps.upgrade.outputs.previous_tag != 'v0.3.37' }}
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./scripts/verify-windows-upgrade.ps1 -Repository "${{ github.repository }}" -CurrentTag "${{ needs.verify.outputs.tag }}" -CandidateReleaseId "${{ needs.publish-windows.outputs.release_id }}" -PlatformMode windows -PreviousTag v0.3.37
 
   finalize:
     needs: [verify, create-release-ref, create-draft, publish-windows, publish-macos, upgrade-smoke]
     if: >-
       ${{
         always() && !cancelled() &&
+        (inputs.platform == '' || inputs.platform == 'all') &&
         needs.publish-windows.result == 'success' &&
         needs.publish-macos.result == 'success' &&
         (
@@ -701,3 +729,92 @@ jobs:
               }
             }
             core.info(`Public distribution check passed for ${tag} with ${names.length} assets.`);
+
+  finalize-platform:
+    needs: [verify, create-release-ref, create-draft, publish-windows, publish-macos, upgrade-smoke]
+    if: >-
+      ${{
+        always() && !cancelled() &&
+        needs.verify.result == 'success' && needs.create-draft.result == 'success' &&
+        (
+          (inputs.platform == 'windows' && needs.publish-windows.result == 'success' && needs.upgrade-smoke.result == 'success') ||
+          (inputs.platform == 'macos' && needs.publish-macos.result == 'success')
+        )
+      }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.create-release-ref.outputs.release_sha }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+      - name: Verify, publish and promote only the selected platform
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.verify.outputs.tag }}
+          RELEASE_ID: ${{ needs.create-draft.outputs.release_id }}
+          RELEASE_SHA: ${{ needs.create-release-ref.outputs.release_sha }}
+          RELEASE_PLATFORM: ${{ inputs.platform }}
+          CANDIDATE_ASSET_ID: ${{ needs.upgrade-smoke.outputs.candidate_asset_id }}
+          CANDIDATE_SHA256: ${{ needs.upgrade-smoke.outputs.candidate_sha256 }}
+        run: |
+          set -euo pipefail
+          args=(finalize --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" --release-id "$RELEASE_ID"
+            --release-commit "$RELEASE_SHA" --platform "$RELEASE_PLATFORM" --run-id "$GITHUB_RUN_ID"
+            --output output/platform-release)
+          if [[ "$RELEASE_PLATFORM" == "windows" ]]; then
+            args+=(--expected-asset-id "$CANDIDATE_ASSET_ID" --expected-sha256 "$CANDIDATE_SHA256")
+          fi
+          node scripts/platform-release.mjs "${args[@]}"
+      - uses: actions/upload-artifact@v7
+        if: ${{ always() }}
+        with:
+          name: platform-release-verification-${{ inputs.platform }}
+          path: output/platform-release
+          if-no-files-found: ignore
+
+  promote-all-feeds:
+    needs: [verify, create-release-ref, finalize, upgrade-smoke]
+    if: >-
+      ${{
+        always() && !cancelled() &&
+        (inputs.platform == '' || inputs.platform == 'all') &&
+        needs.finalize.result == 'success' && !contains(needs.verify.outputs.tag, '-')
+      }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'push' && github.sha || needs.create-release-ref.outputs.release_sha }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+      - name: Verify complete release and promote both independent feeds
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.verify.outputs.tag }}
+          RELEASE_ID: ${{ needs.finalize.outputs.release_id }}
+          RELEASE_SHA: ${{ github.event_name == 'push' && github.sha || needs.create-release-ref.outputs.release_sha }}
+          CANDIDATE_ASSET_ID: ${{ needs.upgrade-smoke.outputs.candidate_asset_id }}
+          CANDIDATE_SHA256: ${{ needs.upgrade-smoke.outputs.candidate_sha256 }}
+        run: |
+          set -euo pipefail
+          node scripts/platform-release.mjs promote-all --repository "$GITHUB_REPOSITORY" \
+            --tag "$RELEASE_TAG" --release-id "$RELEASE_ID" --release-commit "$RELEASE_SHA" \
+            --run-id "$GITHUB_RUN_ID" --expected-asset-id "$CANDIDATE_ASSET_ID" \
+            --expected-sha256 "$CANDIDATE_SHA256" --output output/platform-release
+      - uses: actions/upload-artifact@v7
+        if: ${{ always() }}
+        with:
+          name: all-platform-feed-verification
+          path: output/platform-release
+          if-no-files-found: ignore

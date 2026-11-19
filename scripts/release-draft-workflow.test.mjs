@@ -20,18 +20,47 @@ const prepare = stepScript("create-draft", "Prepare one shared release draft bef
 const finalize = stepScript("finalize", "Verify the gated artifact set and publish the draft");
 const core = () => ({ setFailed: (message) => { throw new Error(message); }, setOutput: vi.fn(), info: vi.fn() });
 
-async function prepareDraft(releases) {
+async function prepareDraft(releases, platform = "all") {
   const createRelease = vi.fn(async (args) => ({ data: { ...args, id: 42 } }));
   const status = core();
   await new AsyncFunction("github", "core", "context", "process", prepare)(
     { paginate: async () => releases, rest: { repos: { listReleases: {}, createRelease } } },
     status, context,
-    { env: { RELEASE_TAG: "v0.3.19", RELEASE_SHA: "verified-sha", RELEASE_BODY: "Shared platform notes" } },
+    { env: { RELEASE_TAG: "v0.3.19", RELEASE_SHA: "verified-sha", RELEASE_BODY: "Shared platform notes", RELEASE_PLATFORM: platform } },
   );
   return { createRelease, status };
 }
 
 describe("shared release draft workflow", () => {
+  it("isolates platform dispatch and feed finalization while retaining the full legacy finalizer", async () => {
+    expect(workflow).toContain("group: quota-float-release-${{ inputs.platform || 'all' }}");
+    expect(workflow).toContain("platform=${{ inputs.platform || 'all' }}");
+    expect(job("publish-windows")).toContain("inputs.platform != 'macos'");
+    expect(job("publish-macos")).toContain("inputs.platform != 'windows'");
+    expect(job("finalize")).toContain("(inputs.platform == '' || inputs.platform == 'all')");
+    const platformFinal = job("finalize-platform");
+    expect(platformFinal).toContain("inputs.platform == 'windows' && needs.publish-windows.result == 'success' && needs.upgrade-smoke.result == 'success'");
+    expect(platformFinal).toContain("inputs.platform == 'macos' && needs.publish-macos.result == 'success'");
+    expect(platformFinal).toContain('node scripts/platform-release.mjs "${args[@]}"');
+    expect(platformFinal).toContain("--expected-asset-id");
+    expect(platformFinal).not.toContain("continue-on-error");
+    const allFeeds = job("promote-all-feeds");
+    expect(allFeeds).toContain("needs.finalize.result == 'success'");
+    expect(allFeeds).toContain("!contains(needs.verify.outputs.tag, '-')");
+    expect(allFeeds).toContain("scripts/platform-release.mjs promote-all");
+    expect(allFeeds).toContain("--expected-sha256");
+    expect(allFeeds).not.toContain("continue-on-error");
+    const { createRelease } = await prepareDraft([], "windows");
+    expect(createRelease).toHaveBeenCalledWith(expect.objectContaining({ draft: true, make_latest: "false" }));
+    expect(job("create-release-ref")).toContain('git push --atomic origin HEAD:refs/heads/main');
+  });
+
+  it("tests both the channel predecessor and legacy migration when the Windows feed has advanced", () => {
+    const upgrade = job("upgrade-smoke");
+    expect(upgrade).toContain('-PlatformMode "${{ inputs.platform || \'all\' }}"');
+    expect(upgrade).toContain("steps.upgrade.outputs.previous_tag != 'v0.3.37'");
+    expect(upgrade).toContain("-PlatformMode windows -PreviousTag v0.3.37");
+  });
   it("blocks release preparation on dependency audit and bundle budget failures", () => {
     const verification = job("verify");
     const install = verification.indexOf("- run: npm ci");

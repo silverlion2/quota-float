@@ -1,7 +1,9 @@
 param(
   [Parameter(Mandatory = $true)][string]$Repository,
   [Parameter(Mandatory = $true)][string]$CurrentTag,
-  [long]$CandidateReleaseId
+  [long]$CandidateReleaseId,
+  [ValidateSet('all', 'windows')][string]$PlatformMode = 'all',
+  [ValidateSet('', 'v0.3.37')][string]$PreviousTag = ''
 )
 
 $ErrorActionPreference = "Stop"
@@ -92,7 +94,28 @@ if (-not $candidate.draft) {
   throw "Refusing to smoke test $CurrentTag after publication; the candidate must still be a draft."
 }
 
-$previous = Invoke-GitHubJson "repos/$Repository/releases/latest"
+$previousEvidence = $null
+if ($PlatformMode -eq 'windows') {
+  $evidencePath = Join-Path $env:RUNNER_TEMP ("quota-float-previous-" + [guid]::NewGuid().ToString('N') + '.json')
+  $previousArgs = @('scripts/platform-release.mjs', 'previous', '--repository', $Repository, '--platform', 'windows', '--output', $evidencePath)
+  if ($PreviousTag) { $previousArgs += @('--tag', $PreviousTag) }
+  & node @previousArgs
+  if ($LASTEXITCODE -ne 0) { throw 'Previous Windows channel release could not be verified.' }
+  $previousEvidence = Get-Content -LiteralPath $evidencePath -Raw | ConvertFrom-Json
+  if ($previousEvidence.signatureVerified -ne $true -or $previousEvidence.sha256 -notmatch '^[a-f0-9]{64}$' -or
+      [string]$previousEvidence.releaseId -notmatch '^[1-9][0-9]*$' -or [string]$previousEvidence.assetId -notmatch '^[1-9][0-9]*$') {
+    throw 'Previous Windows artifact evidence is incomplete.'
+  }
+  if ($PreviousTag -and $previousEvidence.tag -ne $PreviousTag) { throw 'Legacy migration evidence does not match the requested baseline.' }
+  $previous = Invoke-GitHubJson "repos/$Repository/releases/$($previousEvidence.releaseId)"
+  if ($previous.draft -or [string]$previous.id -ne [string]$previousEvidence.releaseId -or
+      $previous.tag_name -ne $previousEvidence.tag -or $previous.target_commitish -ne $previousEvidence.releaseCommit) {
+    throw 'Previous Windows release identity changed after verification.'
+  }
+} else {
+  if ($PreviousTag) { throw 'An explicit legacy baseline is supported only in Windows platform mode.' }
+  $previous = Invoke-GitHubJson "repos/$Repository/releases/latest"
+}
 if ($previous.tag_name -eq $CurrentTag) {
   throw "Current tag $CurrentTag is already the latest public release; the draft gate ran too late."
 }
@@ -100,6 +123,8 @@ if (-not $previous) { throw "No previous public stable release is available for 
 
 $candidateAsset = Get-InstallerAsset $candidate "Draft candidate $CurrentTag"
 $previousAsset = Get-InstallerAsset $previous "Previous stable release $($previous.tag_name)"
+if ($null -ne $previousEvidence -and ([string]$previousAsset.id -ne [string]$previousEvidence.assetId -or
+    $previousAsset.digest -ne ('sha256:' + $previousEvidence.sha256))) { throw 'Previous installer changed after channel verification.' }
 $releaseRoot = Join-Path $env:RUNNER_TEMP "quota-float-upgrade-smoke-$([guid]::NewGuid().ToString('N'))"
 New-Item -ItemType Directory -Path $releaseRoot | Out-Null
 
@@ -113,6 +138,9 @@ Save-ReleaseAsset $candidateAsset $currentInstallerPath
 
 $previousInstaller = Get-Item -LiteralPath $previousInstallerPath
 $currentInstaller = Get-Item -LiteralPath $currentInstallerPath
+if ($null -ne $previousEvidence -and (Get-FileHash -LiteralPath $previousInstaller.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -ne $previousEvidence.sha256) {
+  throw 'Downloaded previous installer does not match the verified channel artifact.'
+}
 $candidateSha256 = (Get-FileHash -LiteralPath $currentInstaller.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
 if (-not [string]::IsNullOrWhiteSpace($candidateAsset.digest)) {
   $expectedDigest = "sha256:$candidateSha256"
@@ -121,11 +149,14 @@ if (-not [string]::IsNullOrWhiteSpace($candidateAsset.digest)) {
   }
 }
 
+$previousExpectedVersion = $previous.tag_name -replace '^(windows-)?v', ''
+$expectedVersion = $CurrentTag.TrimStart("v")
+if ($previousExpectedVersion -notmatch '^\d+\.\d+\.\d+$' -or $expectedVersion -notmatch '^\d+\.\d+\.\d+$' -or
+    [version]$previousExpectedVersion -ge [version]$expectedVersion) { throw 'Previous installer must be an older stable application version.' }
 $previousProcess = Start-Process -FilePath $previousInstaller.FullName -ArgumentList "/S" -Wait -PassThru -WindowStyle Hidden
 if ($previousProcess.ExitCode -ne 0) { throw "Previous installer failed with exit code $($previousProcess.ExitCode)." }
 $installedExe = Join-Path $env:LOCALAPPDATA "Quota Float\quota-float.exe"
 if (-not (Test-Path -LiteralPath $installedExe)) { throw "Previous Quota Float executable was not found after installation." }
-$previousExpectedVersion = $previous.tag_name.TrimStart("v")
 $previousInstalledVersion = (Get-Item -LiteralPath $installedExe).VersionInfo.ProductVersion
 if ($previousInstalledVersion -notlike "$previousExpectedVersion*") {
   throw "Expected previous version $previousExpectedVersion but installed $previousInstalledVersion."
@@ -135,7 +166,6 @@ $currentProcess = Start-Process -FilePath $currentInstaller.FullName -ArgumentLi
 if ($currentProcess.ExitCode -ne 0) { throw "Current installer failed with exit code $($currentProcess.ExitCode)." }
 
 if (-not (Test-Path -LiteralPath $installedExe)) { throw "Installed Quota Float executable was not found." }
-$expectedVersion = $CurrentTag.TrimStart("v")
 $installedVersion = (Get-Item -LiteralPath $installedExe).VersionInfo.ProductVersion
 if ($installedVersion -notlike "$expectedVersion*") { throw "Expected $expectedVersion but installed $installedVersion." }
 Assert-AppLaunch $installedExe "Candidate $CurrentTag"
@@ -175,4 +205,9 @@ Write-CiOutput "candidate_release_id" ([string]$candidate.id)
 Write-CiOutput "candidate_asset_id" ([string]$candidateAsset.id)
 Write-CiOutput "candidate_asset_name" ([string]$candidateAsset.name)
 Write-CiOutput "candidate_sha256" $candidateSha256
-Write-Output "Install, launch, upgrade, rollback, reinstall, and uninstall smoke passed on draft asset $($candidateAsset.id): $($previous.tag_name) -> $CurrentTag ($installedVersion, sha256:$candidateSha256)."
+Write-CiOutput "previous_tag" $previous.tag_name
+if ($PreviousTag) {
+  Write-Output "Legacy migration smoke passed on draft asset $($candidateAsset.id): $($previous.tag_name) -> $CurrentTag ($installedVersion, sha256:$candidateSha256)."
+} else {
+  Write-Output "Install, launch, upgrade, rollback, reinstall, and uninstall smoke passed on draft asset $($candidateAsset.id): $($previous.tag_name) -> $CurrentTag ($installedVersion, sha256:$candidateSha256)."
+}

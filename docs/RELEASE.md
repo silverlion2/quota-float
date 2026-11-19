@@ -1,5 +1,7 @@
 # 发布说明
 
+Windows 与 macOS 独立发布、分平台更新源以及旧客户端迁移方式见 [独立平台发布](PLATFORM-RELEASES.md)。单平台发布不会推进旧客户端使用的 GitHub Latest；默认双平台发布仍保留完整验证门槛。
+
 ## 当前发布目标
 
 Quota Float 使用同一套 React/CSS/Tauri 代码构建 Windows 和 macOS 版本。视觉效果、悬浮球、展开卡片、透明度、圆角和动画参数都应保持在共享前端代码中，避免维护 Windows/macOS 两套 UI。

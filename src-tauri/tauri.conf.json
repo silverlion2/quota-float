@@ -59,7 +59,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVFQkQzMDg3OERGMDA4QTIKUldTaUNQQ05oekM5N2pEQVBjNkRJeEZVczlZWk1TTzVlWHlQYTR3T3Z0R00rODNwM0ErLzU0N1cK",
       "endpoints": [
-        "https://github.com/silverlion2/quota-float/releases/latest/download/latest.json"
+        "https://raw.githubusercontent.com/silverlion2/quota-float/update-channels/stable/{{target}}.json"
       ],
       "windows": {
         "installMode": "passive"
