@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.39 - 2026-11-19
 
 - Fix the visible View AIHOT entry being intercepted by native window dragging; cover the full pointer press/release path in component and native WebView regressions.
 - Ship the AIHOT platform-linked reports, unread badges, reminder integration and in-app free-credit catalogue from the unpublished v0.3.38 draft.
