@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.40 - 2026-11-19
 
 - Publish Windows and macOS through independent verified stable update feeds; keep the legacy combined updater compatible and require one manual bootstrap for existing Windows clients until a combined migration release is ready.
 - Link update details to the exact platform release and filter beta downloads by platform, preserving manual macOS installation.
