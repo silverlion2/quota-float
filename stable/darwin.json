@@ -1,0 +1,55 @@
+{
+  "version": "0.3.37",
+  "notes": "## What's new\n\n- Integrate AIHOT's public quota tools into Control center → AIHOT: load reset reports for Codex, Claude, Antigravity and Grok Bot, filter providers and open free-credit offers.\n- Show source verification, report updates, eligibility and confirmation states. Public reports remain separate from your personal balances and reset times.\n- Fetch public reports on demand through the native backend, without account data; retain marked stale reports and respect source cache/backoff rules.\n- Preserve the compact edge-bar number fix from v0.3.36. Add live API, parser, privacy-boundary and native-window regression checks.\n\nFree-credit offers open on AIHOT's website; this release does not claim credits or change provider accounts.\n\n## 更新内容\n\n控制中心新增 AIHOT 额度动态，按需读取 Codex、Claude、Antigravity 和 Grok Bot 的公开重置消息，区分来源核验、消息更新时间、适用范围与确认状态，并提供免费额度活动入口。公开消息不改动个人余额或重置时间，也不向 AIHOT 发送账户数据。保留 v0.3.36 的贴边数字显示修复。\n\n**Full Changelog**: https://github.com/silverlion2/quota-float/compare/v0.3.36...v0.3.37\n\n## Platform signing\n\n- Windows Authenticode: not configured\n- macOS Developer ID: not configured\n- macOS notarization: not configured\n\nTauri updater signatures are generated independently for both platforms.\n\n## Privacy\n\nQuota Float remains local-first: it reads existing local sign-in state only for quota requests and does not upload prompts, chats, raw quota responses, or local credentials.\r\n",
+  "pub_date": "2026-11-16T14:19:37Z",
+  "release_url": "https://github.com/silverlion2/quota-float/releases/tag/v0.3.37",
+  "platforms": {
+    "darwin-aarch64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTaUNQQ05oekM5N3FYRXo2Ny92QVZuZk44RnhVb1lsMnh2N1A2U2NPR0xCaEVpVHdYMTJEVld5K0JuRnkvdnJodGtrU1BkbGNwU1J1Q05TUlZCR0dHQTlENEJzUElUbHdJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0ODM4NzU1CWZpbGU6UXVvdGEgRmxvYXQuYXBwLnRhci5negl2ZXJzaW9uOjAuMy4zNwpYMWZpZ3RVMUlHNHZSZkgvMEhhejdDZmNJZ29OdHh4N0dWYS9HcEpaVVFjbUFYWXlQWVlqOUFwT0c1R2lIa3IxZkg2Q1U5T005elpGVmFKWUVyanpEUT09Cg==",
+      "url": "https://github.com/silverlion2/quota-float/releases/download/v0.3.37/Quota.Float_universal.app.tar.gz"
+    },
+    "darwin-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTaUNQQ05oekM5N3FYRXo2Ny92QVZuZk44RnhVb1lsMnh2N1A2U2NPR0xCaEVpVHdYMTJEVld5K0JuRnkvdnJodGtrU1BkbGNwU1J1Q05TUlZCR0dHQTlENEJzUElUbHdJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0ODM4NzU1CWZpbGU6UXVvdGEgRmxvYXQuYXBwLnRhci5negl2ZXJzaW9uOjAuMy4zNwpYMWZpZ3RVMUlHNHZSZkgvMEhhejdDZmNJZ29OdHh4N0dWYS9HcEpaVVFjbUFYWXlQWVlqOUFwT0c1R2lIa3IxZkg2Q1U5T005elpGVmFKWUVyanpEUT09Cg==",
+      "url": "https://github.com/silverlion2/quota-float/releases/download/v0.3.37/Quota.Float_universal.app.tar.gz"
+    },
+    "darwin-aarch64-app": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTaUNQQ05oekM5N3FYRXo2Ny92QVZuZk44RnhVb1lsMnh2N1A2U2NPR0xCaEVpVHdYMTJEVld5K0JuRnkvdnJodGtrU1BkbGNwU1J1Q05TUlZCR0dHQTlENEJzUElUbHdJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0ODM4NzU1CWZpbGU6UXVvdGEgRmxvYXQuYXBwLnRhci5negl2ZXJzaW9uOjAuMy4zNwpYMWZpZ3RVMUlHNHZSZkgvMEhhejdDZmNJZ29OdHh4N0dWYS9HcEpaVVFjbUFYWXlQWVlqOUFwT0c1R2lIa3IxZkg2Q1U5T005elpGVmFKWUVyanpEUT09Cg==",
+      "url": "https://github.com/silverlion2/quota-float/releases/download/v0.3.37/Quota.Float_universal.app.tar.gz"
+    },
+    "darwin-x86_64-app": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTaUNQQ05oekM5N3FYRXo2Ny92QVZuZk44RnhVb1lsMnh2N1A2U2NPR0xCaEVpVHdYMTJEVld5K0JuRnkvdnJodGtrU1BkbGNwU1J1Q05TUlZCR0dHQTlENEJzUElUbHdJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0ODM4NzU1CWZpbGU6UXVvdGEgRmxvYXQuYXBwLnRhci5negl2ZXJzaW9uOjAuMy4zNwpYMWZpZ3RVMUlHNHZSZkgvMEhhejdDZmNJZ29OdHh4N0dWYS9HcEpaVVFjbUFYWXlQWVlqOUFwT0c1R2lIa3IxZkg2Q1U5T005elpGVmFKWUVyanpEUT09Cg==",
+      "url": "https://github.com/silverlion2/quota-float/releases/download/v0.3.37/Quota.Float_universal.app.tar.gz"
+    }
+  },
+  "_quotaFloat": {
+    "repository": "silverlion2/quota-float",
+    "platform": "darwin",
+    "releaseId": 447122111,
+    "releaseCommit": "ac9995dc4fa54104075dcd86362d288832ae4ce0",
+    "tag": "v0.3.37",
+    "runId": 43881624392,
+    "assets": [
+      {
+        "id": 755132238,
+        "name": "Quota.Float_universal.app.tar.gz",
+        "size": 12840204,
+        "digest": "sha256:93bc9baed8b521bae88dd56c4f705caf635a4e8a3235d2b3ca0efda51ccb6be9",
+        "url": "https://github.com/silverlion2/quota-float/releases/download/v0.3.37/Quota.Float_universal.app.tar.gz"
+      },
+      {
+        "id": 755132315,
+        "name": "Quota.Float_universal.app.tar.gz.sig",
+        "size": 432,
+        "digest": "sha256:9cc9effed229b517eb6e741413f356bcf9e47bbf5c20a91713c88bd52925bf7a",
+        "url": "https://github.com/silverlion2/quota-float/releases/download/v0.3.37/Quota.Float_universal.app.tar.gz.sig"
+      },
+      {
+        "id": 755132130,
+        "name": "Quota.Float_0.3.37_universal.dmg",
+        "size": 12552258,
+        "digest": "sha256:70c431659517e6eb4914ae1ea50c5103a4554e47bf702cf488df3610a345f889",
+        "url": "https://github.com/silverlion2/quota-float/releases/download/v0.3.37/Quota.Float_0.3.37_universal.dmg"
+      }
+    ]
+  }
+}
