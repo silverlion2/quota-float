@@ -4,6 +4,20 @@ import { afterEach, expect, it, vi } from "vitest";
 import { AiHotSummary } from "./AiHotSummary";
 import type { AiHotSignal } from "../lib/aihotIntegration";
 afterEach(cleanup);
+it.each(["en", "zh-CN"] as const)("opens AIHOT without starting the parent window drag (%s)", (language) => {
+  const open = vi.fn();
+  const drag = vi.fn();
+  render(<div onMouseDown={drag}>
+    <AiHotSummary enabled={false} signals={[]} report={null} credits={null} provider="codex"
+      loading={false} language={language} onOpen={open} />
+  </div>);
+  const button = screen.getByRole("button", { name: language === "en" ? "View AIHOT" : "查看 AIHOT" });
+  fireEvent.mouseDown(button, { button: 0 });
+  fireEvent.mouseUp(button, { button: 0 });
+  fireEvent.click(button, { button: 0 });
+  expect(drag).not.toHaveBeenCalled();
+  expect(open).toHaveBeenCalledOnce();
+});
 const signal: AiHotSignal = { key: "example", eventId: "example", provider: "codex", status: "pending", unread: true,
   sourceVerifiedAt: "2026-11-17T00:00:00Z", expiresAt: "2026-11-17T06:00:00Z",
   event: { id: "example", title: "Scheduled reset", status: "announced", scope: null, updatedAt: "2026-11-17T00:00:00Z", reportedAt: null, url: "https://aihot.news/codex-reset" } };

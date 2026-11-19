@@ -21,6 +21,6 @@ export function AiHotSummary({ enabled, signals, report, credits, provider, load
     <footer><small>{enabled && stale ? (en ? "Some sources are unavailable or stale" : "部分来源不可用或已过期")
       : credits ? (en ? `${credits.offers.length} public credit offers · check eligibility` : `${credits.offers.length} 项公开额度活动 · 以适用条件为准`)
       : en ? "Public reports do not confirm your account reset" : "公开公告不代表你的账户已重置"}</small>
-    <button type="button" onClick={onOpen}>{en ? "View AIHOT" : "查看 AIHOT"}</button></footer>
+    <button type="button" onMouseDown={(event) => event.stopPropagation()} onClick={onOpen}>{en ? "View AIHOT" : "查看 AIHOT"}</button></footer>
   </section>;
 }

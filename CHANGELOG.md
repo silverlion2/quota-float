@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fix the visible View AIHOT entry being intercepted by native window dragging; cover the full pointer press/release path in component and native WebView regressions.
 - Ship the AIHOT platform-linked reports, unread badges, reminder integration and in-app free-credit catalogue from the unpublished v0.3.38 draft.
 - Move macOS CI and release builds to the standard Apple Silicon runner after repeated Intel runner allocation failures, retaining all native tests and Universal x86_64/arm64 artifact gates.
 

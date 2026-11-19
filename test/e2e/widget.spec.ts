@@ -186,8 +186,33 @@ describe("Quota Float desktop widget", () => {
     await browser.$('.aihot-summary').waitForDisplayed({ timeout: 15_000 });
     await expect(browser.$('.aihot-summary')).toHaveText(expect.stringContaining('No new updates for enabled providers'));
     await expect(browser.$('.compact-aihot-badge')).not.toBeExisting();
-    await browser.tauri.execute(() => document.querySelector('.aihot-summary button')?.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    // The embedded driver's element.click() is programmatic. Exercise the full
+    // pointer sequence and prove mousedown cannot escape React's button handler.
+    await browser.tauri.execute(() => {
+      const button = document.querySelector<HTMLButtonElement>('.aihot-summary button')!;
+      button.scrollIntoView({ block: 'center' });
+      const probe = { presses: 0, escaped: 0, listener: (event: MouseEvent) => {
+        if ((event.target as Element).closest?.('.aihot-summary button')) probe.escaped++;
+      } };
+      button.addEventListener('mousedown', () => { probe.presses++; }, { once: true });
+      document.addEventListener('mousedown', probe.listener);
+      (window as unknown as Record<string, unknown>).__aihotPointerProbe = probe;
+    });
+    const entry = await browser.$('.aihot-summary button');
+    await browser.performActions([{ type: 'pointer', id: 'aihot-entry', parameters: { pointerType: 'mouse' }, actions: [
+      { type: 'pointerMove', origin: { 'element-6066-11e4-a52e-4f735466cecf': entry.elementId }, x: 0, y: 0 },
+      { type: 'pointerDown', button: 0 }, { type: 'pointerUp', button: 0 },
+    ] }]);
+    const entryPress = await browser.tauri.execute(() => {
+      const state = window as unknown as Record<string, unknown>;
+      const probe = state.__aihotPointerProbe as { presses: number; escaped: number; listener: (event: MouseEvent) => void };
+      document.removeEventListener('mousedown', probe.listener);
+      delete state.__aihotPointerProbe;
+      return { presses: probe.presses, escaped: probe.escaped };
+    });
+    expect(entryPress).toEqual({ presses: 1, escaped: 0 });
     await browser.$('.aihot-panel').waitForDisplayed();
+    await expect(browser.$('.control-tabs .is-active')).toHaveText('AIHOT');
     await browser.tauri.execute(() => document.querySelector('.aihot-preferences')?.scrollIntoView({ block: 'center' }));
     await browser.$('.aihot-preferences summary').click();
     await browser.tauri.execute(() => document.querySelector('.aihot-settings')?.scrollIntoView({ block: 'center' }));
