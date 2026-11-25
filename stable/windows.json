@@ -1,39 +1,39 @@
 {
-  "version": "0.3.39",
-  "notes": "# Quota Float 0.3.39 — Windows 独立下载版\n\n这是已验证的 Windows x64 手动安装包。此下载渠道独立于双平台正式更新，不改变现有 App 的自动更新入口。GitHub 标为预发布，用于避免抢占原有稳定更新渠道；macOS 用户继续使用现有正式版本。\n\n- 修复悬浮面板中“查看 AIHOT”点击无反应的问题；已完成原生窗口回归和用户实机确认。\n- AIHOT 消息关联启用的平台、悬浮条未读角标及额度提醒；免费额度目录直接在 App 内展示。\n- 安装包通过 Microsoft Defender 和安装、启动、升级、回滚、重装及卸载验证，Tauri 更新签名已核对。安装时保留现有设置。\n\n下载 `Quota.Float_0.3.39_x64-setup.exe` 并运行。已经安装 0.3.39 的用户不需要重复安装。\n\nWindows Authenticode 尚未配置，可能出现系统信誉提示。Tauri 更新签名不等同于 Authenticode。请只使用本页附件并核对 SHA256SUMS.txt。\n\n本版二进制来自发布提交 `791bce372cd5e0f9eb63ac6c11ba432258f1a00d`，复用已通过 Windows 验证的原始字节；原双平台 v0.3.39 草稿保留，Mac 发布仍受共享构建机容量影响。\n\n## English\n\nVerified Windows x64 manual download. This separate prerelease does not replace the existing stable updater feed. Run the setup executable; users already on 0.3.39 do not need to reinstall. Includes the View AIHOT click fix and linked AIHOT news/free-credit catalogue. Defender, install/launch/upgrade/rollback/reinstall/uninstall smoke and updater signature verification passed. Windows Authenticode is not configured. macOS remains on its existing public release pending hosted-runner availability.\n\nProvider credentials remain local and read-only. AIHOT receives no local account credentials, personal quota responses, prompts or chats.\n",
-  "pub_date": "2026-11-19T16:08:27Z",
-  "release_url": "https://github.com/silverlion2/quota-float/releases/tag/windows-v0.3.39",
+  "version": "0.3.41",
+  "notes": "**Full Changelog**: https://github.com/silverlion2/quota-float/compare/v0.3.40...v0.3.41\n\n## Platform scope\n\nWindows only.\n\n## Platform signing\n\n- Windows Authenticode: not configured\n\nTauri updater signatures are verified for the published platform artifacts.\n\n## Privacy\n\nQuota Float remains local-first: it reads existing local sign-in state only for quota requests and does not upload prompts, chats, raw quota responses, or local credentials.",
+  "pub_date": "2026-11-25T17:02:25Z",
+  "release_url": "https://github.com/silverlion2/quota-float/releases/tag/v0.3.41",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTaUNQQ05oekM5N3Arb21mcEttTlBXbUFFak1GUWlUbGwxeDVtN1NRZkFWTzZqRExNaytyR3N4NGhqQ2cxQmJqb2dURk5VWlc2QnZTNU5XanBxVXo5TmQzYmE3WUkrUEFNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MTAyMzA2CWZpbGU6UXVvdGEgRmxvYXRfMC4zLjM5X3g2NC1zZXR1cC5leGUJdmVyc2lvbjowLjMuMzkKQ0NBdTcwNlNpZy9RRUVWY1dQc1FwZ2tXZUQyU1Q4ZkdrZHZpWHhmdWl1UTRRKzdpcXhwbVZJVmZFWncxaWV1dVRPd2I3dFNMdDhLZ1hBRzRKQlpsQUE9PQo=",
-      "url": "https://github.com/silverlion2/quota-float/releases/download/windows-v0.3.39/Quota.Float_0.3.39_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTaUNQQ05oekM5N3ZwaTI1bkVmVFhNbzBoSVRFcnZMRHpqV29PNUpLRlE5SXR4azc3RGVIZUZDQVNYcTJPNnAyZ09VbGJUQU5GNldqc2pYU05UNVVCcHFGbzFxZ2FHMFE0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1NjI1OTQ2CWZpbGU6UXVvdGEgRmxvYXRfMC4zLjQxX3g2NC1zZXR1cC5leGUJdmVyc2lvbjowLjMuNDEKdmM3OVZLL2JCYkR3UE4yRXpNSWRxUDlDbTcwZ214aEpwOFdqT1MvTTlWbFJyWjhtU0NvRndzSlJFZmsvSWZPQ2JtdnRHNTg5dDl4RzliZXBXUGcvQkE9PQo=",
+      "url": "https://github.com/silverlion2/quota-float/releases/download/v0.3.41/Quota.Float_0.3.41_x64-setup.exe"
     },
     "windows-x86_64-nsis": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTaUNQQ05oekM5N3Arb21mcEttTlBXbUFFak1GUWlUbGwxeDVtN1NRZkFWTzZqRExNaytyR3N4NGhqQ2cxQmJqb2dURk5VWlc2QnZTNU5XanBxVXo5TmQzYmE3WUkrUEFNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MTAyMzA2CWZpbGU6UXVvdGEgRmxvYXRfMC4zLjM5X3g2NC1zZXR1cC5leGUJdmVyc2lvbjowLjMuMzkKQ0NBdTcwNlNpZy9RRUVWY1dQc1FwZ2tXZUQyU1Q4ZkdrZHZpWHhmdWl1UTRRKzdpcXhwbVZJVmZFWncxaWV1dVRPd2I3dFNMdDhLZ1hBRzRKQlpsQUE9PQo=",
-      "url": "https://github.com/silverlion2/quota-float/releases/download/windows-v0.3.39/Quota.Float_0.3.39_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTaUNQQ05oekM5N3ZwaTI1bkVmVFhNbzBoSVRFcnZMRHpqV29PNUpLRlE5SXR4azc3RGVIZUZDQVNYcTJPNnAyZ09VbGJUQU5GNldqc2pYU05UNVVCcHFGbzFxZ2FHMFE0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1NjI1OTQ2CWZpbGU6UXVvdGEgRmxvYXRfMC4zLjQxX3g2NC1zZXR1cC5leGUJdmVyc2lvbjowLjMuNDEKdmM3OVZLL2JCYkR3UE4yRXpNSWRxUDlDbTcwZ214aEpwOFdqT1MvTTlWbFJyWjhtU0NvRndzSlJFZmsvSWZPQ2JtdnRHNTg5dDl4RzliZXBXUGcvQkE9PQo=",
+      "url": "https://github.com/silverlion2/quota-float/releases/download/v0.3.41/Quota.Float_0.3.41_x64-setup.exe"
     }
   },
   "_quotaFloat": {
     "repository": "silverlion2/quota-float",
     "platform": "windows",
-    "releaseId": 451585806,
-    "releaseCommit": "791bce372cd5e0f9eb63ac6c11ba432258f1a00d",
-    "tag": "windows-v0.3.39",
-    "runId": 44552380544,
+    "releaseId": 458378955,
+    "releaseCommit": "93c127be469ea2fdd3fe37499b65a5554353e8b7",
+    "tag": "v0.3.41",
+    "runId": 45657276735,
     "assets": [
       {
-        "id": 768339554,
-        "name": "Quota.Float_0.3.39_x64-setup.exe",
-        "size": 5035896,
-        "digest": "sha256:36c4932e75d684b7be8e587e859234d52db3c353741543190fc40b4008dc0a89",
-        "url": "https://github.com/silverlion2/quota-float/releases/download/windows-v0.3.39/Quota.Float_0.3.39_x64-setup.exe"
+        "id": 792361955,
+        "name": "Quota.Float_0.3.41_x64-setup.exe",
+        "size": 5031002,
+        "digest": "sha256:26457b3961ec08e651d5c96bee81d36a166a4cc0380d23795d0c83b32eebcedf",
+        "url": "https://github.com/silverlion2/quota-float/releases/download/v0.3.41/Quota.Float_0.3.41_x64-setup.exe"
       },
       {
-        "id": 768339582,
-        "name": "Quota.Float_0.3.39_x64-setup.exe.sig",
+        "id": 792362023,
+        "name": "Quota.Float_0.3.41_x64-setup.exe.sig",
         "size": 444,
-        "digest": "sha256:45c1e8b8b3d23f2f2c6dd216d99df39b872b2ebfc9a620ca20685297a74df3f5",
-        "url": "https://github.com/silverlion2/quota-float/releases/download/windows-v0.3.39/Quota.Float_0.3.39_x64-setup.exe.sig"
+        "digest": "sha256:50d03dab84ae610194b914b6fe26c97e79cbda289451f8924030113f4cf7f042",
+        "url": "https://github.com/silverlion2/quota-float/releases/download/v0.3.41/Quota.Float_0.3.41_x64-setup.exe.sig"
       }
     ]
   }
