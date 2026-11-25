@@ -3309,7 +3309,7 @@ dependencies = [
 
 [[package]]
 name = "quota-float"
-version = "0.3.40"
+version = "0.3.41"
 dependencies = [
  "aes",
  "aes-gcm",
