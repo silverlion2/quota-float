@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Update native URL and cookie dependencies for RUSTSEC-2026-0592 and RUSTSEC-2026-0594 before independent Windows publication.
 - Complete independent platform release verification with newer GitHub CLI versions by safely capturing and sanitizing colored workflow logs; preserve exact installer bytes and all publication gates.
 
 ## 0.3.40 - 2026-11-19
