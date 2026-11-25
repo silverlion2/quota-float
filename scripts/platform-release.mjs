@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { stripVTControlCharacters } from "node:util";
 import { verifyPublicArtifacts, verifyUpdaterSignature } from "./verify-public-artifacts.mjs";
 
 const BRANCH = "update-channels";
@@ -267,11 +268,23 @@ export async function publishPlatformFeeds({ repository, entries }, deps = creat
   }
   throw new Error("Channel changed too frequently");
 }
-export async function finalizePlatformRelease(options, deps = createDependencies(options.repository)) {
+async function preparePlatformRelease(options, deps) {
   const legacy = await legacySnapshot(deps);
   const prepared = await inspectPlatform(options, deps, false);
   const proof = await workflowProof(options, deps, prepared);
   await unchangedLegacy(deps, legacy);
+  return { legacy, prepared, proof };
+}
+export async function preflightPlatformRelease(options, deps = createDependencies(options.repository)) {
+  const { legacy, prepared, proof } = await preparePlatformRelease(options, deps);
+  return saveReport({ verifiedAt: new Date().toISOString(), prepublishGatesPassed: true, readOnly: true,
+    publicReleaseVerified: !prepared.release.draft, publicationPerformed: false, channelUpdated: false,
+    repository: options.repository, platform: options.platform, tag: options.tag, version: prepared.version,
+    releaseId: Number(options.releaseId), releaseCommit: options.releaseCommit,
+    updaterSignaturesVerified: true, assets: prepared.assets, legacy, ...proof }, options.outputDirectory);
+}
+export async function finalizePlatformRelease(options, deps = createDependencies(options.repository)) {
+  const { legacy, prepared, proof } = await preparePlatformRelease(options, deps);
   if (prepared.release.draft) await deps.api("PATCH", `repos/${options.repository}/releases/${options.releaseId}`, { draft: false, make_latest: "false" });
   const verified = await inspectPlatform(options, deps, true); // Anonymous GETs after publication, before feed changes.
   if (!equal(prepared.assets, verified.assets)) throw new Error("Assets changed between draft verification and publication");
@@ -329,10 +342,23 @@ export async function promoteAllPlatforms(options, deps = createDependencies(opt
     updaterSignaturesVerified: true, fullArtifactSetVerified: true, manifests, channel, publicFeeds, publicFeedVerified: true, legacy, ...proof }, options.outputDirectory);
 }
 
-export function createDependencies(repository) {
-  const gh = (args, input) => {
-    try { return execFileSync("gh", args, { input, maxBuffer: 270 * 1024 * 1024, timeout: 180_000, stdio: ["pipe", "pipe", "pipe"] }); }
-    catch (error) { const failure = new Error(`GitHub request failed: ${error.stderr?.toString().replace(/https?:\/\/\S+/g, "[URL]").slice(0, 400) || "transport failure"}`); failure.status = Number(error.stderr?.toString().match(/HTTP (\d{3})/)?.[1]); throw failure; }
+export function createDependencies(repository, { execFile = execFileSync } = {}) {
+  const captured = (args, input) => execFile("gh", args, { input, maxBuffer: 270 * 1024 * 1024, timeout: 180_000, stdio: ["pipe", "pipe", "pipe"] });
+  const gh = (args, input, raw = false) => {
+    try {
+      try { return captured(args, input); }
+      catch (error) {
+        const stderr = error.stderr?.toString() ?? "";
+        // Raw responses can require explicit escape handling in newer gh.
+        // Older releases need no flag. Never relax JSON API reads.
+        if (!raw || !/response contains terminal escape sequences\b/i.test(stderr) || !stderr.includes("--allow-escape-sequences")) throw error;
+        return captured([...args, "--allow-escape-sequences"], input);
+      }
+    } catch (error) {
+      const stderr = stripVTControlCharacters(error.stderr?.toString() ?? "");
+      const failure = new Error(`GitHub request failed: ${stderr.replace(/https?:\/\/\S+/g, "[URL]").slice(0, 400) || "transport failure"}`);
+      failure.status = Number(stderr.match(/HTTP (\d{3})/)?.[1]); throw failure;
+    }
   };
   const api = async (method, path, body) => JSON.parse(gh(["api", path, "--method", method, ...(body ? ["--input", "-"] : [])], body ? JSON.stringify(body) : undefined).toString("utf8"));
   const download = async (url, expectedSize) => {
@@ -343,8 +369,8 @@ export function createDependencies(repository) {
     return Buffer.concat(chunks);
   };
   return { repository, api, download,
-    downloadPrivate: async (assetId) => gh(["api", `repos/${repository}/releases/assets/${assetId}`, "-H", "Accept: application/octet-stream"]),
-    log: async (jobId) => gh(["api", `repos/${repository}/actions/jobs/${jobId}/logs`]).toString("utf8") };
+    downloadPrivate: async (assetId) => gh(["api", `repos/${repository}/releases/assets/${assetId}`, "-H", "Accept: application/octet-stream"], undefined, true),
+    log: async (jobId) => stripVTControlCharacters(gh(["api", `repos/${repository}/actions/jobs/${jobId}/logs`], undefined, true).toString("utf8")) };
 }
 async function cli() {
   const [command, ...args] = process.argv.slice(2), flags = {};
@@ -358,13 +384,14 @@ async function cli() {
     platform: flags.platform, runId: flags["run-id"], outputDirectory: flags.output, expectedAssetId: flags["expected-asset-id"], expectedSha256: flags["expected-sha256"], upgradeAssetId: flags["upgrade-asset-id"], upgradeReleaseId: flags["upgrade-release-id"] };
   let result;
   if (command === "verify") result = await verifyPlatformRelease(options);
+  else if (command === "preflight") result = await preflightPlatformRelease(options);
   else if (command === "finalize" || command === "seed") result = await finalizePlatformRelease(options);
   else if (command === "promote-all") result = await promoteAllPlatforms(options);
   else if (command === "previous") {
     result = await previousWindows(options);
     await mkdir(dirname(resolve(flags.output)), { recursive: true });
     await writeFile(flags.output, `${JSON.stringify(result, null, 2)}\n`);
-  } else throw new Error("Expected verify, finalize, seed, or previous");
+  } else throw new Error("Expected verify, preflight, finalize, seed, promote-all, or previous");
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) cli().catch((error) => { console.error(error.message); process.exitCode = 1; });

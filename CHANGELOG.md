@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Complete independent platform release verification with newer GitHub CLI versions by safely capturing and sanitizing colored workflow logs; preserve exact installer bytes and all publication gates.
+
 ## 0.3.40 - 2026-11-19
 
 - Publish Windows and macOS through independent verified stable update feeds; keep the legacy combined updater compatible and require one manual bootstrap for existing Windows clients until a combined migration release is ready.

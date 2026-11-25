@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
-import { finalizePlatformRelease, platformAssetNames, previousWindows, promoteAllPlatforms, publishPlatformFeed,
+import { createDependencies, finalizePlatformRelease, platformAssetNames, preflightPlatformRelease, previousWindows, promoteAllPlatforms, publishPlatformFeed,
   publishPlatformFeeds, verifyPlatformRelease, verifyPublicFeed } from "./platform-release.mjs";
 
 const sha = (n) => n.toString(16).padStart(40, "0");
@@ -284,4 +284,58 @@ it("all-mode promotion rejects a target that is not global Latest without changi
   const f = fixture(); f.candidate.draft = false;
   await expect(promoteAllPlatforms(f.options, f.deps)).rejects.toThrow(/exact fully published global Latest/);
   expect(f.head()).toBe(null);
+});
+
+const escapeGuard = () => Object.assign(new Error("gh failed"), {
+  stderr: Buffer.from("gh: response contains terminal escape sequences; pass --allow-escape-sequences to allow them\n"),
+});
+
+it("retries guarded raw binary reads with the official flag and preserves every byte in captured pipes", async () => {
+  const bytes = Buffer.from([0x4d, 0x5a, 0, 0xff, 0x1b, 0x5b, 0x33, 0x31, 0x6d, 0x80]);
+  const execFile = vi.fn().mockImplementationOnce(() => { throw escapeGuard(); }).mockReturnValue(bytes);
+  const result = await createDependencies("owner/repo", { execFile }).downloadPrivate(123);
+  expect(result).toEqual(bytes);
+  expect(execFile).toHaveBeenCalledTimes(2);
+  expect(execFile.mock.calls[0][1]).not.toContain("--allow-escape-sequences");
+  expect(execFile.mock.calls[1][1]).toEqual([...execFile.mock.calls[0][1], "--allow-escape-sequences"]);
+  for (const [, , options] of execFile.mock.calls) expect(options.stdio).toEqual(["pipe", "pipe", "pipe"]);
+});
+
+it("sanitizes ANSI and terminal hyperlinks from captured logs after the scoped retry", async () => {
+  const log = Buffer.from("\u001b[32mPushed v0.3.40 at abc.\u001b[0m\n\u001b]8;;https://example.invalid\u0007proof\u001b]8;;\u0007\n");
+  const execFile = vi.fn().mockImplementationOnce(() => { throw escapeGuard(); }).mockReturnValue(log);
+  expect(await createDependencies("owner/repo", { execFile }).log(321)).toBe("Pushed v0.3.40 at abc.\nproof\n");
+  expect(execFile).toHaveBeenCalledTimes(2);
+});
+
+it("keeps older gh compatibility without requesting the newer flag when the first read succeeds", async () => {
+  const execFile = vi.fn(() => Buffer.from("\u001b[32mraw\u001b[0m"));
+  const deps = createDependencies("owner/repo", { execFile });
+  expect(await deps.downloadPrivate(123)).toEqual(Buffer.from("\u001b[32mraw\u001b[0m"));
+  expect(await deps.log(321)).toBe("raw");
+  expect(execFile).toHaveBeenCalledTimes(2);
+  expect(execFile.mock.calls.every(([, args]) => !args.includes("--allow-escape-sequences"))).toBe(true);
+});
+
+it.each(["HTTP 403 forbidden", "HTTP 404 not found", "network timeout", "response contains terminal escape sequences"])("does not retry unrelated or incomplete guard errors: %s", async (stderr) => {
+  const execFile = vi.fn(() => { throw Object.assign(new Error("gh failed"), { stderr: Buffer.from(stderr) }); });
+  await expect(createDependencies("owner/repo", { execFile }).downloadPrivate(123)).rejects.toThrow();
+  expect(execFile).toHaveBeenCalledOnce();
+});
+
+it("never bypasses the escape-sequence guard for JSON API calls", async () => {
+  const execFile = vi.fn(() => { throw escapeGuard(); });
+  await expect(createDependencies("owner/repo", { execFile }).api("GET", "repos/owner/repo/releases/1")).rejects.toThrow(/escape sequences/);
+  expect(execFile).toHaveBeenCalledOnce();
+});
+
+it("runs the exact finalizer prepublication gates without any external mutations", async () => {
+  const f = fixture();
+  const { report } = await preflightPlatformRelease(f.options, f.deps);
+  expect(report).toMatchObject({ prepublishGatesPassed: true, readOnly: true, publicationPerformed: false, channelUpdated: false, publicReleaseVerified: false });
+  expect(f.deps.api.mock.calls.every(([method]) => method === "GET")).toBe(true);
+  expect(f.candidate.draft).toBe(true);
+  expect(f.head()).toBe(null);
+  expect(f.deps.log).toHaveBeenCalledWith(2);
+  expect(f.deps.log).toHaveBeenCalledWith(5);
 });
